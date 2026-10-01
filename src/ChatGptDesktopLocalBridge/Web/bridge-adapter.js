@@ -7,6 +7,7 @@
   const REQUEST_END = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
   const RESULT_START = "[[LOCAL_BRIDGE_RESULT_V1]]";
   const BOOTSTRAP_START = "[[LOCAL_BRIDGE_BOOTSTRAP_V1]]";
+  const READY_PATTERN = /^\[\[LOCAL_BRIDGE_READY_V1:([a-fA-F0-9]{32})\]\]$/;
 
   const processed = new Set();
   const pending = new Map();
@@ -151,6 +152,23 @@
       .querySelectorAll("[data-message-author-role='assistant']")
       .forEach(node => {
         const text = (node.innerText || "").trim();
+
+        const readyMatch = text.match(READY_PATTERN);
+        if (readyMatch) {
+          const session = readyMatch[1];
+          const readyKey = "ready:" + session;
+          node.style.display = "none";
+
+          if (!processed.has(readyKey) && window.chrome?.webview) {
+            processed.add(readyKey);
+            window.chrome.webview.postMessage({
+              type: "bridge.ready",
+              session
+            });
+          }
+          return;
+        }
+
         const request = extractRequest(text);
         if (!request) return;
 

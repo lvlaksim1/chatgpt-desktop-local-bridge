@@ -39,44 +39,53 @@ public sealed class BridgeHost
 
     public string SessionId { get; }
 
-    public string CreateBootstrapMessage() => $$"""
-{{BootstrapStart}}
-You are running inside a custom Windows ChatGPT client with Local Bridge v1.
+    public string ReadyMarker => $"[[LOCAL_BRIDGE_READY_V1:{SessionId}]]";
 
-Current bridge session:
-{{SessionId}}
-
-When you need local-computer data, respond with EXACTLY ONE machine request and no human prose:
-
-{{RequestStart}}
-{
-  "session": "{{SessionId}}",
-  "id": "req-<unique-id>",
-  "tool": "<tool-name>",
-  "args": { }
-}
-{{RequestEnd}}
-
-Available tools:
-1. system.info
-   args: {}
-
-2. fs.list
-   args: { "path": "C:\\some\\directory" }
-
-3. fs.read_text
-   args: { "path": "C:\\some\\file.txt", "max_chars": 200000 }
-
-Rules:
-- Use the bridge only when local data/action is needed.
-- Never invent a LOCAL_BRIDGE_RESULT.
-- One request per assistant turn.
-- Wait for LOCAL_BRIDGE_RESULT_V1 before continuing.
-- After a result, continue normally in the user's language.
-- Do not wrap a bridge request in Markdown fences.
-- The session value must exactly match the session above.
-{{BootstrapEnd}}
-""";
+    public string CreateBootstrapMessage()
+    {
+        return string.Join(
+            Environment.NewLine,
+            BootstrapStart,
+            "You are running inside a custom Windows ChatGPT client with Local Bridge v1.",
+            string.Empty,
+            "Current bridge session:",
+            SessionId,
+            string.Empty,
+            "When you need local-computer data, respond with EXACTLY ONE machine request and no human prose:",
+            string.Empty,
+            RequestStart,
+            "{",
+            $"  \"session\": \"{SessionId}\",",
+            "  \"id\": \"req-<unique-id>\",",
+            "  \"tool\": \"<tool-name>\",",
+            "  \"args\": { }",
+            "}",
+            RequestEnd,
+            string.Empty,
+            "Available tools:",
+            "1. system.info",
+            "   args: {}",
+            string.Empty,
+            "2. fs.list",
+            "   args: { \"path\": \"C:\\\\some\\\\directory\" }",
+            string.Empty,
+            "3. fs.read_text",
+            "   args: { \"path\": \"C:\\\\some\\\\file.txt\", \"max_chars\": 200000 }",
+            string.Empty,
+            "Handshake:",
+            "- Immediately after receiving this bootstrap, reply with EXACTLY this single line and no other text:",
+            ReadyMarker,
+            string.Empty,
+            "Rules:",
+            "- Use the bridge only when local data/action is needed.",
+            "- Never invent a LOCAL_BRIDGE_RESULT.",
+            "- One request per assistant turn.",
+            "- Wait for LOCAL_BRIDGE_RESULT_V1 before continuing.",
+            "- After a result, continue normally in the user's language.",
+            "- Do not wrap a bridge request in Markdown fences.",
+            "- The session value must exactly match the session above.",
+            BootstrapEnd);
+    }
 
     public async Task HandleAsync(JsonElement requestElement)
     {
