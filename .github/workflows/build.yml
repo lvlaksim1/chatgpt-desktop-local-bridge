@@ -22,6 +22,7 @@ jobs:
 
       - name: Validate Web adapter JavaScript
         run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
+
       - name: Validate update PowerShell syntax
         shell: pwsh
         run: |
@@ -42,23 +43,51 @@ jobs:
           --runtime win-x64
           --self-contained true
           --output .\publish\win-x64
+
+      - name: Stamp release identity
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $tag = "dev-$short"
+          $version = "0.1.${{ github.run_number }}.0"
+
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = $tag
+            commit = $sha
+            appVersion = $version
+          } | ConvertTo-Json | Set-Content .\publish\win-x64\release-info.json -Encoding UTF8
+
       - name: Smoke-test exact manifest and delta package builder
         shell: pwsh
         run: |
           .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag smoke-base -Commit "${{ github.sha }}" -OutputPath .\publish-manifest-smoke.json
-          .\scripts\build-delta-update.ps1 -BaseManifestPath .\publish-manifest-smoke.json -CurrentPublishDir .\publish\win-x64 -BaseTag smoke-base -TargetTag smoke-target -TargetCommit "${{ github.sha }}" -OutputPath .\delta-smoke.zip
-          if (-not (Test-Path .\delta-smoke.zip)) { throw "Delta smoke package was not created." }
-          Expand-Archive -Path .\delta-smoke.zip -DestinationPath .\delta-smoke -Force
+          .\scripts\build-delta-update.ps1 -BaseManifestPath .\publish-manifest-smoke.json -CurrentPublishDir .\publish\win-x64 -BaseTag smoke-base -TargetTag smoke-target -TargetCommit "${{ github.sha }}" -OutputPath .\delta-smoke
+          if (-not (Test-Path .\delta-smoke\update-manifest.json)) { throw "Delta smoke directory was not created." }
           $manifest = Get-Content .\delta-smoke\update-manifest.json -Raw | ConvertFrom-Json
           if ($manifest.schema -ne "chatgpt-desktop-local-bridge-delta-v1") { throw "Unexpected delta manifest schema." }
+          if ($manifest.baseValidationMode -ne "exact") { throw "Smoke delta is not using exact validation." }
           if (@($manifest.files).Count -ne 0) { throw "Zero-delta smoke test unexpectedly contains changed files." }
-
 
       - name: Install Inno Setup compiler
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
           Get-Command ISCC.exe
+
+      - name: Smoke-test single-file update EXE
+        shell: pwsh
+        run: |
+          $version = "0.1.${{ github.run_number }}.0"
+          $deltaDir = (Resolve-Path ".\delta-smoke").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DDeltaDir=$deltaDir" "/DOutputDir=$outputDir" "/DBaseTag=smoke-base" "/DTargetTag=smoke-target" "/DUpdateVersion=$version" ".\installer\DeltaUpdate.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Update-from-smoke-base.exe")) {
+            throw "Single-file update smoke EXE was not produced."
+          }
+          Remove-Item .\ChatGptDesktopLocalBridge-Update-from-smoke-base.exe -Force
+          Remove-Item .\delta-smoke -Recurse -Force
 
       - name: Build upgradeable Windows installer
         shell: pwsh
@@ -71,7 +100,7 @@ jobs:
             throw "Installer was not produced."
           }
 
-      - name: Build incremental update packages
+      - name: Build incremental update EXEs
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[dev-release]')
         shell: pwsh
         env:
@@ -80,62 +109,73 @@ jobs:
           $sha = "${{ github.sha }}"
           $short = $sha.Substring(0, 7)
           $targetTag = "dev-$short"
+          $version = "0.1.${{ github.run_number }}.0"
+          $outputDir = $PWD.Path
+
           .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag $targetTag -Commit $sha -OutputPath .\ChatGptDesktopLocalBridge-PublishManifest.json
 
+          function Build-UpdateExe([string]$BaseTag, [string]$DeltaDir) {
+            $resolvedDelta = (Resolve-Path $DeltaDir).Path
+            ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$outputDir" "/DBaseTag=$BaseTag" "/DTargetTag=$targetTag" "/DUpdateVersion=$version" ".\installer\DeltaUpdate.iss"
+
+            $expected = Join-Path $PWD ("ChatGptDesktopLocalBridge-Update-from-" + $BaseTag + ".exe")
+            if (-not (Test-Path -LiteralPath $expected)) {
+              throw "Incremental update EXE was not produced for $BaseTag."
+            }
+          }
+
+          # Normal exact-manifest bases: only releases whose exact publish bytes are known.
           $releaseRows = @(gh release list --limit 20 --json tagName,isPrerelease,publishedAt | ConvertFrom-Json) |
             Where-Object { $_.isPrerelease -and $_.tagName -like "dev-*" } |
             Sort-Object { [DateTimeOffset]$_.publishedAt } -Descending
 
-          $bases = New-Object System.Collections.Generic.List[object]
-
+          $exactBasesBuilt = 0
           foreach ($row in $releaseRows) {
-            if ($bases.Count -ge 2) { break }
+            if ($exactBasesBuilt -ge 2) { break }
 
-            $view = gh release view $row.tagName --json targetCommitish,assets | ConvertFrom-Json
+            $view = gh release view $row.tagName --json assets | ConvertFrom-Json
             $hasInstaller = @($view.assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-Setup.exe" }).Count -gt 0
-            if (-not $hasInstaller) { continue }
+            $hasManifest = @($view.assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-PublishManifest.json" }).Count -gt 0
+            if (-not $hasInstaller -or -not $hasManifest) { continue }
 
-            $bases.Add([pscustomobject]@{
-              tag = $row.tagName
-              target = $view.targetCommitish
-            })
-          }
-
-          foreach ($base in $bases) {
-            $safeTag = ($base.tag -replace '[^A-Za-z0-9._-]', '_')
-            $output = Join-Path $PWD ("ChatGptDesktopLocalBridge-Update-from-" + $safeTag + ".zip")
-            $baseView = gh release view $base.tag --json assets | ConvertFrom-Json
-            $hasManifest = @($baseView.assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-PublishManifest.json" }).Count -gt 0
-
-            if ($hasManifest) {
-              $manifestDir = Join-Path $PWD ("manifest-" + $safeTag)
-              New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
-
-              try {
-                gh release download $base.tag --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir $manifestDir --clobber
-                $baseManifest = Join-Path $manifestDir "ChatGptDesktopLocalBridge-PublishManifest.json"
-                .\scripts\build-delta-update.ps1 -BaseManifestPath $baseManifest -CurrentPublishDir .\publish\win-x64 -BaseTag $base.tag -TargetTag $targetTag -TargetCommit $sha -OutputPath $output
-              }
-              finally {
-                Remove-Item -LiteralPath $manifestDir -Recurse -Force -ErrorAction SilentlyContinue
-              }
-
-              continue
-            }
-
-            $worktree = Join-Path $PWD ("previous-" + $safeTag)
-            $basePublish = Join-Path $PWD ("publish-base-" + $safeTag)
-            git worktree add --detach $worktree $base.target
+            $safeTag = ($row.tagName -replace '[^A-Za-z0-9._-]', '_')
+            $manifestDir = Join-Path $PWD ("manifest-" + $safeTag)
+            $deltaDir = Join-Path $PWD ("delta-" + $safeTag)
+            New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
 
             try {
-              dotnet publish (Join-Path $worktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --output $basePublish
-              .\scripts\build-delta-update.ps1 -BasePublishDir $basePublish -CurrentPublishDir .\publish\win-x64 -BaseTag $base.tag -TargetTag $targetTag -TargetCommit $sha -OutputPath $output
+              gh release download $row.tagName --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir $manifestDir --clobber
+              $baseManifest = Join-Path $manifestDir "ChatGptDesktopLocalBridge-PublishManifest.json"
+              .\scripts\build-delta-update.ps1 -BaseManifestPath $baseManifest -CurrentPublishDir .\publish\win-x64 -BaseTag $row.tagName -TargetTag $targetTag -TargetCommit $sha -OutputPath $deltaDir
+              Build-UpdateExe $row.tagName $deltaDir
+              $exactBasesBuilt++
             }
             finally {
-              git worktree remove --force $worktree
-              Remove-Item -LiteralPath $basePublish -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item -LiteralPath $manifestDir -Recurse -Force -ErrorAction SilentlyContinue
+              Remove-Item -LiteralPath $deltaDir -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
+
+          # One-time owner migration from the actually installed legacy Setup.
+          $legacyTag = "dev-1d00606"
+          $legacyCommit = "1d006065462d442e429478158e655e3edc5c7938"
+          $legacyInstallerVersion = "0.1.24.0"
+          $legacyWorktree = Join-Path $PWD "legacy-dev-1d00606"
+          $legacyPublish = Join-Path $PWD "publish-legacy-dev-1d00606"
+          $legacyDelta = Join-Path $PWD "delta-dev-1d00606"
+
+          git worktree add --detach $legacyWorktree $legacyCommit
+          try {
+            dotnet publish (Join-Path $legacyWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --output $legacyPublish
+            .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyInstallerVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $legacyDelta
+            Build-UpdateExe $legacyTag $legacyDelta
+          }
+          finally {
+            git worktree remove --force $legacyWorktree
+            Remove-Item -LiteralPath $legacyPublish -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $legacyDelta -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Verify GitHub CLI
         run: gh --version
 
@@ -149,12 +189,12 @@ jobs:
           $short = $sha.Substring(0, 7)
           $tag = "dev-$short"
           $assets = @(".\ChatGptDesktopLocalBridge-Setup.exe", ".\ChatGptDesktopLocalBridge-PublishManifest.json")
-          $assets += @(Get-ChildItem -Path ".\ChatGptDesktopLocalBridge-Update-from-*.zip" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-          gh release create $tag @assets --target $sha --prerelease --title "Development build $short" --notes "Use the small Update-from-*.zip package when upgrading from a listed prior development version. Run Apply-Update.cmd after extraction. The full Setup.exe remains available for first installation or fallback. WebView2 profile data is outside the install directory and is not modified by either path."
+          $assets += @(Get-ChildItem -Path ".\ChatGptDesktopLocalBridge-Update-from-*.exe" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+          gh release create $tag @assets --target $sha --prerelease --title "Development build $short" --notes "For ordinary upgrades use the matching small Update-from-*.exe. It validates the installed base, applies only changed files, rolls back on failure, restarts the app, and never touches the WebView2 profile. Setup.exe remains for first installation or fallback."
+
       - name: Enforce development release retention
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: .\scripts\cleanup-dev-releases.ps1 -KeepInstallable 2
-
