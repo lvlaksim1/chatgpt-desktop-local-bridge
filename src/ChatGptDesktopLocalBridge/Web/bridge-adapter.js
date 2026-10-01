@@ -9,6 +9,8 @@
   const BOOTSTRAP_START = "[[LOCAL_BRIDGE_BOOTSTRAP_V1]]";
 
   const processed = new Set();
+  const pending = new Map();
+  const STABLE_MESSAGE_MS = 700;
 
   function findComposer() {
     const selectors = [
@@ -82,14 +84,13 @@
   }
 
   function extractRequest(text) {
-    const start = text.indexOf(REQUEST_START);
-    if (start < 0) return null;
+    const normalized = (text || "").trim();
+    if (!normalized.startsWith(REQUEST_START) || !normalized.endsWith(REQUEST_END)) {
+      return null;
+    }
 
-    const end = text.indexOf(REQUEST_END, start + REQUEST_START.length);
-    if (end < 0) return null;
-
-    const raw = text
-      .slice(start + REQUEST_START.length, end)
+    const raw = normalized
+      .slice(REQUEST_START.length, normalized.length - REQUEST_END.length)
       .trim();
 
     try {
@@ -116,17 +117,32 @@
   }
 
   function scanAssistantMessages() {
+    const now = Date.now();
+
     document
       .querySelectorAll("[data-message-author-role='assistant']")
       .forEach(node => {
-        const text = node.innerText || "";
+        const text = (node.innerText || "").trim();
         const request = extractRequest(text);
         if (!request) return;
 
         const key = request.session + ":" + request.id;
         if (processed.has(key)) return;
-        processed.add(key);
 
+        const candidate = pending.get(key);
+        if (!candidate || candidate.text !== text) {
+          pending.set(key, { text, stableSince: now });
+          setTimeout(scheduleScan, STABLE_MESSAGE_MS + 50);
+          return;
+        }
+
+        if (now - candidate.stableSince < STABLE_MESSAGE_MS) {
+          setTimeout(scheduleScan, STABLE_MESSAGE_MS - (now - candidate.stableSince) + 50);
+          return;
+        }
+
+        pending.delete(key);
+        processed.add(key);
         node.style.display = "none";
 
         if (window.chrome?.webview) {
