@@ -39,10 +39,10 @@ function Get-PublishMap([string]$Root) {
 $base = Get-PublishMap $BasePublishDir
 $current = Get-PublishMap $CurrentPublishDir
 
-$changed = New-Object System.Collections.Generic.List[object]
+$changed = @()
 foreach ($path in ($current.Keys | Sort-Object)) {
     if (-not $base.ContainsKey($path) -or $base[$path].sha256 -ne $current[$path].sha256) {
-        $changed.Add($current[$path])
+        $changed += $current[$path]
     }
 }
 
@@ -71,7 +71,7 @@ try {
         targetCommit = $TargetCommit
         generatedAtUtc = [DateTimeOffset]::UtcNow.ToString("o")
         baseline = $baseline
-        files = @($changed)
+        files = $changed
         delete = $deleted
     }
 
