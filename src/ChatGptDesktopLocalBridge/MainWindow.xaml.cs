@@ -125,10 +125,12 @@ public partial class MainWindow
     private void PermissionsButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
     {
         var path = PermissionPolicy.GetUserPolicyPath();
-        Process.Start(new ProcessStartInfo("notepad.exe", $""{path}"")
+        var startInfo = new ProcessStartInfo("notepad.exe")
         {
             UseShellExecute = true
-        });
+        };
+        startInfo.ArgumentList.Add(path);
+        Process.Start(startInfo);
     }
 
     private async Task<bool> SendTextToChatAsync(string text)
