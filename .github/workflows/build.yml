@@ -155,6 +155,7 @@ jobs:
             .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $deltaDir
 
             Write-Host "=== direct updater script probe ==="
+            $env:CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART = "1"
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $deltaDir "Apply-Update.ps1")
             $directExit = $LASTEXITCODE
             if ($directExit -ne 0) {
@@ -187,7 +188,18 @@ jobs:
             $updateExe = Join-Path $updateOutput "ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe"
             if (-not (Test-Path -LiteralPath $updateExe)) { throw "Legacy update EXE was not produced." }
 
-            $updateRun = Start-Process -FilePath $updateExe -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-update.log") -Wait -PassThru
+            $env:CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART = "1"
+            $updateRun = Start-Process -FilePath $updateExe -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-update.log") -PassThru
+            if (-not $updateRun.WaitForExit(120000)) {
+              Stop-Process -Id $updateRun.Id -Force -ErrorAction SilentlyContinue
+              $updaterLog = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\logs\update-last.log"
+              Write-Host "=== updater transcript after timeout ==="
+              if (Test-Path -LiteralPath $updaterLog) { Get-Content -LiteralPath $updaterLog }
+              Write-Host "=== legacy update installer log after timeout ==="
+              if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
+              throw "Legacy update EXE timed out after 120 seconds."
+            }
+            $updateRun.Refresh()
             if ($updateRun.ExitCode -ne 0) {
               Write-Host "=== legacy update installer log ==="
               if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
