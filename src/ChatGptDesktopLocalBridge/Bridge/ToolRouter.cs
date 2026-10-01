@@ -45,8 +45,12 @@ public sealed class ToolRouter
             throw new BridgeToolException("directory_not_found", $"Directory does not exist: {fullPath}");
         }
 
-        var entries = new DirectoryInfo(fullPath)
+        var items = new DirectoryInfo(fullPath)
             .EnumerateFileSystemInfos()
+            .Take(501)
+            .ToArray();
+
+        var entries = items
             .Take(500)
             .Select(item => new
             {
@@ -62,7 +66,7 @@ public sealed class ToolRouter
         {
             path = fullPath,
             entries,
-            truncated = entries.Length == 500
+            truncated = items.Length > entries.Length
         };
     }
 

@@ -44,10 +44,22 @@
     return null;
   }
 
-  async function sendText(text) {
+  function postSendResult(token, ok, reason = null) {
+    if (!token || !window.chrome?.webview) return;
+
+    window.chrome.webview.postMessage({
+      type: "bridge.send_result",
+      token,
+      ok,
+      reason
+    });
+  }
+
+  function sendText(text, token) {
     const composer = findComposer();
     if (!composer) {
-      return { ok: false, reason: "composer-not-found" };
+      postSendResult(token, false, "composer-not-found");
+      return { accepted: false, reason: "composer-not-found" };
     }
 
     composer.focus();
@@ -72,15 +84,18 @@
 
     composer.dispatchEvent(new Event("change", { bubbles: true }));
 
-    await new Promise(resolve => setTimeout(resolve, 250));
+    setTimeout(() => {
+      const sendButton = findSendButton();
+      if (!sendButton) {
+        postSendResult(token, false, "send-button-not-found");
+        return;
+      }
 
-    const sendButton = findSendButton();
-    if (!sendButton) {
-      return { ok: false, reason: "send-button-not-found" };
-    }
+      sendButton.click();
+      postSendResult(token, true);
+    }, 250);
 
-    sendButton.click();
-    return { ok: true };
+    return { accepted: true };
   }
 
   function extractRequest(text) {
