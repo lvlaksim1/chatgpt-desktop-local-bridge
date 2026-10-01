@@ -12,6 +12,18 @@ $processName = "ChatGptDesktopLocalBridge"
 $successMarker = Join-Path $packageRoot "update-success.marker"
 Remove-Item -LiteralPath $successMarker -Force -ErrorAction SilentlyContinue
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D6B9AF8-6D08-44E1-B2F5-8A6341D99165}_is1"
+$updateLogDir = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\logs"
+$updateLogPath = Join-Path $updateLogDir "update-last.log"
+New-Item -ItemType Directory -Path $updateLogDir -Force | Out-Null
+
+try {
+    Start-Transcript -LiteralPath $updateLogPath -Force | Out-Null
+}
+catch {
+    Write-Warning "Could not start update transcript: $($_.Exception.Message)"
+}
+
+Write-Host "Updater log: $updateLogPath"
 
 function Normalize-RelativePath([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) {
