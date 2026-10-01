@@ -1,14 +1,16 @@
 # Next actions
 
-Updated: 2026-10-01 18:15 MSK
+Updated: 2026-10-01 18:50 MSK
 
-1. Consume the Owner's Diagnostics output from `dev-977a504`.
-2. Close any evidenced WebView/DOM compatibility defect without broad speculative rewrites.
-3. Prove nonce-bound `Bridge ready`.
-4. Prove one known-file `fs.read_text` end-to-end round trip.
-5. Persist BRIDGE-M1 evidence.
-6. Implement BRIDGE-M2 adapter hardening: generation detection, visible control selection, draft preservation, verified send, bounded fallbacks, fail-closed DOM pause/error.
-7. Implement BRIDGE-M3 state machine, capability registry, bounded results, durable request ledger, and delivery-state recovery.
-8. Add `fs.stat` and deterministic `fs.patch`.
-9. Implement Windows Job Object Emergency STOP before shell/process expansion.
-10. Continue capability expansion only with focused CI/live evidence.
+1. Install `dev-1d00606 / ChatGptDesktopLocalBridge-Setup.exe` as the persistent application baseline.
+2. Establish/confirm ChatGPT sign-in in the application's own WebView2 profile if needed.
+3. Resume the focused early-DOM adapter bootstrap fix.
+4. Build the next installer with the same stable AppId and install it over the current version.
+5. Verify that ChatGPT sign-in remains intact across that upgrade.
+6. Run Diagnostics and verify adapter injection.
+7. Prove nonce-bound `Bridge ready`.
+8. Prove one known-file `fs.read_text` end-to-end round trip.
+9. Persist BRIDGE-M1 evidence.
+10. Continue BRIDGE-M2 adapter hardening.
+11. Implement BRIDGE-M3 state machine, capability registry, bounded results, durable request ledger, and delivery-state recovery.
+12. Add deterministic mutation primitives, then Windows Job Object Emergency STOP before shell/process expansion.

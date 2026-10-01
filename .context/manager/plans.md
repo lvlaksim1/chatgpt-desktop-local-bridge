@@ -2,18 +2,22 @@
 
 ## Current planning state
 
-Manager generation: 2.
-Product authority: `main@761f8369c0fa523834ba8c8baf819571684f5e98`.
-Product-code/build baseline: `977a504be19e2d21cb3c524275b003b9a6db7592`.
-Current live gate: Owner-side test of `dev-977a504`.
+Manager generation: 3.
+Product authority: `main@1d006065462d442e429478158e655e3edc5c7938`.
+Current installable release: `dev-1d00606`.
+BRIDGE-M1: ACTIVE / evidenced adapter-injection failure.
 
-## Phase 1 — close BRIDGE-M1
+## Immediate continuation — BRIDGE-M1
 
-1. Consume the Owner's Diagnostics output from the installed build.
-2. If diagnostics fails, classify the failure as WebView injection, composer selector, send selector, or navigation/auth origin and patch only the evidenced layer.
-3. If diagnostics passes, initialize the bridge and require nonce-bound READY.
-4. Run a known-file `fs.read_text` round trip and verify the final model response.
-5. Persist exact live evidence and any DOM compatibility findings.
+1. Use the installed `dev-1d00606` build as the persistent application baseline and, if desired, establish ChatGPT sign-in once in its dedicated WebView2 profile.
+2. Resume the focused adapter-bootstrap patch that was paused by the Owner.
+3. Make adapter registration independent of whether `document.documentElement` already exists at document-created time.
+4. Build a new installer release using the same AppId.
+5. Install the new release over the existing installation and verify that ChatGPT authentication persists.
+6. Run Diagnostics again. The root-cause hypothesis is accepted only if the patched build reports an injected adapter.
+7. If diagnostics passes, initialize the bridge and require nonce-bound READY.
+8. Run a known-file `fs.read_text` round trip and verify the final model response.
+9. Persist exact live evidence.
 
 ## Phase 2 — BRIDGE-M2 adapter hardening
 
@@ -45,6 +49,12 @@ Current live gate: Owner-side test of `dev-977a504`.
 4. Before shell/process tools, implement Windows Job Object containment and Emergency STOP.
 5. Then add process/shell, Git, Excel, browser/UI families incrementally with focused tests.
 
-## Packaging
+## Packaging and authentication continuity
 
-Continue self-contained `win-x64` development prereleases when a live Owner test is needed. Do not use GitHub Actions artifacts merely as package storage. Stable/production release remains Owner-gated.
+- Preferred distribution: `ChatGptDesktopLocalBridge-Setup.exe`.
+- Newer installers upgrade the same per-user application identity.
+- Program files live under `%LOCALAPPDATA%\Programs\ChatGPT Desktop Local Bridge`.
+- WebView2 profile remains under `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2` and is not part of normal application upgrade.
+- Portable ZIP remains a diagnostic/backup artifact.
+- Automatic background update discovery/download is not yet implemented; current guarantee is in-place upgrade when a newer Setup is run.
+- Stable/production release remains Owner-gated.

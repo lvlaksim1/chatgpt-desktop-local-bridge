@@ -8,12 +8,21 @@
 - release evidence: `dev-977a504`
 - verification: Windows CI restore/build/self-contained publish/ZIP/prerelease succeeded
 
+### BRIDGE-M0A — Install/upgrade channel with persistent auth profile
+- status: completed
+- owner authorization: direct Owner directive on 2026-10-01
+- product evidence: `main@1d006065462d442e429478158e655e3edc5c7938`
+- release evidence: `dev-1d00606`
+- verification: PR CI and main CI successfully compiled the Inno Setup installer; release contains `ChatGptDesktopLocalBridge-Setup.exe`
+- continuity rule: program upgrades do not replace/delete `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`
+
 ## Active
 
 ### BRIDGE-M1 — Live end-to-end bridge proof
 - status: accepted/active
 - owner authorization: direct Owner development directive
-- target build: `dev-977a504`
+- live evidence: Diagnostics on `dev-977a504` failed with `Local Bridge adapter is not injected`
+- current diagnosis: probable early-document adapter bootstrap failure; patch not yet live-verified
 - objective: prove `ChatGPT -> Web adapter -> C# bridge -> local tool -> RESULT -> ChatGPT` on the Owner's Windows machine
 - minimum acceptance evidence:
   1. Diagnostics reports adapter/WebView/composer state;
