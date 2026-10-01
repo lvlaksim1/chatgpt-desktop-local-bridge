@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using ChatGptDesktopLocalBridge.Bridge;
 using Microsoft.Web.WebView2.Core;
+using System.IO;
 
 namespace ChatGptDesktopLocalBridge;
 
