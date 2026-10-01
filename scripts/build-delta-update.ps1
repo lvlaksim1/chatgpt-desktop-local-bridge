@@ -3,6 +3,8 @@ param(
 
     [string]$BaseManifestPath,
 
+    [string]$LegacyInstallerVersion,
+
     [Parameter(Mandatory = $true)]
     [string]$CurrentPublishDir,
 
@@ -64,26 +66,52 @@ if ([string]::IsNullOrWhiteSpace($BasePublishDir) -eq [string]::IsNullOrWhiteSpa
     throw "Provide exactly one of BasePublishDir or BaseManifestPath."
 }
 
+$validationMode = "exact"
+$legacyInstallerVersionValue = $null
+
 if (-not [string]::IsNullOrWhiteSpace($BaseManifestPath)) {
     Write-Host "Using exact release manifest for base $BaseTag"
-    $base = Get-ManifestMap $BaseManifestPath $BaseTag
+    $comparisonBase = Get-ManifestMap $BaseManifestPath $BaseTag
+    $validationBase = $comparisonBase
 }
 else {
-    Write-Warning "Base $BaseTag has no exact release manifest; using legacy reconstructed publish."
-    $base = Get-PublishMap $BasePublishDir
+    $comparisonBase = Get-PublishMap $BasePublishDir
+
+    if (-not [string]::IsNullOrWhiteSpace($LegacyInstallerVersion)) {
+        $validationMode = "legacy-installer-fingerprint"
+        $legacyInstallerVersionValue = $LegacyInstallerVersion
+        $validationBase = @{}
+
+        foreach ($path in @(
+            "Config/permissions.default.json",
+            "Web/bridge-adapter.js"
+        )) {
+            if (-not $comparisonBase.ContainsKey($path)) {
+                throw "Legacy fingerprint file '$path' is missing from reconstructed base."
+            }
+
+            $validationBase[$path] = $comparisonBase[$path]
+        }
+
+        Write-Warning "Using legacy installer version + stable-file fingerprint for base $BaseTag."
+    }
+    else {
+        Write-Warning "Base $BaseTag has no exact release manifest; using reconstructed publish for exact validation."
+        $validationBase = $comparisonBase
+    }
 }
 
 $current = Get-PublishMap $CurrentPublishDir
 
 $changed = @()
 foreach ($path in ($current.Keys | Sort-Object)) {
-    if (-not $base.ContainsKey($path) -or $base[$path].sha256 -ne $current[$path].sha256) {
+    if (-not $comparisonBase.ContainsKey($path) -or $comparisonBase[$path].sha256 -ne $current[$path].sha256) {
         $changed += $current[$path]
     }
 }
 
-$deleted = @($base.Keys | Where-Object { -not $current.ContainsKey($_) } | Sort-Object)
-$baseline = @($base.Values | Sort-Object path)
+$deleted = @($comparisonBase.Keys | Where-Object { -not $current.ContainsKey($_) } | Sort-Object)
+$baseline = @($validationBase.Values | Sort-Object path)
 
 $staging = Join-Path $env:TEMP ("ChatGptDesktopLocalBridge-delta-" + [Guid]::NewGuid().ToString("N"))
 $payload = Join-Path $staging "payload"
@@ -98,7 +126,6 @@ try {
     }
 
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "update\Apply-Update.ps1") -Destination (Join-Path $staging "Apply-Update.ps1")
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "update\Apply-Update.cmd") -Destination (Join-Path $staging "Apply-Update.cmd")
 
     $manifest = [ordered]@{
         schema = "chatgpt-desktop-local-bridge-delta-v1"
@@ -106,6 +133,8 @@ try {
         toTag = $TargetTag
         targetCommit = $TargetCommit
         generatedAtUtc = [DateTimeOffset]::UtcNow.ToString("o")
+        baseValidationMode = $validationMode
+        legacyInstallerVersion = $legacyInstallerVersionValue
         baseline = $baseline
         files = $changed
         delete = $deleted
@@ -114,19 +143,20 @@ try {
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $staging "update-manifest.json") -Encoding UTF8
 
     if (Test-Path -LiteralPath $OutputPath) {
-        Remove-Item -LiteralPath $OutputPath -Force
+        Remove-Item -LiteralPath $OutputPath -Recurse -Force
     }
 
-    Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $OutputPath -CompressionLevel Optimal
+    Copy-Item -LiteralPath $staging -Destination $OutputPath -Recurse
 
     $payloadBytes = ($changed | Measure-Object -Property size -Sum).Sum
     if ($null -eq $payloadBytes) { $payloadBytes = 0 }
 
     Write-Host "Delta $BaseTag -> $TargetTag"
+    Write-Host "Validation mode: $validationMode"
     Write-Host "Changed files: $($changed.Count)"
     Write-Host "Deleted files: $($deleted.Count)"
     Write-Host "Payload bytes: $payloadBytes"
-    Write-Host "Output: $OutputPath"
+    Write-Host "Staging directory: $OutputPath"
 }
 finally {
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
