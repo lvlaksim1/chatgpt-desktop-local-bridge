@@ -130,15 +130,26 @@ jobs:
             $legacySetup = Join-Path $legacyOutput "ChatGptDesktopLocalBridge-Setup.exe"
             if (-not (Test-Path -LiteralPath $legacySetup)) { throw "Legacy setup was not produced." }
 
-            & $legacySetup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="$PWD\legacy-install.log"
-            if ($LASTEXITCODE -ne 0) { throw "Legacy setup failed with exit code $LASTEXITCODE." }
-
-            $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
-            $installedExe = Join-Path $installDir "ChatGptDesktopLocalBridge.exe"
-            if (-not (Test-Path -LiteralPath $installedExe)) { throw "Legacy application was not installed." }
+            $legacyInstall = Start-Process -FilePath $legacySetup -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-install.log") -Wait -PassThru
+            if ($legacyInstall.ExitCode -ne 0) {
+              if (Test-Path "$PWD\legacy-install.log") { Get-Content "$PWD\legacy-install.log" }
+              throw "Legacy setup failed with exit code $($legacyInstall.ExitCode)."
+            }
 
             $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D6B9AF8-6D08-44E1-B2F5-8A6341D99165}_is1"
-            $displayVersion = (Get-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion).DisplayVersion
+            $registration = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction Stop
+            $installDir = [string]$registration.InstallLocation
+            if ([string]::IsNullOrWhiteSpace($installDir)) {
+              $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
+            }
+
+            $installedExe = Join-Path $installDir "ChatGptDesktopLocalBridge.exe"
+            if (-not (Test-Path -LiteralPath $installedExe)) {
+              if (Test-Path "$PWD\legacy-install.log") { Get-Content "$PWD\legacy-install.log" }
+              throw "Legacy application was not installed at '$installDir'."
+            }
+
+            $displayVersion = $registration.DisplayVersion
             if ($displayVersion -ne $legacyVersion) { throw "Unexpected installed legacy version '$displayVersion'." }
 
             .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $deltaDir
@@ -148,11 +159,11 @@ jobs:
             $updateExe = Join-Path $updateOutput "ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe"
             if (-not (Test-Path -LiteralPath $updateExe)) { throw "Legacy update EXE was not produced." }
 
-            & $updateExe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="$PWD\legacy-update.log"
-            if ($LASTEXITCODE -ne 0) {
+            $updateRun = Start-Process -FilePath $updateExe -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-update.log") -Wait -PassThru
+            if ($updateRun.ExitCode -ne 0) {
               Write-Host "=== legacy update installer log ==="
               if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
-              throw "Legacy update failed with exit code $LASTEXITCODE."
+              throw "Legacy update failed with exit code $($updateRun.ExitCode)."
             }
 
             $releaseInfo = Join-Path $installDir "release-info.json"
