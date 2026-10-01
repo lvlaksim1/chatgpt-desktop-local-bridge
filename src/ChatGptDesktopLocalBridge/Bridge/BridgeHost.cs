@@ -76,7 +76,7 @@ Rules:
 - Do not wrap a bridge request in Markdown fences.
 - The session value must exactly match the session above.
 {{BootstrapEnd}}
-"""
+""";
 
     public async Task HandleAsync(JsonElement requestElement)
     {
