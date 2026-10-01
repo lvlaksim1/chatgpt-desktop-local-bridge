@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using ChatGptDesktopLocalBridge.Bridge;
@@ -9,7 +8,6 @@ namespace ChatGptDesktopLocalBridge;
 public partial class MainWindow
 {
     private readonly string _appDataRoot;
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingSendResults = new();
     private TaskCompletionSource<bool>? _bridgeReadyCompletion;
     private BridgeHost? _bridgeHost;
 
@@ -77,10 +75,6 @@ public partial class MainWindow
                     HandleBridgeReady(document.RootElement);
                     return;
 
-                case "bridge.send_result":
-                    HandleSendResult(document.RootElement);
-                    return;
-
                 case "bridge.request":
                     if (!document.RootElement.TryGetProperty("request", out var requestElement) ||
                         _bridgeHost is null)
@@ -118,33 +112,6 @@ public partial class MainWindow
         }
 
         _bridgeReadyCompletion?.TrySetResult(true);
-    }
-
-    private void HandleSendResult(JsonElement message)
-    {
-        if (!message.TryGetProperty("token", out var tokenElement) ||
-            tokenElement.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(tokenElement.GetString()))
-        {
-            return;
-        }
-
-        var token = tokenElement.GetString()!;
-        var ok = message.TryGetProperty("ok", out var okElement) &&
-                 okElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-                 okElement.GetBoolean();
-
-        if (_pendingSendResults.TryRemove(token, out var completion))
-        {
-            completion.TrySetResult(ok);
-        }
-
-        if (!ok &&
-            message.TryGetProperty("reason", out var reasonElement) &&
-            reasonElement.ValueKind == JsonValueKind.String)
-        {
-            StatusText.Text = $"Chat send failed: {reasonElement.GetString()}";
-        }
     }
 
     private async Task HandleBridgeRequestAsync(JsonElement request)
@@ -304,51 +271,118 @@ public partial class MainWindow
             return false;
         }
 
-        var token = Guid.NewGuid().ToString("N");
-        var completion = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        if (!_pendingSendResults.TryAdd(token, completion))
-        {
-            return false;
-        }
-
         try
         {
-            var textArgument = JsonSerializer.Serialize(text);
-            var tokenArgument = JsonSerializer.Serialize(token);
-            var raw = await Browser.ExecuteScriptAsync(
-                $"window.__localBridge?.sendText({textArgument}, {tokenArgument}) ?? {{accepted:false, reason:'adapter-not-ready'}}");
+            var preflightRaw = await Browser.ExecuteScriptAsync(
+                "window.__localBridge?.prepareNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
 
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return false;
-            }
+            using var preflightDocument = JsonDocument.Parse(preflightRaw);
+            var preflight = preflightDocument.RootElement;
 
-            using var document = JsonDocument.Parse(raw);
-            var accepted = document.RootElement.TryGetProperty("accepted", out var acceptedElement) &&
+            var accepted = preflight.TryGetProperty("accepted", out var acceptedElement) &&
                            acceptedElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                            acceptedElement.GetBoolean();
 
             if (!accepted)
             {
+                var reason = preflight.TryGetProperty("reason", out var reasonElement) &&
+                             reasonElement.ValueKind == JsonValueKind.String
+                    ? reasonElement.GetString()
+                    : "composer-preflight-failed";
+
+                StatusText.Text = $"Chat send failed: {reason}";
                 return false;
             }
 
-            return await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        }
-        catch (TimeoutException)
-        {
-            StatusText.Text = "Timed out waiting for ChatGPT send acknowledgement.";
+            var initialUserMessages = preflight.TryGetProperty("userMessages", out var countElement) &&
+                                      countElement.TryGetInt32(out var count)
+                ? count
+                : 0;
+
+            var insertParameters = JsonSerializer.Serialize(new { text });
+            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "Input.insertText",
+                insertParameters);
+
+            var expectedArgument = JsonSerializer.Serialize(text);
+            var insertionDeadline = DateTime.UtcNow.AddSeconds(5);
+            var inserted = false;
+
+            while (DateTime.UtcNow < insertionDeadline)
+            {
+                var stateRaw = await Browser.ExecuteScriptAsync(
+                    $"window.__localBridge?.nativeSendState?.({expectedArgument}) ?? null");
+
+                if (!string.IsNullOrWhiteSpace(stateRaw) && stateRaw != "null")
+                {
+                    using var stateDocument = JsonDocument.Parse(stateRaw);
+                    var state = stateDocument.RootElement;
+                    inserted = state.TryGetProperty("textMatches", out var matchesElement) &&
+                               matchesElement.ValueKind == JsonValueKind.True;
+
+                    if (inserted)
+                    {
+                        break;
+                    }
+                }
+
+                await Task.Delay(100);
+            }
+
+            if (!inserted)
+            {
+                StatusText.Text = "Chat send failed: native-input-not-accepted";
+                return false;
+            }
+
+            const string keyDown =
+                "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}";
+            const string keyUp =
+                "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}";
+
+            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", keyDown);
+            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", keyUp);
+
+            var sendDeadline = DateTime.UtcNow.AddSeconds(8);
+            while (DateTime.UtcNow < sendDeadline)
+            {
+                var stateRaw = await Browser.ExecuteScriptAsync(
+                    "window.__localBridge?.nativeSendState?.() ?? null");
+
+                if (!string.IsNullOrWhiteSpace(stateRaw) && stateRaw != "null")
+                {
+                    using var stateDocument = JsonDocument.Parse(stateRaw);
+                    var state = stateDocument.RootElement;
+
+                    var currentUserMessages =
+                        state.TryGetProperty("userMessages", out var userMessagesElement) &&
+                        userMessagesElement.TryGetInt32(out var currentCount)
+                            ? currentCount
+                            : initialUserMessages;
+
+                    var composerTextLength =
+                        state.TryGetProperty("composerTextLength", out var lengthElement) &&
+                        lengthElement.TryGetInt32(out var currentLength)
+                            ? currentLength
+                            : -1;
+
+                    if (currentUserMessages > initialUserMessages && composerTextLength == 0)
+                    {
+                        return true;
+                    }
+                }
+
+                await Task.Delay(100);
+            }
+
+            StatusText.Text = "Chat send failed: native-submit-not-confirmed";
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            StatusText.Text = $"Chat send failed: {ex.Message}";
             return false;
-        }
-        finally
-        {
-            _pendingSendResults.TryRemove(token, out _);
         }
     }
+
 }
