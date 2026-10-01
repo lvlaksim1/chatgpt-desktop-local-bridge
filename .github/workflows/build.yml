@@ -100,6 +100,134 @@ jobs:
             throw "Installer was not produced."
           }
 
+      - name: E2E legacy update from dev-1d00606
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $legacyTag = "dev-1d00606"
+          $legacyCommit = "1d006065462d442e429478158e655e3edc5c7938"
+          $legacyVersion = "0.1.24.0"
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $targetTag = "dev-$short"
+          $targetVersion = "0.1.${{ github.run_number }}.0"
+
+          $legacyWorktree = Join-Path $PWD "e2e-legacy-worktree"
+          $legacyPublish = Join-Path $PWD "e2e-legacy-publish"
+          $legacyOutput = Join-Path $PWD "e2e-legacy-installer"
+          $deltaDir = Join-Path $PWD "e2e-legacy-delta"
+          $updateOutput = Join-Path $PWD "e2e-update-output"
+
+          New-Item -ItemType Directory -Path $legacyOutput -Force | Out-Null
+          New-Item -ItemType Directory -Path $updateOutput -Force | Out-Null
+
+          git worktree add --detach $legacyWorktree $legacyCommit
+
+          try {
+            dotnet publish (Join-Path $legacyWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --output $legacyPublish
+
+            ISCC.exe "/DMyAppVersion=$legacyVersion" "/DSourceDir=$legacyPublish" "/DOutputDir=$legacyOutput" (Join-Path $legacyWorktree "installer\ChatGptDesktopLocalBridge.iss")
+            $legacySetup = Join-Path $legacyOutput "ChatGptDesktopLocalBridge-Setup.exe"
+            if (-not (Test-Path -LiteralPath $legacySetup)) { throw "Legacy setup was not produced." }
+
+            $legacyInstall = Start-Process -FilePath $legacySetup -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-install.log") -Wait -PassThru
+            if ($legacyInstall.ExitCode -ne 0) {
+              if (Test-Path "$PWD\legacy-install.log") { Get-Content "$PWD\legacy-install.log" }
+              throw "Legacy setup failed with exit code $($legacyInstall.ExitCode)."
+            }
+
+            $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D6B9AF8-6D08-44E1-B2F5-8A6341D99165}_is1"
+            $registration = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction Stop
+            $installDir = [string]$registration.InstallLocation
+            if ([string]::IsNullOrWhiteSpace($installDir)) {
+              $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
+            }
+
+            $installedExe = Join-Path $installDir "ChatGptDesktopLocalBridge.exe"
+            if (-not (Test-Path -LiteralPath $installedExe)) {
+              if (Test-Path "$PWD\legacy-install.log") { Get-Content "$PWD\legacy-install.log" }
+              throw "Legacy application was not installed at '$installDir'."
+            }
+
+            $displayVersion = $registration.DisplayVersion
+            if ($displayVersion -ne $legacyVersion) { throw "Unexpected installed legacy version '$displayVersion'." }
+
+            .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $deltaDir
+
+            Write-Host "=== direct updater script probe ==="
+            $env:CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART = "1"
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $deltaDir "Apply-Update.ps1")
+            $directExit = $LASTEXITCODE
+            if ($directExit -ne 0) {
+              throw "Direct Apply-Update.ps1 failed with exit code $directExit."
+            }
+
+            $releaseInfo = Join-Path $installDir "release-info.json"
+            if (-not (Test-Path -LiteralPath $releaseInfo)) {
+              throw "Direct Apply-Update.ps1 returned success but release-info.json was not installed."
+            }
+
+            Get-Process -Name "ChatGptDesktopLocalBridge" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $installDir -Recurse -Force
+            Remove-Item -LiteralPath $uninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+
+            $legacyInstall2 = Start-Process -FilePath $legacySetup -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-install-2.log") -Wait -PassThru
+            if ($legacyInstall2.ExitCode -ne 0) {
+              if (Test-Path "$PWD\legacy-install-2.log") { Get-Content "$PWD\legacy-install-2.log" }
+              throw "Second legacy setup failed with exit code $($legacyInstall2.ExitCode)."
+            }
+
+            $registration = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction Stop
+            $installDir = [string]$registration.InstallLocation
+            if ([string]::IsNullOrWhiteSpace($installDir)) {
+              $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
+            }
+
+            $resolvedDelta = (Resolve-Path $deltaDir).Path
+            ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$updateOutput" "/DBaseTag=$legacyTag" "/DTargetTag=$targetTag" "/DUpdateVersion=$targetVersion" ".\installer\DeltaUpdate.iss"
+            $updateExe = Join-Path $updateOutput "ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe"
+            if (-not (Test-Path -LiteralPath $updateExe)) { throw "Legacy update EXE was not produced." }
+
+            $env:CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART = "1"
+            $updateRun = Start-Process -FilePath $updateExe -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-update.log") -PassThru
+            if (-not $updateRun.WaitForExit(120000)) {
+              Stop-Process -Id $updateRun.Id -Force -ErrorAction SilentlyContinue
+              $updaterLog = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\logs\update-last.log"
+              Write-Host "=== updater transcript after timeout ==="
+              if (Test-Path -LiteralPath $updaterLog) { Get-Content -LiteralPath $updaterLog }
+              Write-Host "=== legacy update installer log after timeout ==="
+              if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
+              throw "Legacy update EXE timed out after 120 seconds."
+            }
+            $updateRun.Refresh()
+            if ($updateRun.ExitCode -ne 0) {
+              Write-Host "=== legacy update installer log ==="
+              if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
+              throw "Legacy update failed with exit code $($updateRun.ExitCode)."
+            }
+
+            $releaseInfo = Join-Path $installDir "release-info.json"
+            if (-not (Test-Path -LiteralPath $releaseInfo)) {
+              $updaterLog = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\logs\update-last.log"
+              Write-Host "=== updater transcript ==="
+              if (Test-Path -LiteralPath $updaterLog) { Get-Content -LiteralPath $updaterLog }
+              Write-Host "=== legacy update installer log ==="
+              if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
+              throw "release-info.json was not installed."
+            }
+            $info = Get-Content -LiteralPath $releaseInfo -Raw | ConvertFrom-Json
+            if ($info.tag -ne $targetTag) { throw "Updated release marker '$($info.tag)' does not match '$targetTag'." }
+
+            Write-Host "Legacy end-to-end update passed: $legacyTag -> $targetTag"
+          }
+          finally {
+            if (Test-Path -LiteralPath $legacyWorktree) { git worktree remove --force $legacyWorktree }
+            Remove-Item -LiteralPath $legacyPublish -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $legacyOutput -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $deltaDir -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $updateOutput -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Build incremental update EXEs
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[dev-release]')
         shell: pwsh
