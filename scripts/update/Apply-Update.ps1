@@ -298,4 +298,9 @@ finally {
     Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Start-Process -FilePath $appExe
+if ($env:CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART -eq "1") {
+    Write-Host "Application restart skipped by test environment."
+}
+else {
+    Start-Process -FilePath $appExe
+}
