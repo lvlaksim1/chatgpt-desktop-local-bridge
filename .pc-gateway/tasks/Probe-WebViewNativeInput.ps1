@@ -81,11 +81,11 @@ function Send-CdpCommand {
 
     $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
     $segment = New-Object ArraySegment[byte] -ArgumentList (, $bytes)
-    $Socket.SendAsync(
+    [void]($Socket.SendAsync(
         $segment,
         [System.Net.WebSockets.WebSocketMessageType]::Text,
         $true,
-        [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+        [Threading.CancellationToken]::None).GetAwaiter().GetResult())
 
     while ($true) {
         $memory = New-Object IO.MemoryStream
@@ -214,16 +214,31 @@ try {
 })()
 '@
 
-    $focus = Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
-        expression = $focusExpression
-        returnByValue = $true
-        awaitPromise = $true
-    }
-    $id++
+    $focusValue = $null
+    $focusDeadline = [DateTime]::UtcNow.AddSeconds(60)
 
-    $focusValue = Get-CdpEvalValue -Response $focus -Stage 'focus'
+    while ([DateTime]::UtcNow -lt $focusDeadline) {
+        $focus = Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
+            expression = $focusExpression
+            returnByValue = $true
+            awaitPromise = $true
+        }
+        $id++
+
+        $focusValue = Get-CdpEvalValue -Response $focus -Stage 'focus'
+        if ($null -ne $focusValue -and [bool]$focusValue.ok) {
+            break
+        }
+
+        if ($null -ne $focusValue -and [string]$focusValue.reason -eq 'composer-not-empty') {
+            throw ('Composer preflight failed: ' + ($focusValue | ConvertTo-Json -Compress))
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+
     if ($null -eq $focusValue -or -not [bool]$focusValue.ok) {
-        throw ('Composer preflight failed: ' + ($focusValue | ConvertTo-Json -Compress))
+        throw ('Composer did not become ready: ' + ($focusValue | ConvertTo-Json -Compress))
     }
 
     $beforeUsers = [int]$focusValue.beforeUsers
