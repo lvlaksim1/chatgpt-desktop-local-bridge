@@ -13,6 +13,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -20,6 +22,11 @@ jobs:
 
       - name: Validate Web adapter JavaScript
         run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
+      - name: Validate update PowerShell syntax
+        shell: pwsh
+        run: |
+          [scriptblock]::Create((Get-Content .\scripts\build-delta-update.ps1 -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content .\scripts\update\Apply-Update.ps1 -Raw)) | Out-Null
 
       - name: Restore
         run: dotnet restore .\ChatGptDesktopLocalBridge.sln
@@ -34,6 +41,15 @@ jobs:
           --runtime win-x64
           --self-contained true
           --output .\publish\win-x64
+      - name: Smoke-test delta package builder
+        shell: pwsh
+        run: |
+          .\scripts\build-delta-update.ps1 -BasePublishDir .\publish\win-x64 -CurrentPublishDir .\publish\win-x64 -BaseTag smoke-base -TargetTag smoke-target -TargetCommit "${{ github.sha }}" -OutputPath .\delta-smoke.zip
+          if (-not (Test-Path .\delta-smoke.zip)) { throw "Delta smoke package was not created." }
+          Expand-Archive -Path .\delta-smoke.zip -DestinationPath .\delta-smoke -Force
+          $manifest = Get-Content .\delta-smoke\update-manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.schema -ne "chatgpt-desktop-local-bridge-delta-v1") { throw "Unexpected delta manifest schema." }
+          if (@($manifest.files).Count -ne 0) { throw "Zero-delta smoke test unexpectedly contains changed files." }
 
 
       - name: Install Inno Setup compiler
@@ -53,6 +69,54 @@ jobs:
             throw "Installer was not produced."
           }
 
+      - name: Build incremental update packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[dev-release]')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $targetTag = "dev-$short"
+
+          $releaseRows = @(gh release list --limit 20 --json tagName,isPrerelease,publishedAt | ConvertFrom-Json) |
+            Where-Object { $_.isPrerelease -and $_.tagName -like "dev-*" } |
+            Sort-Object { [DateTimeOffset]$_.publishedAt } -Descending
+
+          $bases = New-Object System.Collections.Generic.List[object]
+
+          foreach ($row in $releaseRows) {
+            if ($bases.Count -ge 2) { break }
+
+            $view = gh release view $row.tagName --json targetCommitish,assets | ConvertFrom-Json
+            $hasInstaller = @($view.assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-Setup.exe" }).Count -gt 0
+            if (-not $hasInstaller) { continue }
+
+            $bases.Add([pscustomobject]@{
+              tag = $row.tagName
+              target = $view.targetCommitish
+            })
+          }
+
+          foreach ($base in $bases) {
+            $safeTag = ($base.tag -replace '[^A-Za-z0-9._-]', '_')
+            $worktree = Join-Path $PWD ("previous-" + $safeTag)
+            $basePublish = Join-Path $PWD ("publish-base-" + $safeTag)
+
+            git worktree add --detach $worktree $base.target
+
+            try {
+              dotnet publish (Join-Path $worktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --output $basePublish
+
+              $output = Join-Path $PWD ("ChatGptDesktopLocalBridge-Update-from-" + $safeTag + ".zip")
+
+              .\scripts\build-delta-update.ps1 -BasePublishDir $basePublish -CurrentPublishDir .\publish\win-x64 -BaseTag $base.tag -TargetTag $targetTag -TargetCommit $sha -OutputPath $output
+            }
+            finally {
+              git worktree remove --force $worktree
+              Remove-Item -LiteralPath $basePublish -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
       - name: Verify GitHub CLI
         run: gh --version
 
@@ -65,7 +129,9 @@ jobs:
           $sha = "${{ github.sha }}"
           $short = $sha.Substring(0, 7)
           $tag = "dev-$short"
-          gh release create $tag .\ChatGptDesktopLocalBridge-Setup.exe --target $sha --prerelease --title "Development build $short" --notes "Windows installer upgrades an existing installation in place. The WebView2 user profile is stored outside the install directory so ChatGPT sign-in state survives application upgrades."
+          $assets = @(".\ChatGptDesktopLocalBridge-Setup.exe")
+          $assets += @(Get-ChildItem -Path ".\ChatGptDesktopLocalBridge-Update-from-*.zip" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+          gh release create $tag @assets --target $sha --prerelease --title "Development build $short" --notes "Use the small Update-from-*.zip package when upgrading from a listed prior development version. Run Apply-Update.cmd after extraction. The full Setup.exe remains available for first installation or fallback. WebView2 profile data is outside the install directory and is not modified by either path."
       - name: Enforce development release retention
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
