@@ -5,15 +5,52 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
       - name: Restore
         run: dotnet restore .\ChatGptDesktopLocalBridge.sln
+
       - name: Build
         run: dotnet build .\ChatGptDesktopLocalBridge.sln --configuration Release --no-restore
+
+      - name: Publish self-contained win-x64 test build
+        run: >-
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --output .\publish\win-x64
+
+      - name: Pack test build
+        shell: pwsh
+        run: |
+          $zip = Join-Path $PWD "ChatGptDesktopLocalBridge-win-x64.zip"
+          if (Test-Path $zip) {
+            Remove-Item $zip -Force
+          }
+          Compress-Archive -Path .\publish\win-x64\* -DestinationPath $zip
+
+      - name: Verify GitHub CLI
+        run: gh --version
+
+      - name: Create development prerelease
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[dev-release]')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $tag = "dev-$short"
+          gh release create $tag .\ChatGptDesktopLocalBridge-win-x64.zip --target $sha --prerelease --title "Development build $short" --notes "Automated self-contained Windows x64 test build for Local Bridge MVP."
