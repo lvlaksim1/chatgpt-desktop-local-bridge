@@ -255,15 +255,29 @@ try {
             document.querySelector("div[contenteditable='true'][data-testid='prompt-textarea']") ||
             document.querySelector("div[contenteditable='true'][role='textbox']");
   const text = c ? (c.value || c.innerText || c.textContent || "").replace(/\u200B/g, "") : "";
+  const form = c ? c.closest("form") : null;
+  const buttons = form ? Array.from(form.querySelectorAll("button")).slice(0, 24).map((b, i) => ({
+    i,
+    type:b.getAttribute("type"),
+    testid:b.getAttribute("data-testid"),
+    aria:b.getAttribute("aria-label"),
+    title:b.getAttribute("title"),
+    disabled:Boolean(b.disabled),
+    text:(b.innerText || b.textContent || "").trim().slice(0, 120),
+    html:b.outerHTML.slice(0, 700)
+  })) : [];
   const send = document.querySelector("button[data-testid='send-button']") ||
                document.querySelector("button[aria-label='Send prompt']") ||
                document.querySelector("button[aria-label='Send message']") ||
                document.querySelector("button[aria-label*='Send']");
   return {
-    text:text,
+    text,
     sendFound:Boolean(send),
     sendDisabled:send ? Boolean(send.disabled) : null,
-    users:document.querySelectorAll("[data-message-author-role='user']").length
+    users:document.querySelectorAll("[data-message-author-role='user']").length,
+    formFound:Boolean(form),
+    formButtons:buttons,
+    formHtml:form ? form.outerHTML.slice(0, 7000) : null
   };
 })()
 '@
@@ -276,30 +290,37 @@ try {
 
     $state = Get-CdpEvalValue -Response $inspect -Stage 'inspect-after-insert'
     if ($null -eq $state -or [string]$state.text -ne $marker) {
-        throw ('Native insert was not accepted by composer: ' + ($state | ConvertTo-Json -Compress))
+        throw ('Native insert was not accepted by composer: ' + ($state | ConvertTo-Json -Depth 12 -Compress))
     }
 
-    [void](Send-CdpCommand -Socket $socket -Id $id -Method 'Input.dispatchKeyEvent' -Params @{
-        type = 'keyDown'
-        key = 'Enter'
-        code = 'Enter'
-        windowsVirtualKeyCode = 13
-        nativeVirtualKeyCode = 13
-    })
-    $id++
+    $submitExpression = @'
+(() => {
+  const c = document.querySelector("#prompt-textarea") ||
+            document.querySelector("textarea[data-testid='prompt-textarea']") ||
+            document.querySelector("div[contenteditable='true'][data-testid='prompt-textarea']") ||
+            document.querySelector("div[contenteditable='true'][role='textbox']");
+  const form = c ? c.closest("form") : null;
+  if (!form) return {ok:false, reason:"form-not-found"};
+  try {
+    form.requestSubmit();
+    return {ok:true, strategy:"requestSubmit"};
+  } catch (e) {
+    return {ok:false, reason:String(e)};
+  }
+})()
+'@
 
-    [void](Send-CdpCommand -Socket $socket -Id $id -Method 'Input.dispatchKeyEvent' -Params @{
-        type = 'keyUp'
-        key = 'Enter'
-        code = 'Enter'
-        windowsVirtualKeyCode = 13
-        nativeVirtualKeyCode = 13
-    })
+    $submit = Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
+        expression = $submitExpression
+        returnByValue = $true
+    }
     $id++
+    $submitValue = Get-CdpEvalValue -Response $submit -Stage 'request-submit'
 
     $submitted = $false
-    $finalState = $null
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    $finalState = $state
+    $submitStrategy = 'requestSubmit'
+    $deadline = [DateTime]::UtcNow.AddSeconds(6)
 
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 250
@@ -309,7 +330,7 @@ try {
         }
         $id++
 
-        $finalState = Get-CdpEvalValue -Response $probe -Stage 'inspect-after-submit'
+        $finalState = Get-CdpEvalValue -Response $probe -Stage 'inspect-after-request-submit'
         $textNow = [string]$finalState.text
         $usersNow = [int]$finalState.users
 
@@ -319,8 +340,67 @@ try {
         }
     }
 
+    if (-not $submitted -and [string]$finalState.text -eq $marker) {
+        $clickExpression = @'
+(() => {
+  const c = document.querySelector("#prompt-textarea") ||
+            document.querySelector("textarea[data-testid='prompt-textarea']") ||
+            document.querySelector("div[contenteditable='true'][data-testid='prompt-textarea']") ||
+            document.querySelector("div[contenteditable='true'][role='textbox']");
+  const form = c ? c.closest("form") : null;
+  if (!form) return {ok:false, reason:"form-not-found"};
+
+  const buttons = Array.from(form.querySelectorAll("button"));
+  const candidate =
+    form.querySelector("button[type='submit']") ||
+    buttons.find(b => (b.getAttribute("data-testid") || "").toLowerCase().includes("send")) ||
+    buttons.find(b => (b.getAttribute("aria-label") || "").toLowerCase().includes("send")) ||
+    buttons.slice().reverse().find(b => !b.disabled && b.offsetParent !== null);
+
+  if (!candidate) return {ok:false, reason:"candidate-button-not-found"};
+  candidate.click();
+  return {
+    ok:true,
+    strategy:"button-click",
+    type:candidate.getAttribute("type"),
+    testid:candidate.getAttribute("data-testid"),
+    aria:candidate.getAttribute("aria-label")
+  };
+})()
+'@
+
+        $click = Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
+            expression = $clickExpression
+            returnByValue = $true
+        }
+        $id++
+        $clickValue = Get-CdpEvalValue -Response $click -Stage 'button-click'
+        $submitStrategy = 'button-click'
+
+        $deadline = [DateTime]::UtcNow.AddSeconds(6)
+        while ([DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+            $probe = Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
+                expression = $inspectExpression
+                returnByValue = $true
+            }
+            $id++
+
+            $finalState = Get-CdpEvalValue -Response $probe -Stage 'inspect-after-button-click'
+            $textNow = [string]$finalState.text
+            $usersNow = [int]$finalState.users
+
+            if ($usersNow -gt $beforeUsers -and [string]::IsNullOrWhiteSpace($textNow)) {
+                $submitted = $true
+                break
+            }
+        }
+    }
+
     if (-not $submitted) {
-        throw ('Native Enter was not confirmed: ' + ($finalState | ConvertTo-Json -Compress))
+        throw ('Native insert accepted but submit was not confirmed. requestSubmit=' +
+            ($submitValue | ConvertTo-Json -Depth 8 -Compress) +
+            ' state=' + ($finalState | ConvertTo-Json -Depth 12 -Compress))
     }
 
     Write-ProjectResult -Status 'pass' -ExitCode 0 -Extra @{
@@ -328,6 +408,9 @@ try {
         marker = $marker
         insert_accepted = $true
         send_button_after_insert = [bool]$state.sendFound
+        form_found = [bool]$state.formFound
+        form_buttons = $state.formButtons
+        submit_strategy = $submitStrategy
         submit_confirmed = $true
         users_before = $beforeUsers
         users_after = [int]$finalState.users
