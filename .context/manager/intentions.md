@@ -13,8 +13,16 @@
 - owner authorization: direct Owner directive on 2026-10-01
 - product evidence: `main@1d006065462d442e429478158e655e3edc5c7938`
 - release evidence: `dev-1d00606`
-- verification: PR CI and main CI successfully compiled the Inno Setup installer; release contains `ChatGptDesktopLocalBridge-Setup.exe`
+- verification: PR CI and main CI successfully compiled the Inno Setup installer
 - continuity rule: program upgrades do not replace/delete `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`
+
+### BRIDGE-M0B — Repository/release storage hygiene
+- status: completed
+- owner authorization: direct Owner directive on 2026-10-01
+- product evidence: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`
+- CI evidence: main workflow completed successfully, including `Enforce development release retention`
+- resulting release state: only `dev-1d00606` remains and it contains only `ChatGptDesktopLocalBridge-Setup.exe`
+- durable policy: retain at most two installable dev prereleases; delete portable-only dev releases/tags and redundant ZIP assets; do not touch stable releases; generated installers/packages remain ignored by Git
 
 ## Active
 

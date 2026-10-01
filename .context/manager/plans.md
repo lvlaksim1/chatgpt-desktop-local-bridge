@@ -2,8 +2,8 @@
 
 ## Current planning state
 
-Manager generation: 3.
-Product authority: `main@1d006065462d442e429478158e655e3edc5c7938`.
+Manager generation: 4.
+Product authority: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`.
 Current installable release: `dev-1d00606`.
 BRIDGE-M1: ACTIVE / evidenced adapter-injection failure.
 
@@ -49,12 +49,16 @@ BRIDGE-M1: ACTIVE / evidenced adapter-injection failure.
 4. Before shell/process tools, implement Windows Job Object containment and Emergency STOP.
 5. Then add process/shell, Git, Excel, browser/UI families incrementally with focused tests.
 
-## Packaging and authentication continuity
+## Packaging, storage, and authentication continuity
 
 - Preferred distribution: `ChatGptDesktopLocalBridge-Setup.exe`.
 - Newer installers upgrade the same per-user application identity.
 - Program files live under `%LOCALAPPDATA%\Programs\ChatGPT Desktop Local Bridge`.
 - WebView2 profile remains under `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2` and is not part of normal application upgrade.
-- Portable ZIP remains a diagnostic/backup artifact.
+- Normal dev releases publish installer only; portable ZIP is not retained as a routine release asset.
+- Retain at most two newest installable `dev-*` prereleases for rollback.
+- Delete obsolete portable-only dev releases/tags and redundant ZIP assets automatically.
+- Stable releases are excluded from cleanup.
+- Generated `.exe/.zip/.msi/.msix`, `publish/`, and installer output are ignored by Git.
 - Automatic background update discovery/download is not yet implemented; current guarantee is in-place upgrade when a newer Setup is run.
 - Stable/production release remains Owner-gated.

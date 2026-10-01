@@ -46,7 +46,8 @@
   "decisions": [
     ".context/decisions/DEC-0001-persistent-project-manager.md",
     ".context/decisions/DEC-0002-reliability-roadmap.md",
-    ".context/decisions/DEC-0003-installer-and-auth-continuity.md"
+    ".context/decisions/DEC-0003-installer-and-auth-continuity.md",
+    ".context/decisions/DEC-0004-repository-storage-retention.md"
   ],
   "dialogues": [],
   "history": [],

@@ -1,12 +1,12 @@
 # Current state
 
-Updated: 2026-10-01 18:50 MSK
+Updated: 2026-10-01 19:02 MSK
 
 ## Governance
 - manager: `chatgpt-desktop-local-bridge-project-manager`
-- manager generation: 3
+- manager generation: 4
 - manager-state authority: `manager-state`
-- product authority: `main@1d006065462d442e429478158e655e3edc5c7938`
+- product authority: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`
 - execution status: ACTIVE / BRIDGE-M1 live validation
 
 ## Packaging/auth baseline
@@ -17,7 +17,15 @@ Updated: 2026-10-01 18:50 MSK
 - install directory: `%LOCALAPPDATA%\Programs\ChatGPT Desktop Local Bridge`
 - persistent WebView2 UDF: `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`
 - normal upgrade does not replace the WebView2 UDF
-- portable and installed builds use the same UDF path
+
+## Repository storage hygiene
+- current Git tree contains no tracked blob over 500 KB at the verification point
+- normal dev release publishes installer only
+- automatic cleanup retains at most two installable dev prereleases
+- portable-only prereleases/tags and redundant ZIP assets are deleted
+- stable releases are not touched
+- current Releases state: exactly one dev release, `dev-1d00606`, containing only Setup.exe
+- no GitHub Actions artifact upload step is used
 
 ## BRIDGE-M1 live evidence
 Owner pressed Diagnostics on `dev-977a504` and received:
