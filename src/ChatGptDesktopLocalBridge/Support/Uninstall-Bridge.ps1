@@ -47,9 +47,9 @@ function Install-UninstallWrapper {
 
     $wrapperCommand = '"'+ $windowsPowerShell + '" -NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '"'
 
-    Set-ItemProperty -LiteralPath $uninstallKey -Name BridgeOriginalUninstallExe -Value $original -Type String
-    Set-ItemProperty -LiteralPath $uninstallKey -Name UninstallString -Value $wrapperCommand -Type String
-    Set-ItemProperty -LiteralPath $uninstallKey -Name QuietUninstallString -Value ($wrapperCommand + " -Quiet") -Type String
+    Set-ItemProperty -LiteralPath $uninstallKey -Name BridgeOriginalUninstallExe -Value $original
+    Set-ItemProperty -LiteralPath $uninstallKey -Name UninstallString -Value $wrapperCommand
+    Set-ItemProperty -LiteralPath $uninstallKey -Name QuietUninstallString -Value ($wrapperCommand + " -Quiet")
 
     Write-Host "Uninstall wrapper registered."
 }
