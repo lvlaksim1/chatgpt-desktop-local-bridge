@@ -59,3 +59,28 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\ChatGptDesktopLocalBridge"; Check: ShouldDeleteUserData
+
+[Code]
+var
+  DeleteUserDataOnUninstall: Boolean;
+
+function InitializeUninstall(): Boolean;
+begin
+  DeleteUserDataOnUninstall :=
+    MsgBox(
+      'Удалить также настройки и рабочие данные?',
+      mbConfirmation,
+      MB_YESNO
+    ) = IDYES;
+
+  Result := True;
+end;
+
+function ShouldDeleteUserData(): Boolean;
+begin
+  Result := DeleteUserDataOnUninstall;
+end;
