@@ -291,12 +291,15 @@ try {
     sendFound:Boolean(send),
     sendDisabled:send ? Boolean(send.disabled) : null,
     users:document.querySelectorAll("[data-message-author-role='user']").length,
+    markerInDocument:document.body.textContent.includes(__MARKER_JSON__),
     formFound:Boolean(form),
     formButtons:buttons,
     formHtml:form ? form.outerHTML.slice(0, 7000) : null
   };
 })()
 '@
+    $markerJson = $marker | ConvertTo-Json -Compress
+    $inspectExpression = $inspectExpression.Replace('__MARKER_JSON__', $markerJson)
 
     $inspect = Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
         expression = $inspectExpression
@@ -350,7 +353,7 @@ try {
         $textNow = [string]$finalState.text
         $usersNow = [int]$finalState.users
 
-        if ($usersNow -gt $beforeUsers -and [string]::IsNullOrWhiteSpace($textNow)) {
+        if ([bool]$finalState.markerInDocument -and [string]::IsNullOrWhiteSpace($textNow)) {
             $submitted = $true
             break
         }
