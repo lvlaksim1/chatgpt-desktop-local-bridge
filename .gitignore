@@ -5,3 +5,9 @@ obj/
 *.suo
 artifacts/
 TestResults/
+publish/
+*.zip
+*.msi
+*.msix
+*.exe
+installer/Output/
