@@ -1,0 +1,9 @@
+{
+  "schema": "context-capsule",
+  "version": "2.0.0-dev",
+  "source": "lvlaksim1/context-capsule",
+  "core_commit": "5538327ac70b81b4f56f46a545547452c8477994",
+  "installed_at": "2026-10-01",
+  "repository": "lvlaksim1/chatgpt-desktop-local-bridge",
+  "update_policy": "manual"
+}

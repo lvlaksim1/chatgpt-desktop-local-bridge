@@ -1,0 +1,80 @@
+{
+  "schema": "context-capsule-manifest",
+  "schema_version": 4,
+  "repository": "lvlaksim1/chatgpt-desktop-local-bridge",
+  "authoritative_branch": "manager-state",
+  "discovery_branch": "main",
+  "branch_mode": "redirect",
+  "entrypoint": ".context/ENTRYPOINT.md",
+  "capsule_metadata": ".context/capsule.json",
+  "protocol": ".context/protocol.md",
+  "latest_handoff": ".context/handoffs/latest.md",
+  "project": {
+    "identity": ".context/project/identity.md",
+    "goals": ".context/project/goals.md",
+    "architecture": ".context/project/architecture.md",
+    "constraints": ".context/project/constraints.md"
+  },
+  "manager": {
+    "protocol": ".context/manager/PROTOCOL.md",
+    "identity": ".context/manager/identity.json",
+    "mandate": ".context/manager/mandate.md",
+    "beliefs": ".context/manager/beliefs.md",
+    "goals": ".context/manager/goals.md",
+    "intentions": ".context/manager/intentions.md",
+    "plans": ".context/manager/plans.md",
+    "contract": ".context/manager/CONTRACT.md",
+    "state_integrity": ".context/manager/state-integrity.json"
+  },
+  "memory": {
+    "index": ".context/memory/index.md",
+    "semantic": ".context/memory/semantic.md",
+    "procedural": ".context/memory/procedural.md",
+    "episodes": [
+      ".context/memory/episodes/2026-10-01-manager-bootstrap.md"
+    ]
+  },
+  "current": {
+    "state": ".context/current/state.md",
+    "blockers": ".context/current/blockers.md",
+    "next": ".context/current/next.md"
+  },
+  "current_state": ".context/current/state.md",
+  "rules": [
+    ".context/rules/project-rules.md"
+  ],
+  "decisions": [
+    ".context/decisions/DEC-0001-persistent-project-manager.md",
+    ".context/decisions/DEC-0002-reliability-roadmap.md"
+  ],
+  "dialogues": [],
+  "history": [],
+  "runtime": {
+    "authoritative_paths": [],
+    "volatile": false,
+    "promote_semantic_changes_only": false,
+    "checkpoint_is_capsule_state": false
+  },
+  "sync_policy": {
+    "semantic_only": true,
+    "volatile_runtime_excluded": true,
+    "atomic_git_publication": true,
+    "provenance_required_for_manager_beliefs": true,
+    "working_views_non_authoritative": true,
+    "freshness_not_supersession": true,
+    "owner_directives_must_be_explicit": true,
+    "commitment_lifecycle_required": true,
+    "memory_writes_require_provenance": true,
+    "reconcile_before_high_impact_action": true,
+    "self_authority_expansion_forbidden": true,
+    "service_expertise_not_project_authority": true,
+    "direct_owner_invocation_first_class": true,
+    "manager_state_coherence_required": true
+  },
+  "updated_at": "2026-10-01",
+  "context_version": "2.0.0-dev",
+  "authority": {
+    "manager_state_branch": "manager-state",
+    "product_branch": "main"
+  }
+}
