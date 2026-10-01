@@ -39,33 +39,33 @@ public sealed class BridgeHost
 
     public string SessionId { get; }
 
-    public string CreateBootstrapMessage() => $"""
-{BootstrapStart}
+    public string CreateBootstrapMessage() => $$"""
+{{BootstrapStart}}
 You are running inside a custom Windows ChatGPT client with Local Bridge v1.
 
 Current bridge session:
-{SessionId}
+{{SessionId}}
 
 When you need local-computer data, respond with EXACTLY ONE machine request and no human prose:
 
-{RequestStart}
-{{
-  "session": "{SessionId}",
+{{RequestStart}}
+{
+  "session": "{{SessionId}}",
   "id": "req-<unique-id>",
   "tool": "<tool-name>",
-  "args": {{ }}
-}}
-{RequestEnd}
+  "args": { }
+}
+{{RequestEnd}}
 
 Available tools:
 1. system.info
-   args: {{}}
+   args: {}
 
 2. fs.list
-   args: {{ "path": "C:\\some\\directory" }}
+   args: { "path": "C:\\some\\directory" }
 
 3. fs.read_text
-   args: {{ "path": "C:\\some\\file.txt", "max_chars": 200000 }}
+   args: { "path": "C:\\some\\file.txt", "max_chars": 200000 }
 
 Rules:
 - Use the bridge only when local data/action is needed.
@@ -75,8 +75,8 @@ Rules:
 - After a result, continue normally in the user's language.
 - Do not wrap a bridge request in Markdown fences.
 - The session value must exactly match the session above.
-{BootstrapEnd}
-""";
+{{BootstrapEnd}}
+"""
 
     public async Task HandleAsync(JsonElement requestElement)
     {
