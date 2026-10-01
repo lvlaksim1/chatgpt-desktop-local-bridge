@@ -72,6 +72,67 @@ function Get-UiTexts {
     return @($values | Select-Object -Unique)
 }
 
+function Get-DiagnosticsDetails {
+    param([System.Windows.Automation.AutomationElement]$Root)
+
+    try {
+        $condition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            'Diagnostics')
+        $button = $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -eq $button) { return 'diagnostics-button-not-found' }
+
+        $pattern = $null
+        if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+            return 'diagnostics-button-not-invokable'
+        }
+
+        ([System.Windows.Automation.InvokePattern]$pattern).Invoke()
+        Start-Sleep -Milliseconds 800
+
+        $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+        $nameCondition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            'Local Bridge diagnostics')
+        $dialog = $desktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $nameCondition)
+        if ($null -eq $dialog) { return 'diagnostics-dialog-not-found' }
+
+        $parts = New-Object System.Collections.ArrayList
+        $all = $dialog.FindAll(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.Condition]::TrueCondition)
+
+        foreach ($el in $all) {
+            try {
+                $name = [string]$el.Current.Name
+                if (-not [string]::IsNullOrWhiteSpace($name)) {
+                    [void]$parts.Add($name)
+                }
+            } catch {}
+        }
+
+        $details = (@($parts | Select-Object -Unique) -join ' || ')
+
+        try {
+            $okCondition = New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::NameProperty,
+                'OK')
+            $ok = $dialog.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $okCondition)
+            if ($null -ne $ok) {
+                $okPattern = $null
+                if ($ok.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$okPattern)) {
+                    ([System.Windows.Automation.InvokePattern]$okPattern).Invoke()
+                }
+            }
+        } catch {}
+
+        return $details
+    }
+    catch {
+        return ('diagnostics-exception:' + $_.Exception.Message)
+    }
+}
+
 $script:restored = $false
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $candidateAdapter = Join-Path $repoRoot 'src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js'
@@ -155,6 +216,13 @@ try {
             $terminal = 'bootstrap_failed'
             $exitCode = 22
             break
+        }
+    }
+
+    if ($exitCode -ne 0) {
+        $diagnostics = Get-DiagnosticsDetails -Root $root
+        if (-not [string]::IsNullOrWhiteSpace($diagnostics)) {
+            $finalStatus = $finalStatus + ' || DIAGNOSTICS: ' + $diagnostics
         }
     }
 
