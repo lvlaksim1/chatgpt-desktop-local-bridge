@@ -41,6 +41,15 @@ jobs:
           --runtime win-x64
           --self-contained true
           --output .\publish\win-x64
+      - name: Smoke-test delta package builder
+        shell: pwsh
+        run: |
+          .\scripts\build-delta-update.ps1 -BasePublishDir .\publish\win-x64 -CurrentPublishDir .\publish\win-x64 -BaseTag smoke-base -TargetTag smoke-target -TargetCommit "${{ github.sha }}" -OutputPath .\delta-smoke.zip
+          if (-not (Test-Path .\delta-smoke.zip)) { throw "Delta smoke package was not created." }
+          Expand-Archive -Path .\delta-smoke.zip -DestinationPath .\delta-smoke -Force
+          $manifest = Get-Content .\delta-smoke\update-manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.schema -ne "chatgpt-desktop-local-bridge-delta-v1") { throw "Unexpected delta manifest schema." }
+          if (@($manifest.files).Count -ne 0) { throw "Zero-delta smoke test unexpectedly contains changed files." }
 
 
       - name: Install Inno Setup compiler
