@@ -233,7 +233,8 @@ jobs:
             Set-Content -LiteralPath $sentinel -Value "preserve" -Encoding ASCII
 
             $wrapperPath = Join-Path $installDir "Support\Uninstall-Bridge.ps1"
-            $quietUninstall = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $wrapperPath, "-Quiet") -Wait -PassThru
+            $quietArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $wrapperPath + '" -Quiet'
+            $quietUninstall = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList $quietArgs -Wait -PassThru
             if ($quietUninstall.ExitCode -ne 0) {
               throw "Quiet uninstall wrapper failed with exit code $($quietUninstall.ExitCode)."
             }
