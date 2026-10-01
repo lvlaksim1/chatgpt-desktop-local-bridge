@@ -20,8 +20,6 @@
 - status: completed
 - owner authorization: direct Owner directive on 2026-10-01
 - product evidence: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`
-- CI evidence: main workflow completed successfully, including `Enforce development release retention`
-- resulting release state: only `dev-1d00606` remains and it contains only `ChatGptDesktopLocalBridge-Setup.exe`
 - durable policy: retain at most two installable dev prereleases; delete portable-only dev releases/tags and redundant ZIP assets; do not touch stable releases; generated installers/packages remain ignored by Git
 
 ## Active
@@ -29,8 +27,9 @@
 ### BRIDGE-M1 — Live end-to-end bridge proof
 - status: accepted/active
 - owner authorization: direct Owner development directive
-- live evidence: Diagnostics on `dev-977a504` failed with `Local Bridge adapter is not injected`
-- current diagnosis: probable early-document adapter bootstrap failure; patch not yet live-verified
+- live evidence: Diagnostics failed with `Local Bridge adapter is not injected` on both the prior portable build and installed `dev-1d00606`
+- focused patch: published as `dev-450b884`; CI including JS syntax, .NET build, self-contained publish, installer build, release publication, and retention cleanup passed
+- current gate: install `dev-450b884` over the existing installation, confirm ChatGPT auth persists, and rerun Diagnostics
 - objective: prove `ChatGPT -> Web adapter -> C# bridge -> local tool -> RESULT -> ChatGPT` on the Owner's Windows machine
 - minimum acceptance evidence:
   1. Diagnostics reports adapter/WebView/composer state;

@@ -1,30 +1,25 @@
 # Latest handoff
 
-Updated: 2026-10-01 19:02 MSK
+Updated: 2026-10-01 19:31 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 4.
-Product authority: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`.
+Manager generation: 5.
+Product authority: `main@450b884423696b70905db394c68ddc45b2ba03ec`.
 
-## Packaging/auth completed
-Development release `dev-1d00606` contains only `ChatGptDesktopLocalBridge-Setup.exe`.
-The installer uses a stable application identity for in-place upgrades.
-The WebView2 profile remains outside the install directory at `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`, so normal upgrades are designed to preserve ChatGPT sign-in.
+## Current release
+`dev-450b884` contains only `ChatGptDesktopLocalBridge-Setup.exe`.
+SHA-256: `0757703080c8d334602b6d9882da9f565cd6d5361a88b05d17404c3bc0cb4cb0`.
 
-## Storage hygiene completed
-CI now publishes installer-only dev releases and automatically:
-- removes redundant portable ZIP assets;
-- deletes portable-only dev prereleases and matching tags;
-- retains at most the two newest installable dev prereleases;
-- leaves stable releases untouched.
+## BRIDGE-M1
+The live `adapter is not injected` failure was reproduced on the installed baseline. A focused document-start patch is now published:
+- bridge registration occurs before observer setup;
+- observer targets `document`;
+- health reports adapter v2;
+- JS syntax is checked in CI.
 
-The first cleanup completed successfully; current Releases contains only `dev-1d00606` with its Setup.exe.
-
-## Live BRIDGE-M1 evidence
-Diagnostics on the prior build returned `Local Bridge adapter is not injected`.
-Source analysis suggests an early-document `document.documentElement` timing failure, but this is not yet live-verified.
+All CI/package/release steps passed. Live validation remains open.
 
 ## Required continuation
-Resume the focused adapter bootstrap patch. Publish it through the same installer channel, upgrade over the installed version, confirm auth persistence, and rerun Diagnostics.
+Install `dev-450b884` over the current installation. Confirm the ChatGPT session remains authenticated. Press Diagnostics before Initialize Bridge and report the exact result.
 
 Do not claim BRIDGE-M1 success until READY and a local `fs.read_text` round trip are both proven.

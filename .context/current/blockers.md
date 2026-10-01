@@ -1,19 +1,19 @@
 # Current blockers and open risks
 
-Updated: 2026-10-01 19:02 MSK
+Updated: 2026-10-01 19:31 MSK
 
-## Immediate BRIDGE-M1 blocker
-Live Diagnostics reports `Local Bridge adapter is not injected`.
+## Immediate BRIDGE-M1 gate
+The adapter-bootstrap fix is implemented, CI-verified, packaged, and published in `dev-450b884`, but not yet live-verified in a signed-in ChatGPT WebView2 session.
 
-Current source-level hypothesis: `AddScriptToExecuteOnDocumentCreatedAsync` executes the adapter early enough that `document.documentElement` may still be null; the immediate `MutationObserver.observe(document.documentElement, ...)` can therefore terminate the script before `window.__localBridge` is assigned.
+If Diagnostics on `dev-450b884` reports adapter v2, the earlier early-document hypothesis is confirmed and this blocker advances to handshake testing.
 
-This hypothesis is not yet accepted as root cause. It requires a patched build plus live Diagnostics.
+If it still reports adapter not injected, the root cause remains unresolved and the next investigation must focus on script registration/execution evidence.
 
 ## Authentication continuity
-No upgrade blocker is known. Authentication continuity is intentionally based on the dedicated WebView2 User Data Folder outside the install directory. Direct Yandex Browser session-cookie/profile cloning is not part of the selected path because it lacks a robust cross-browser contract.
+The installed baseline already inherited the existing ChatGPT session successfully. The next upgrade from `dev-1d00606` to `dev-450b884` is the first direct in-place-upgrade persistence test.
 
 ## Repository storage
-No active storage blocker. Current storage hygiene is enforced automatically in CI and has already removed obsolete dev releases/ZIP assets.
+No active storage blocker. Retention is automatic and currently holds only the two newest installable dev prereleases.
 
 ## Reliability debt before mutating tools
 Current request deduplication is process-memory-only. It is adequate for the read-only MVP test but not sufficient for destructive, write, shell, or process actions across restart/crash boundaries.
