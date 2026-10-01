@@ -1,23 +1,34 @@
 # Manager plans
 
-Manager generation: 7.
-Product authority: `main@f7688fbca03286d756d5f262808c8b40ec4f3952`.
-Current release: `dev-f7688fb`.
-Owner installed baseline: `dev-1d00606`.
+Manager generation: 8.
+Product authority: `main@4ed78c23fceddf628996be5a87a9847889c950e7`.
+Current release: `dev-4ed78c2`.
+Owner installed baseline: `dev-1d00606` unless Owner reports successful migration.
 
 ## Immediate BRIDGE-M1 path
 
-1. Discard/ignore the failed ZIP delta.
-2. Run `ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe` from `dev-f7688fb`.
-3. The update must validate legacy base `0.1.24.0` + stable file fingerprints, close the app, backup touched files, apply five changed files, verify hashes, create `release-info.json`, restart the app, and roll back if any step fails.
-4. Confirm ChatGPT remains authenticated.
+1. Do not retry any earlier ZIP updater or earlier broken single-EXE updater.
+2. Run `dev-4ed78c2 / ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`.
+3. The updater must validate legacy base `0.1.24.0` + stable fingerprints, use .NET SHA-256, back up touched files, apply the current target, verify hashes, create `release-info.json`, register the uninstall wrapper, and restart the application.
+4. Confirm ChatGPT authentication remains intact.
 5. Press Diagnostics before Initialize Bridge.
 6. If adapter v2 is reported, Initialize Bridge and require READY.
 7. Prove `fs.read_text` end-to-end.
 
-## Future update policy
+## Update policy
 
-- Give the Owner one matching `Update-from-*.exe`, not ZIP archives.
+- Give Owner one matching `Update-from-*.exe`, not ZIP archives.
 - Full Setup remains first-install/fallback only.
-- Future normal deltas use exact release-info + PublishManifest authority.
-- Keep at most two installable dev releases and remove obsolete ZIP delta assets.
+- Future deltas use exact release-info + PublishManifest authority.
+- Runtime updater must remain compatible with Windows PowerShell used by Inno; do not depend on optional cmdlets when a direct .NET API is available.
+- Every delta-capable release must preserve/update normal uninstall behavior through the shipped uninstall wrapper.
+- Keep at most two installable dev releases and no ordinary Actions artifacts.
+
+## Follow-on engineering
+
+After BRIDGE-M1 closes:
+1. BRIDGE-M2 adapter hardening.
+2. BRIDGE-M3 explicit state machine, capability registry, bounded results, durable request ledger and delivery recovery.
+3. deterministic mutation primitives.
+4. Windows Job Object Emergency STOP.
+5. shell/process, Git, Excel, browser/UI capability families.

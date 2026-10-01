@@ -1,15 +1,15 @@
 # Current blockers and open risks
 
-Updated: 2026-10-01 20:22 MSK
+Updated: 2026-10-02 01:46 MSK
 
 ## BRIDGE-M1
-Owner-side application of the new single-file legacy updater and subsequent Diagnostics are still required.
+Only Owner-side live application of the latest E2E-validated updater and subsequent ChatGPT bridge validation remain.
 
-## Legacy migration
-The old ZIP delta is invalid for the actually installed legacy build because reconstructed DLL bytes differ. It must not be retried. The replacement EXE uses a dedicated legacy validation mode and is the only intended migration path from `dev-1d00606`.
+## Obsolete update packages
+Do not use prior ZIP deltas or earlier single-EXE updater builds. The current supported legacy migration is only the `dev-4ed78c2` update from `dev-1d00606`.
 
-## Future updates
-No known packaging blocker. Manifest-backed releases now have exact release markers and publish manifests.
+## Uninstall interaction
+Quiet uninstall preservation has automated E2E evidence. The interactive Yes/No UI path is implemented in the same wrapper but requires normal user interaction on Windows; Yes deletes user data, No preserves it.
 
 ## Reliability debt
 Durable request ledger and Windows Job Object STOP remain future BRIDGE-M3/BRIDGE-M4 work.

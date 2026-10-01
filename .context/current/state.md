@@ -1,17 +1,21 @@
 # Current state
 
-Updated: 2026-10-01 20:22 MSK
+Updated: 2026-10-02 01:46 MSK
 
-- manager generation: 7
-- product authority: `main@f7688fbca03286d756d5f262808c8b40ec4f3952`
-- current release: `dev-f7688fb`
-- Owner installed: `dev-1d00606`
-- first legacy ZIP update: safely rejected on rebuilt DLL hash mismatch; installation unchanged
-- replacement path: one-click `ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`
-- update size: 2,186,842 bytes
-- update SHA-256: `32c0d5df41bdb999badcd91d0123ef06e41d6e8662f61a88d082ddf7e193537c`
-- delta payload: 5 changed files / 0 deletes / 239,408 bytes
-- legacy validation: Inno DisplayVersion `0.1.24.0` + stable content fingerprints
-- future validation: release-info.json + exact PublishManifest
+- manager generation: 8
+- product authority: `main@4ed78c23fceddf628996be5a87a9847889c950e7`
+- current release: `dev-4ed78c2`
+- Owner installed baseline: `dev-1d00606` unless Owner reports otherwise
+- old ZIP delta: obsolete; safely rejected
+- old single-EXE updater: obsolete; failed safely because Inno-launched Windows PowerShell lacked `Get-FileHash`
+- root cause: confirmed by Windows E2E logs
+- fix: direct .NET SHA-256 implementation
+- current migration EXE: `ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`
+- size: 2,188,212 bytes
+- SHA-256: `5f4add91bb5988f3489666406e7a70b8138086dd973fcc780265e6b03aee8d0e`
+- E2E legacy install -> current Update.exe: PASS
+- delta-safe uninstall wrapper: implemented and registered by full Setup and delta updater
+- quiet uninstall E2E: program removed; user-data sentinel preserved
+- normal uninstall prompt: `Удалить также настройки и рабочие данные?`
 - WebView2 auth profile remains outside updater scope
-- BRIDGE-M1 live validation still open
+- BRIDGE-M1 live validation remains open

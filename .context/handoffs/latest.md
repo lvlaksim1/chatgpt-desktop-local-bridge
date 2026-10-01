@@ -1,15 +1,18 @@
 # Latest handoff
 
-Updated: 2026-10-01 20:22 MSK
+Updated: 2026-10-02 01:46 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 7.
-Product authority: `main@f7688fbca03286d756d5f262808c8b40ec4f3952`.
+Manager generation: 8.
+Product authority: `main@4ed78c23fceddf628996be5a87a9847889c950e7`.
+Current release: `dev-4ed78c2`.
 
-Owner is still on `dev-1d00606`. Do not retry the failed ZIP delta.
+Owner is assumed to remain on `dev-1d00606` because prior updater failure was fail-safe and no later successful Owner update has been reported.
 
-Use the direct single-file migration:
-`dev-f7688fb / ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`
-SHA-256: `32c0d5df41bdb999badcd91d0123ef06e41d6e8662f61a88d082ddf7e193537c`.
+Use only:
+`ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`
+SHA-256: `5f4add91bb5988f3489666406e7a70b8138086dd973fcc780265e6b03aee8d0e`.
 
-After it restarts the app, confirm authentication and run Diagnostics before Initialize Bridge.
+The Windows E2E now reproduces legacy installation and successful one-file migration. It also verifies that the delta registers the uninstall wrapper and that quiet uninstall removes the program while preserving user data.
+
+After Owner update succeeds: confirm authentication and run Diagnostics before Initialize Bridge.
