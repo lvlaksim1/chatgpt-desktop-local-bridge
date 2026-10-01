@@ -9,6 +9,8 @@ $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge
 $appExe = Join-Path $installDir "ChatGptDesktopLocalBridge.exe"
 $releaseInfoPath = Join-Path $installDir "release-info.json"
 $processName = "ChatGptDesktopLocalBridge"
+$successMarker = Join-Path $packageRoot "update-success.marker"
+Remove-Item -LiteralPath $successMarker -Force -ErrorAction SilentlyContinue
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D6B9AF8-6D08-44E1-B2F5-8A6341D99165}_is1"
 
 function Normalize-RelativePath([string]$Path) {
@@ -232,6 +234,7 @@ try {
         }
     }
 
+    Set-Content -LiteralPath $successMarker -Value $manifest.toTag -Encoding ASCII
     Write-Host "Update complete: $($manifest.fromTag) -> $($manifest.toTag)"
 }
 catch {
