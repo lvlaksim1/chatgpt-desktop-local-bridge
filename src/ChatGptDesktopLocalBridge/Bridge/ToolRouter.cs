@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.IO;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
 
