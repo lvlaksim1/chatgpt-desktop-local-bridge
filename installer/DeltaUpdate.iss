@@ -47,7 +47,7 @@ VersionInfoProductName={#MyAppName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "{#DeltaDir}\payload\*"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta\payload"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall
+Source: "{#DeltaDir}\payload\*"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta\payload"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall skipifsourcedoesntexist
 Source: "{#DeltaDir}\Apply-Update.ps1"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall
 Source: "{#DeltaDir}\update-manifest.json"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall; AfterInstall: RunDeltaUpdater
 
