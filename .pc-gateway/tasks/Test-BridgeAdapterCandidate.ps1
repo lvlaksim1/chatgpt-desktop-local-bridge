@@ -172,6 +172,22 @@ try {
     $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$process.MainWindowHandle)
     if ($null -eq $root) { throw 'UI Automation root is unavailable.' }
 
+    $chatReady = $false
+    $lastPreflight = ''
+    $preflightDeadline = [DateTime]::UtcNow.AddSeconds(60)
+    while ([DateTime]::UtcNow -lt $preflightDeadline) {
+        Start-Sleep -Seconds 2
+        $lastPreflight = Get-DiagnosticsDetails -Root $root
+        if ($lastPreflight -match '"composerFound"\s*:\s*true' -and
+            $lastPreflight -match '"readyState"\s*:\s*"complete"') {
+            $chatReady = $true
+            break
+        }
+    }
+    if (-not $chatReady) {
+        throw ('ChatGPT did not reach composer-ready state. Last diagnostics: ' + $lastPreflight)
+    }
+
     $condition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty,
         'Initialize Bridge')
