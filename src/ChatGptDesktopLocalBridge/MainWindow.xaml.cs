@@ -185,6 +185,59 @@ public partial class MainWindow
         Process.Start(startInfo);
     }
 
+    private async void DiagnosticsButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (Browser.CoreWebView2 is null)
+        {
+            StatusText.Text = "Diagnostics unavailable: WebView2 is not ready.";
+            return;
+        }
+
+        try
+        {
+            var raw = await Browser.ExecuteScriptAsync(
+                "window.__localBridge?.health?.() ?? null");
+
+            if (string.IsNullOrWhiteSpace(raw) || raw == "null")
+            {
+                StatusText.Text = "Diagnostics failed: Local Bridge adapter is not injected.";
+                return;
+            }
+
+            using var document = JsonDocument.Parse(raw);
+            var root = document.RootElement;
+
+            var version = root.TryGetProperty("version", out var versionElement)
+                ? versionElement.ToString()
+                : "?";
+            var composerFound = root.TryGetProperty("composerFound", out var composerElement) &&
+                                composerElement.ValueKind == JsonValueKind.True;
+            var sendButtonFound = root.TryGetProperty("sendButtonFound", out var sendElement) &&
+                                  sendElement.ValueKind == JsonValueKind.True;
+            var webViewAvailable = root.TryGetProperty("webViewAvailable", out var webViewElement) &&
+                                   webViewElement.ValueKind == JsonValueKind.True;
+
+            StatusText.Text =
+                $"Adapter v{version}: WebView {(webViewAvailable ? "OK" : "FAIL")}, " +
+                $"composer {(composerFound ? "OK" : "NOT FOUND")}, " +
+                $"send button {(sendButtonFound ? "FOUND" : "NOT FOUND")}.";
+
+            var details = JsonSerializer.Serialize(
+                root,
+                new JsonSerializerOptions { WriteIndented = true });
+
+            System.Windows.MessageBox.Show(
+                details,
+                "Local Bridge diagnostics",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Diagnostics failed: {ex.Message}";
+        }
+    }
+
     private async Task<bool> SendTextToChatAsync(string text)
     {
         if (Browser.CoreWebView2 is null)
