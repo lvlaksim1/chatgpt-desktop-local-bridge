@@ -10,7 +10,10 @@ Set-StrictMode -Version 2.0
 function Write-Result([hashtable]$payload, [int]$exitCode = 0) {
     $dir = Split-Path -Parent $GatewayResultPath
     if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $GatewayResultPath -Encoding UTF8
+    $json = $payload | ConvertTo-Json -Depth 12
+    $json | Set-Content -LiteralPath $GatewayResultPath -Encoding UTF8
+    $compact = $payload | ConvertTo-Json -Depth 12 -Compress
+    Write-Host ("PC_GATEWAY_PROJECT_RESULT_JSON=" + $compact)
     exit $exitCode
 }
 
