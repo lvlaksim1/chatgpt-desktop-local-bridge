@@ -1,0 +1,19 @@
+{
+  "profile": "safe-default",
+  "capabilities": {
+    "system.info": "AUTO",
+    "fs.list": "AUTO",
+    "fs.read_text": "AUTO",
+
+    "fs.write_text": "AUTO",
+    "excel.read": "AUTO",
+    "excel.write": "AUTO",
+    "process.start": "AUTO",
+
+    "shell.run": "ASK",
+    "fs.delete": "ASK",
+    "process.kill": "ASK",
+    "registry.write": "ASK",
+    "admin.execute": "ASK"
+  }
+}
