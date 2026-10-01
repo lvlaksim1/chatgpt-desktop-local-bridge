@@ -28,17 +28,30 @@
     return null;
   }
 
-  function findSendButton() {
-    const selectors = [
-      "button[data-testid='send-button']",
-      "button[aria-label='Send prompt']",
-      "button[aria-label='Send message']",
-      "button[aria-label*='Send']"
-    ];
+  const SEND_BUTTON_SELECTORS = [
+    "button[data-testid='send-button']",
+    "button[aria-label='Send prompt']",
+    "button[aria-label='Send message']",
+    "button[aria-label*='Send']"
+  ];
 
-    for (const selector of selectors) {
+  function findSendButton(requireEnabled = true) {
+    for (const selector of SEND_BUTTON_SELECTORS) {
       const element = document.querySelector(selector);
-      if (element && !element.disabled) return element;
+      if (!element) continue;
+      if (!requireEnabled || !element.disabled) return element;
+    }
+
+    return null;
+  }
+
+  async function waitForSendButton(timeoutMs = 5000) {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const button = findSendButton(true);
+      if (button) return button;
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     return null;
@@ -84,8 +97,8 @@
 
     composer.dispatchEvent(new Event("change", { bubbles: true }));
 
-    setTimeout(() => {
-      const sendButton = findSendButton();
+    void (async () => {
+      const sendButton = await waitForSendButton();
       if (!sendButton) {
         postSendResult(token, false, "send-button-not-found");
         return;
@@ -93,7 +106,7 @@
 
       sendButton.click();
       postSendResult(token, true);
-    }, 250);
+    })();
 
     return { accepted: true };
   }
@@ -169,6 +182,25 @@
       });
   }
 
+  function health() {
+    const composer = findComposer();
+    const sendButton = findSendButton(false);
+
+    return {
+      version: 1,
+      href: location.href,
+      readyState: document.readyState,
+      webViewAvailable: Boolean(window.chrome?.webview),
+      composerFound: Boolean(composer),
+      composerTag: composer?.tagName || null,
+      composerContentEditable: composer?.getAttribute?.("contenteditable") || null,
+      sendButtonFound: Boolean(sendButton),
+      sendButtonDisabled: sendButton ? Boolean(sendButton.disabled) : null,
+      assistantMessages: document.querySelectorAll("[data-message-author-role='assistant']").length,
+      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+    };
+  }
+
   let scheduled = false;
   function scheduleScan() {
     if (scheduled) return;
@@ -191,6 +223,7 @@
   window.__localBridge = {
     sendText,
     scan: scheduleScan,
+    health,
     version: 1
   };
 
