@@ -10,6 +10,7 @@ public partial class MainWindow
 {
     private readonly string _appDataRoot;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingSendResults = new();
+    private TaskCompletionSource<bool>? _bridgeReadyCompletion;
     private BridgeHost? _bridgeHost;
 
     public MainWindow()
@@ -33,12 +34,6 @@ public partial class MainWindow
 
         Browser.CoreWebView2.Settings.IsWebMessageEnabled = true;
         Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
-
-        var policy = PermissionPolicy.LoadOrCreate();
-        _bridgeHost = new BridgeHost(
-            policy,
-            SendTextToChatAsync,
-            message => Dispatcher.Invoke(() => StatusText.Text = message));
 
         Browser.CoreWebView2.WebMessageReceived += CoreWebView2_OnWebMessageReceived;
         Browser.NavigationCompleted += Browser_OnNavigationCompleted;
@@ -78,6 +73,10 @@ public partial class MainWindow
 
             switch (typeElement.GetString())
             {
+                case "bridge.ready":
+                    HandleBridgeReady(document.RootElement);
+                    return;
+
                 case "bridge.send_result":
                     HandleSendResult(document.RootElement);
                     return;
@@ -101,6 +100,24 @@ public partial class MainWindow
         {
             StatusText.Text = $"Bridge error: {ex.Message}";
         }
+    }
+
+    private void HandleBridgeReady(JsonElement message)
+    {
+        if (_bridgeHost is null ||
+            !message.TryGetProperty("session", out var sessionElement) ||
+            sessionElement.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        var session = sessionElement.GetString();
+        if (!string.Equals(session, _bridgeHost.SessionId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _bridgeReadyCompletion?.TrySetResult(true);
     }
 
     private void HandleSendResult(JsonElement message)
@@ -159,16 +176,58 @@ public partial class MainWindow
 
     private async void InitializeBridgeButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
     {
-        if (_bridgeHost is null)
-        {
-            return;
-        }
+        InitializeBridgeButton.IsEnabled = false;
+        TaskCompletionSource<bool>? readyCompletion = null;
 
-        var bootstrap = _bridgeHost.CreateBootstrapMessage();
-        var sent = await SendTextToChatAsync(bootstrap);
-        StatusText.Text = sent
-            ? $"Bridge initialized. Session {_bridgeHost.SessionId[..8]}…"
-            : "Could not find the ChatGPT composer. Open a conversation and try again.";
+        try
+        {
+            var policy = PermissionPolicy.LoadOrCreate();
+            _bridgeHost = new BridgeHost(
+                policy,
+                SendTextToChatAsync,
+                message => Dispatcher.Invoke(() => StatusText.Text = message));
+
+            readyCompletion = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _bridgeReadyCompletion = readyCompletion;
+
+            var bootstrap = _bridgeHost.CreateBootstrapMessage();
+            var sent = await SendTextToChatAsync(bootstrap);
+            if (!sent)
+            {
+                StatusText.Text =
+                    "Could not send bridge bootstrap. Open a conversation and run Diagnostics.";
+                return;
+            }
+
+            StatusText.Text =
+                $"Bootstrap sent. Waiting for bridge handshake {_bridgeHost.SessionId[..8]}…";
+
+            try
+            {
+                await readyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(60));
+                StatusText.Text =
+                    $"Bridge ready. Session {_bridgeHost.SessionId[..8]}…";
+            }
+            catch (TimeoutException)
+            {
+                StatusText.Text =
+                    "Bridge bootstrap was sent, but ChatGPT did not return the expected READY handshake.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Bridge initialization failed: {ex.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(_bridgeReadyCompletion, readyCompletion))
+            {
+                _bridgeReadyCompletion = null;
+            }
+
+            InitializeBridgeButton.IsEnabled = true;
+        }
     }
 
     private void ReloadButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
