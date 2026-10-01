@@ -1,10 +1,11 @@
 # Latest handoff
 
-Updated: 2026-10-01 18:15 MSK
+Updated: 2026-10-01 18:24 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 1.
-Product authority: `main@977a504be19e2d21cb3c524275b003b9a6db7592`.
+Manager generation: 2.
+Product authority: `main@761f8369c0fa523834ba8c8baf819571684f5e98`.
+Product-code/build baseline: `977a504be19e2d21cb3c524275b003b9a6db7592`.
 
 ## Current product evidence
 Development release `dev-977a504` is the current live-test package. Windows CI passed self-contained build and packaging.

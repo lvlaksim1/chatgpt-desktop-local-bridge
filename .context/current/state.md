@@ -1,12 +1,13 @@
 # Current state
 
-Updated: 2026-10-01 18:15 MSK
+Updated: 2026-10-01 18:24 MSK
 
 ## Governance
 - manager: `chatgpt-desktop-local-bridge-project-manager`
-- manager generation: 1
+- manager generation: 2
 - manager-state authority: `manager-state`
-- product authority: `main@977a504be19e2d21cb3c524275b003b9a6db7592`
+- product authority: `main@761f8369c0fa523834ba8c8baf819571684f5e98`
+- product-code/build baseline: `977a504be19e2d21cb3c524275b003b9a6db7592`
 - execution status: ACTIVE / BRIDGE-M1 live validation
 
 ## Product baseline

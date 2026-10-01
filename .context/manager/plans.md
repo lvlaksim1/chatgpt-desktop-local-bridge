@@ -2,8 +2,9 @@
 
 ## Current planning state
 
-Manager generation: 1.
-Product authority: `main@977a504be19e2d21cb3c524275b003b9a6db7592`.
+Manager generation: 2.
+Product authority: `main@761f8369c0fa523834ba8c8baf819571684f5e98`.
+Product-code/build baseline: `977a504be19e2d21cb3c524275b003b9a6db7592`.
 Current live gate: Owner-side test of `dev-977a504`.
 
 ## Phase 1 — close BRIDGE-M1

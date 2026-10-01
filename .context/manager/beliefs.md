@@ -10,8 +10,8 @@
    - source: Owner-approved manager installation on 2026-10-01
    - authority: owner-directive
 
-3. Current product authority is `main@977a504be19e2d21cb3c524275b003b9a6db7592`.
-   - source: live GitHub repository state reconciled during manager bootstrap
+3. Current product authority is `main@761f8369c0fa523834ba8c8baf819571684f5e98`. This commit only adds the Context Capsule discovery redirect; the current product-code/build baseline remains `977a504be19e2d21cb3c524275b003b9a6db7592`.
+   - source: live GitHub repository state reconciled after manager bootstrap
    - authority: verified-repository
 
 4. Development build `dev-977a504` is published from exact commit `977a504be19e2d21cb3c524275b003b9a6db7592`; its Windows x64 ZIP SHA-256 is `5ebf20caa9944a832ac7cba34c30b8ff4282ffbb1ef93ff228d3c4f8443edb1a`.
