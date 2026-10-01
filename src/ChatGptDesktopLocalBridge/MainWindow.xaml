@@ -14,6 +14,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -33,13 +34,20 @@
 
                 <Button x:Name="PermissionsButton"
                         Grid.Column="2"
-                        Margin="0,0,12,0"
+                        Margin="0,0,8,0"
                         Padding="12,6"
                         Click="PermissionsButton_OnClick"
                         Content="Permissions" />
 
+                <Button x:Name="DiagnosticsButton"
+                        Grid.Column="3"
+                        Margin="0,0,12,0"
+                        Padding="12,6"
+                        Click="DiagnosticsButton_OnClick"
+                        Content="Diagnostics" />
+
                 <TextBlock x:Name="StatusText"
-                           Grid.Column="3"
+                           Grid.Column="4"
                            VerticalAlignment="Center"
                            Text="Starting WebView2…" />
             </Grid>
