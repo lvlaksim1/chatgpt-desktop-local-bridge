@@ -43,6 +43,21 @@ function Stop-BridgeApp {
     Start-Sleep -Seconds 1
 }
 
+function Stop-BridgeWebViewProcesses {
+    $profileNeedle = 'ChatGptDesktopLocalBridge\WebView2'
+    $items = @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { [string]$_.CommandLine -like ('*' + $profileNeedle + '*') })
+
+    foreach ($item in $items) {
+        try { Stop-Process -Id ([int]$item.ProcessId) -Force -ErrorAction Stop } catch {}
+    }
+
+    if ($items.Count -gt 0) {
+        Start-Sleep -Seconds 2
+    }
+}
+
+
 function Wait-ForCdpTarget {
     param([int]$Port, [int]$TimeoutSeconds = 45)
 
@@ -153,13 +168,14 @@ if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
     Write-ProjectResult -Status 'fail' -ExitCode 10 -ErrorText 'Installed bridge executable not found.'
 }
 
-$port = 9339
+$port = Get-Random -Minimum 9400 -Maximum 9999
 $oldArgs = [Environment]::GetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', 'Process')
 $wasRunning = @(Get-Process -Name 'ChatGptDesktopLocalBridge' -ErrorAction SilentlyContinue).Count -gt 0
 $socket = $null
 
 try {
     Stop-BridgeApp
+    Stop-BridgeWebViewProcesses
 
     [Environment]::SetEnvironmentVariable(
         'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
@@ -427,6 +443,7 @@ finally {
     }
 
     try { Stop-BridgeApp } catch {}
+    try { Stop-BridgeWebViewProcesses } catch {}
     [Environment]::SetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', $oldArgs, 'Process')
 
     if ($wasRunning -and (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
