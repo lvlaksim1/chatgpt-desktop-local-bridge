@@ -1,6 +1,7 @@
 param(
-    [Parameter(Mandatory = $true)]
     [string]$BasePublishDir,
+
+    [string]$BaseManifestPath,
 
     [Parameter(Mandatory = $true)]
     [string]$CurrentPublishDir,
@@ -36,7 +37,42 @@ function Get-PublishMap([string]$Root) {
     return $map
 }
 
-$base = Get-PublishMap $BasePublishDir
+function Get-ManifestMap([string]$ManifestPath, [string]$ExpectedTag) {
+    $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+
+    if ($manifest.schema -ne "chatgpt-desktop-local-bridge-publish-v1") {
+        throw "Unsupported base publish manifest schema."
+    }
+
+    if ($manifest.tag -ne $ExpectedTag) {
+        throw "Base publish manifest tag mismatch. Expected '$ExpectedTag', got '$($manifest.tag)'."
+    }
+
+    $map = @{}
+    foreach ($entry in @($manifest.files)) {
+        $map[[string]$entry.path] = [pscustomobject]@{
+            path = [string]$entry.path
+            sha256 = ([string]$entry.sha256).ToLowerInvariant()
+            size = [long]$entry.size
+        }
+    }
+
+    return $map
+}
+
+if ([string]::IsNullOrWhiteSpace($BasePublishDir) -eq [string]::IsNullOrWhiteSpace($BaseManifestPath)) {
+    throw "Provide exactly one of BasePublishDir or BaseManifestPath."
+}
+
+if (-not [string]::IsNullOrWhiteSpace($BaseManifestPath)) {
+    Write-Host "Using exact release manifest for base $BaseTag"
+    $base = Get-ManifestMap $BaseManifestPath $BaseTag
+}
+else {
+    Write-Warning "Base $BaseTag has no exact release manifest; using legacy reconstructed publish."
+    $base = Get-PublishMap $BasePublishDir
+}
+
 $current = Get-PublishMap $CurrentPublishDir
 
 $changed = @()

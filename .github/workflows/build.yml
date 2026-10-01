@@ -26,6 +26,7 @@ jobs:
         shell: pwsh
         run: |
           [scriptblock]::Create((Get-Content .\scripts\build-delta-update.ps1 -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content .\scripts\create-publish-manifest.ps1 -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content .\scripts\update\Apply-Update.ps1 -Raw)) | Out-Null
 
       - name: Restore
@@ -41,10 +42,11 @@ jobs:
           --runtime win-x64
           --self-contained true
           --output .\publish\win-x64
-      - name: Smoke-test delta package builder
+      - name: Smoke-test exact manifest and delta package builder
         shell: pwsh
         run: |
-          .\scripts\build-delta-update.ps1 -BasePublishDir .\publish\win-x64 -CurrentPublishDir .\publish\win-x64 -BaseTag smoke-base -TargetTag smoke-target -TargetCommit "${{ github.sha }}" -OutputPath .\delta-smoke.zip
+          .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag smoke-base -Commit "${{ github.sha }}" -OutputPath .\publish-manifest-smoke.json
+          .\scripts\build-delta-update.ps1 -BaseManifestPath .\publish-manifest-smoke.json -CurrentPublishDir .\publish\win-x64 -BaseTag smoke-base -TargetTag smoke-target -TargetCommit "${{ github.sha }}" -OutputPath .\delta-smoke.zip
           if (-not (Test-Path .\delta-smoke.zip)) { throw "Delta smoke package was not created." }
           Expand-Archive -Path .\delta-smoke.zip -DestinationPath .\delta-smoke -Force
           $manifest = Get-Content .\delta-smoke\update-manifest.json -Raw | ConvertFrom-Json
@@ -78,6 +80,7 @@ jobs:
           $sha = "${{ github.sha }}"
           $short = $sha.Substring(0, 7)
           $targetTag = "dev-$short"
+          .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag $targetTag -Commit $sha -OutputPath .\ChatGptDesktopLocalBridge-PublishManifest.json
 
           $releaseRows = @(gh release list --limit 20 --json tagName,isPrerelease,publishedAt | ConvertFrom-Json) |
             Where-Object { $_.isPrerelease -and $_.tagName -like "dev-*" } |
@@ -100,16 +103,32 @@ jobs:
 
           foreach ($base in $bases) {
             $safeTag = ($base.tag -replace '[^A-Za-z0-9._-]', '_')
+            $output = Join-Path $PWD ("ChatGptDesktopLocalBridge-Update-from-" + $safeTag + ".zip")
+            $baseView = gh release view $base.tag --json assets | ConvertFrom-Json
+            $hasManifest = @($baseView.assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-PublishManifest.json" }).Count -gt 0
+
+            if ($hasManifest) {
+              $manifestDir = Join-Path $PWD ("manifest-" + $safeTag)
+              New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
+
+              try {
+                gh release download $base.tag --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir $manifestDir --clobber
+                $baseManifest = Join-Path $manifestDir "ChatGptDesktopLocalBridge-PublishManifest.json"
+                .\scripts\build-delta-update.ps1 -BaseManifestPath $baseManifest -CurrentPublishDir .\publish\win-x64 -BaseTag $base.tag -TargetTag $targetTag -TargetCommit $sha -OutputPath $output
+              }
+              finally {
+                Remove-Item -LiteralPath $manifestDir -Recurse -Force -ErrorAction SilentlyContinue
+              }
+
+              continue
+            }
+
             $worktree = Join-Path $PWD ("previous-" + $safeTag)
             $basePublish = Join-Path $PWD ("publish-base-" + $safeTag)
-
             git worktree add --detach $worktree $base.target
 
             try {
               dotnet publish (Join-Path $worktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --output $basePublish
-
-              $output = Join-Path $PWD ("ChatGptDesktopLocalBridge-Update-from-" + $safeTag + ".zip")
-
               .\scripts\build-delta-update.ps1 -BasePublishDir $basePublish -CurrentPublishDir .\publish\win-x64 -BaseTag $base.tag -TargetTag $targetTag -TargetCommit $sha -OutputPath $output
             }
             finally {
@@ -129,7 +148,7 @@ jobs:
           $sha = "${{ github.sha }}"
           $short = $sha.Substring(0, 7)
           $tag = "dev-$short"
-          $assets = @(".\ChatGptDesktopLocalBridge-Setup.exe")
+          $assets = @(".\ChatGptDesktopLocalBridge-Setup.exe", ".\ChatGptDesktopLocalBridge-PublishManifest.json")
           $assets += @(Get-ChildItem -Path ".\ChatGptDesktopLocalBridge-Update-from-*.zip" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
           gh release create $tag @assets --target $sha --prerelease --title "Development build $short" --notes "Use the small Update-from-*.zip package when upgrading from a listed prior development version. Run Apply-Update.cmd after extraction. The full Setup.exe remains available for first installation or fallback. WebView2 profile data is outside the install directory and is not modified by either path."
       - name: Enforce development release retention
