@@ -46,70 +46,71 @@
     return null;
   }
 
-  async function waitForSendButton(timeoutMs = 5000) {
-    const startedAt = Date.now();
+  function getComposerText(composer = findComposer()) {
+    if (!composer) return "";
 
-    while (Date.now() - startedAt < timeoutMs) {
-      const button = findSendButton(true);
-      if (button) return button;
-      await new Promise(resolve => setTimeout(resolve, 100));
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      return composer.value || "";
     }
 
-    return null;
+    return composer.innerText || composer.textContent || "";
   }
 
-  function postSendResult(token, ok, reason = null) {
-    if (!token || !window.chrome?.webview) return;
+  function positionCaretForNativeInput(composer) {
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      const end = composer.value.length;
+      composer.setSelectionRange?.(end, end);
+      return;
+    }
 
-    window.chrome.webview.postMessage({
-      type: "bridge.send_result",
-      token,
-      ok,
-      reason
-    });
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    const range = document.createRange();
+    const insertionRoot = composer.querySelector("p") || composer;
+    range.selectNodeContents(insertionRoot);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
-  function sendText(text, token) {
+  function prepareNativeSend() {
     const composer = findComposer();
     if (!composer) {
-      postSendResult(token, false, "composer-not-found");
       return { accepted: false, reason: "composer-not-found" };
     }
 
-    composer.focus();
-
-    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
-      const setter = Object.getOwnPropertyDescriptor(
-        Object.getPrototypeOf(composer),
-        "value"
-      )?.set;
-
-      if (setter) setter.call(composer, text);
-      else composer.value = text;
-    } else {
-      composer.textContent = text;
+    const currentText = getComposerText(composer).replace(/\u200B/g, "").trim();
+    if (currentText.length > 0) {
+      return {
+        accepted: false,
+        reason: "composer-not-empty",
+        composerTextLength: currentText.length
+      };
     }
 
-    composer.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      inputType: "insertText",
-      data: text
-    }));
+    composer.focus();
+    positionCaretForNativeInput(composer);
 
-    composer.dispatchEvent(new Event("change", { bubbles: true }));
+    return {
+      accepted: true,
+      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+    };
+  }
 
-    void (async () => {
-      const sendButton = await waitForSendButton();
-      if (!sendButton) {
-        postSendResult(token, false, "send-button-not-found");
-        return;
-      }
+  function nativeSendState(expectedText = null) {
+    const composer = findComposer();
+    const text = getComposerText(composer).replace(/\u200B/g, "");
+    const sendButton = findSendButton(false);
 
-      sendButton.click();
-      postSendResult(token, true);
-    })();
-
-    return { accepted: true };
+    return {
+      composerFound: Boolean(composer),
+      composerTextLength: text.length,
+      textMatches: typeof expectedText === "string" ? text.trim() === expectedText.trim() : null,
+      sendButtonFound: Boolean(sendButton),
+      sendButtonDisabled: sendButton ? Boolean(sendButton.disabled) : null,
+      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+    };
   }
 
   function extractRequest(text) {
@@ -205,7 +206,7 @@
     const sendButton = findSendButton(false);
 
     return {
-      version: 2,
+      version: 3,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -232,10 +233,11 @@
   }
 
   window.__localBridge = {
-    sendText,
+    prepareNativeSend,
+    nativeSendState,
     scan: scheduleScan,
     health,
-    version: 2
+    version: 3
   };
 
   const observer = new MutationObserver(scheduleScan);
