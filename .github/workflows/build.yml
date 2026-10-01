@@ -195,7 +195,14 @@ jobs:
             }
 
             $releaseInfo = Join-Path $installDir "release-info.json"
-            if (-not (Test-Path -LiteralPath $releaseInfo)) { throw "release-info.json was not installed." }
+            if (-not (Test-Path -LiteralPath $releaseInfo)) {
+              $updaterLog = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\logs\update-last.log"
+              Write-Host "=== updater transcript ==="
+              if (Test-Path -LiteralPath $updaterLog) { Get-Content -LiteralPath $updaterLog }
+              Write-Host "=== legacy update installer log ==="
+              if (Test-Path "$PWD\legacy-update.log") { Get-Content "$PWD\legacy-update.log" }
+              throw "release-info.json was not installed."
+            }
             $info = Get-Content -LiteralPath $releaseInfo -Raw | ConvertFrom-Json
             if ($info.tag -ne $targetTag) { throw "Updated release marker '$($info.tag)' does not match '$targetTag'." }
 
