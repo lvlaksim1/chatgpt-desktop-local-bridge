@@ -114,14 +114,8 @@ function Register-UninstallWrapper {
         throw "Windows PowerShell was not found."
     }
 
-    $process = Start-Process -FilePath $windowsPowerShell -ArgumentList @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $uninstallWrapperPath,
-        "-InstallWrapper"
-    ) -Wait -PassThru -WindowStyle Hidden
+    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $uninstallWrapperPath + '" -InstallWrapper'
+    $process = Start-Process -FilePath $windowsPowerShell -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
 
     if ($process.ExitCode -ne 0) {
         throw "Uninstall wrapper registration failed with exit code $($process.ExitCode)."
