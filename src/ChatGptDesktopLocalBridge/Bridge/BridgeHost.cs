@@ -39,7 +39,9 @@ public sealed class BridgeHost
 
     public string SessionId { get; }
 
-    public string CreateBootstrapMessage() => $$"""
+    public string ReadyMarker => $"[[LOCAL_BRIDGE_READY_V1:{SessionId}]]";
+
+    public string CreateBootstrapMessage() => $"""
 {{BootstrapStart}}
 You are running inside a custom Windows ChatGPT client with Local Bridge v1.
 
@@ -66,6 +68,10 @@ Available tools:
 
 3. fs.read_text
    args: { "path": "C:\\some\\file.txt", "max_chars": 200000 }
+
+Handshake:
+- Immediately after receiving this bootstrap, reply with EXACTLY this single line and no other text:
+{{ReadyMarker}}
 
 Rules:
 - Use the bridge only when local data/action is needed.
