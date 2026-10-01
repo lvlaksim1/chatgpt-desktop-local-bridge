@@ -1,0 +1,17 @@
+{
+  "schema": "pc-gateway-client",
+  "schema_version": 1,
+  "client_repository": "lvlaksim1/chatgpt-desktop-local-bridge",
+  "gateway_repository": "lvlaksim1/pc-runner-gateway",
+  "protocol": "pc-runner-gateway",
+  "protocol_version": "1.0.0",
+  "script_root": ".pc-gateway/tasks/",
+  "transport": {
+    "type": "github-issue-queue",
+    "issue_repository": "lvlaksim1/pc-runner-gateway",
+    "issue_title_prefix": "PC Gateway Request: "
+  },
+  "result": {
+    "type": "gateway-issue-and-local-ledger"
+  }
+}
