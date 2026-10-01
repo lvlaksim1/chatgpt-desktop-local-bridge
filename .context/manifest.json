@@ -48,7 +48,8 @@
     ".context/decisions/DEC-0002-reliability-roadmap.md",
     ".context/decisions/DEC-0003-installer-and-auth-continuity.md",
     ".context/decisions/DEC-0004-repository-storage-retention.md",
-    ".context/decisions/DEC-0005-incremental-update-channel.md"
+    ".context/decisions/DEC-0005-incremental-update-channel.md",
+    ".context/decisions/DEC-0006-single-exe-updates.md"
   ],
   "dialogues": [],
   "history": [],
