@@ -12,6 +12,7 @@
   const processed = new Set();
   const pending = new Map();
   const STABLE_MESSAGE_MS = 700;
+  let lastSendFailure = null;
 
   function findComposer() {
     const selectors = [
@@ -74,6 +75,9 @@
   }
 
   function postSendResult(token, ok, reason = null) {
+    if (!ok) lastSendFailure = reason || "unknown-send-failure";
+    else lastSendFailure = null;
+
     if (!token || !window.chrome?.webview) return;
 
     window.chrome.webview.postMessage({
@@ -291,7 +295,8 @@
       sendButtonFound: Boolean(sendButton),
       sendButtonDisabled: sendButton ? Boolean(sendButton.disabled) : null,
       assistantMessages: document.querySelectorAll("[data-message-author-role='assistant']").length,
-      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+      userMessages: document.querySelectorAll("[data-message-author-role='user']").length,
+      lastSendFailure
     };
   }
 
