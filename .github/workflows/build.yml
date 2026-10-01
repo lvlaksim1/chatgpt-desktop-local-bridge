@@ -30,7 +30,6 @@ jobs:
           --configuration Release
           --runtime win-x64
           --self-contained true
-          --no-restore
           --output .\publish\win-x64
 
       - name: Pack test build
