@@ -8,6 +8,8 @@ $payloadRoot = Join-Path $packageRoot "payload"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
 $appExe = Join-Path $installDir "ChatGptDesktopLocalBridge.exe"
 $releaseInfoPath = Join-Path $installDir "release-info.json"
+$uninstallWrapperPath = Join-Path $installDir "Support\Uninstall-Bridge.ps1"
+$windowsPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $processName = "ChatGptDesktopLocalBridge"
 $successMarker = Join-Path $packageRoot "update-success.marker"
 Remove-Item -LiteralPath $successMarker -Force -ErrorAction SilentlyContinue
@@ -100,6 +102,29 @@ function Assert-ReleaseMarker([string]$ExpectedTag) {
 
     if ([string]$info.tag -ne $ExpectedTag) {
         throw "Base version mismatch: installed release is '$($info.tag)', expected '$ExpectedTag'."
+    }
+}
+
+function Register-UninstallWrapper {
+    if (-not (Test-Path -LiteralPath $uninstallWrapperPath -PathType Leaf)) {
+        throw "Uninstall wrapper is missing from the target release."
+    }
+
+    if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
+        throw "Windows PowerShell was not found."
+    }
+
+    $process = Start-Process -FilePath $windowsPowerShell -ArgumentList @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $uninstallWrapperPath,
+        "-InstallWrapper"
+    ) -Wait -PassThru -WindowStyle Hidden
+
+    if ($process.ExitCode -ne 0) {
+        throw "Uninstall wrapper registration failed with exit code $($process.ExitCode)."
     }
 }
 
@@ -258,6 +283,8 @@ try {
             Write-Warning "Update succeeded, but Windows Apps & Features version could not be refreshed: $($_.Exception.Message)"
         }
     }
+
+    Register-UninstallWrapper
 
     Set-Content -LiteralPath $successMarker -Value $manifest.toTag -Encoding ASCII
     Write-Host "Update complete: $($manifest.fromTag) -> $($manifest.toTag)"
