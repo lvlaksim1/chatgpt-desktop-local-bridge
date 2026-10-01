@@ -21,8 +21,11 @@ foreach ($release in $releases) {
     $view = $viewRaw | ConvertFrom-Json
     $assets = @($view.assets)
 
-    foreach ($asset in $assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-win-x64.zip" }) {
-        Write-Host "Deleting redundant portable asset $($asset.name) from $tag"
+    foreach ($asset in $assets | Where-Object {
+        $_.name -eq "ChatGptDesktopLocalBridge-win-x64.zip" -or
+        $_.name -like "ChatGptDesktopLocalBridge-Update-from-*.zip"
+    }) {
+        Write-Host "Deleting obsolete ZIP asset $($asset.name) from $tag"
         gh release delete-asset $tag $asset.name --yes
     }
 
