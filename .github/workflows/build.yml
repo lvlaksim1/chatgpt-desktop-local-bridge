@@ -29,6 +29,7 @@ jobs:
           [scriptblock]::Create((Get-Content .\scripts\build-delta-update.ps1 -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content .\scripts\create-publish-manifest.ps1 -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content .\scripts\update\Apply-Update.ps1 -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content .\src\ChatGptDesktopLocalBridge\Support\Uninstall-Bridge.ps1 -Raw)) | Out-Null
 
       - name: Restore
         run: dotnet restore .\ChatGptDesktopLocalBridge.sln
@@ -218,7 +219,35 @@ jobs:
             $info = Get-Content -LiteralPath $releaseInfo -Raw | ConvertFrom-Json
             if ($info.tag -ne $targetTag) { throw "Updated release marker '$($info.tag)' does not match '$targetTag'." }
 
-            Write-Host "Legacy end-to-end update passed: $legacyTag -> $targetTag"
+            $updatedRegistration = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction Stop
+            if ([string]$updatedRegistration.UninstallString -notlike "*Uninstall-Bridge.ps1*") {
+              throw "Delta update did not register the uninstall wrapper."
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$updatedRegistration.BridgeOriginalUninstallExe)) {
+              throw "Delta update did not preserve the original uninstaller path."
+            }
+
+            $dataDir = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge"
+            New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+            $sentinel = Join-Path $dataDir "e2e-preserve-data.txt"
+            Set-Content -LiteralPath $sentinel -Value "preserve" -Encoding ASCII
+
+            $wrapperPath = Join-Path $installDir "Support\Uninstall-Bridge.ps1"
+            $quietUninstall = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $wrapperPath, "-Quiet") -Wait -PassThru
+            if ($quietUninstall.ExitCode -ne 0) {
+              throw "Quiet uninstall wrapper failed with exit code $($quietUninstall.ExitCode)."
+            }
+
+            Start-Sleep -Seconds 4
+
+            if (-not (Test-Path -LiteralPath $sentinel -PathType Leaf)) {
+              throw "Quiet uninstall unexpectedly deleted preserved user data."
+            }
+            if (Test-Path -LiteralPath $installedExe -PathType Leaf) {
+              throw "Quiet uninstall did not remove the installed application."
+            }
+
+            Write-Host "Legacy update + uninstall wrapper E2E passed: $legacyTag -> $targetTag"
           }
           finally {
             if (Test-Path -LiteralPath $legacyWorktree) { git worktree remove --force $legacyWorktree }
