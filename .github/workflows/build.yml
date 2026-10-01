@@ -154,6 +154,33 @@ jobs:
 
             .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $deltaDir
 
+            Write-Host "=== direct updater script probe ==="
+            $direct = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $deltaDir "Apply-Update.ps1")) -Wait -PassThru
+            if ($direct.ExitCode -ne 0) {
+              throw "Direct Apply-Update.ps1 failed with exit code $($direct.ExitCode)."
+            }
+
+            $releaseInfo = Join-Path $installDir "release-info.json"
+            if (-not (Test-Path -LiteralPath $releaseInfo)) {
+              throw "Direct Apply-Update.ps1 returned success but release-info.json was not installed."
+            }
+
+            Get-Process -Name "ChatGptDesktopLocalBridge" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $installDir -Recurse -Force
+            Remove-Item -LiteralPath $uninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+
+            $legacyInstall2 = Start-Process -FilePath $legacySetup -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$PWD\legacy-install-2.log") -Wait -PassThru
+            if ($legacyInstall2.ExitCode -ne 0) {
+              if (Test-Path "$PWD\legacy-install-2.log") { Get-Content "$PWD\legacy-install-2.log" }
+              throw "Second legacy setup failed with exit code $($legacyInstall2.ExitCode)."
+            }
+
+            $registration = Get-ItemProperty -LiteralPath $uninstallKey -ErrorAction Stop
+            $installDir = [string]$registration.InstallLocation
+            if ([string]::IsNullOrWhiteSpace($installDir)) {
+              $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
+            }
+
             $resolvedDelta = (Resolve-Path $deltaDir).Path
             ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$updateOutput" "/DBaseTag=$legacyTag" "/DTargetTag=$targetTag" "/DUpdateVersion=$targetVersion" ".\installer\DeltaUpdate.iss"
             $updateExe = Join-Path $updateOutput "ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe"
