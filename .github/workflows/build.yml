@@ -32,7 +32,7 @@ jobs:
           --self-contained true
           --output .\publish\win-x64
 
-      - name: Pack test build
+      - name: Pack portable test build
         shell: pwsh
         run: |
           $zip = Join-Path $PWD "ChatGptDesktopLocalBridge-win-x64.zip"
@@ -40,6 +40,23 @@ jobs:
             Remove-Item $zip -Force
           }
           Compress-Archive -Path .\publish\win-x64\* -DestinationPath $zip
+
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          Get-Command ISCC.exe
+
+      - name: Build upgradeable Windows installer
+        shell: pwsh
+        run: |
+          $version = "0.1.${{ github.run_number }}.0"
+          $sourceDir = (Resolve-Path ".\publish\win-x64").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DMyAppVersion=$version" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" ".\installer\ChatGptDesktopLocalBridge.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Setup.exe")) {
+            throw "Installer was not produced."
+          }
 
       - name: Verify GitHub CLI
         run: gh --version
@@ -53,4 +70,4 @@ jobs:
           $sha = "${{ github.sha }}"
           $short = $sha.Substring(0, 7)
           $tag = "dev-$short"
-          gh release create $tag .\ChatGptDesktopLocalBridge-win-x64.zip --target $sha --prerelease --title "Development build $short" --notes "Automated self-contained Windows x64 test build for Local Bridge MVP."
+          gh release create $tag .\ChatGptDesktopLocalBridge-Setup.exe .\ChatGptDesktopLocalBridge-win-x64.zip --target $sha --prerelease --title "Development build $short" --notes "Windows installer upgrades an existing installation in place. The WebView2 user profile is stored outside the install directory so ChatGPT sign-in state survives application upgrades. A portable ZIP is also attached for diagnostics."
