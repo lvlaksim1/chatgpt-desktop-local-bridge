@@ -18,6 +18,9 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Validate Web adapter JavaScript
+        run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
+
       - name: Restore
         run: dotnet restore .\ChatGptDesktopLocalBridge.sln
 
