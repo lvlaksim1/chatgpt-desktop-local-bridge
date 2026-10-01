@@ -7,7 +7,9 @@ $manifestPath = Join-Path $packageRoot "update-manifest.json"
 $payloadRoot = Join-Path $packageRoot "payload"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\ChatGPT Desktop Local Bridge"
 $appExe = Join-Path $installDir "ChatGptDesktopLocalBridge.exe"
+$releaseInfoPath = Join-Path $installDir "release-info.json"
 $processName = "ChatGptDesktopLocalBridge"
+$uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D6B9AF8-6D08-44E1-B2F5-8A6341D99165}_is1"
 
 function Normalize-RelativePath([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -44,6 +46,36 @@ function Assert-ExpectedFile([string]$Root, $Entry) {
     }
 }
 
+function Assert-LegacyInstallerVersion([string]$ExpectedVersion) {
+    if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) {
+        throw "Legacy update manifest does not specify an installer version."
+    }
+
+    if (-not (Test-Path -LiteralPath $uninstallKey)) {
+        throw "Legacy base version cannot be verified: installer registration is missing."
+    }
+
+    $installed = (Get-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -ErrorAction Stop).DisplayVersion
+    if ([string]$installed -ne $ExpectedVersion) {
+        throw "Base version mismatch: installed version is '$installed', expected '$ExpectedVersion'. Use the full Setup installer."
+    }
+}
+
+function Assert-ReleaseMarker([string]$ExpectedTag) {
+    if (-not (Test-Path -LiteralPath $releaseInfoPath -PathType Leaf)) {
+        throw "Base version mismatch: release-info.json is missing. Use the full Setup installer."
+    }
+
+    $info = Get-Content -LiteralPath $releaseInfoPath -Raw | ConvertFrom-Json
+    if ($info.schema -ne "chatgpt-desktop-local-bridge-release-v1") {
+        throw "Installed release marker has an unsupported schema."
+    }
+
+    if ([string]$info.tag -ne $ExpectedTag) {
+        throw "Base version mismatch: installed release is '$($info.tag)', expected '$ExpectedTag'."
+    }
+}
+
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw "update-manifest.json is missing."
 }
@@ -57,7 +89,31 @@ if ($manifest.schema -ne "chatgpt-desktop-local-bridge-delta-v1") {
     throw "Unsupported update manifest schema."
 }
 
+$validationMode = [string]$manifest.baseValidationMode
+if ([string]::IsNullOrWhiteSpace($validationMode)) {
+    $validationMode = "exact"
+}
+
 Write-Host "Validating installed base: $($manifest.fromTag)"
+
+switch ($validationMode) {
+    "legacy-installer-fingerprint" {
+        Assert-LegacyInstallerVersion ([string]$manifest.legacyInstallerVersion)
+
+        if (Test-Path -LiteralPath $releaseInfoPath -PathType Leaf) {
+            throw "This legacy migration package must not be applied to a marker-based installation."
+        }
+    }
+
+    "exact" {
+        Assert-ReleaseMarker ([string]$manifest.fromTag)
+    }
+
+    default {
+        throw "Unsupported base validation mode '$validationMode'."
+    }
+}
+
 foreach ($entry in @($manifest.baseline)) {
     Assert-ExpectedFile $installDir $entry
 }
@@ -152,6 +208,27 @@ try {
         $relative = Normalize-RelativePath ([string]$relativeRaw)
         if (Test-Path -LiteralPath (Join-Path $installDir $relative)) {
             throw "Post-update verification failed: '$relative' should have been removed."
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $releaseInfoPath -PathType Leaf)) {
+        throw "Post-update verification failed: release-info.json is missing."
+    }
+
+    $targetInfo = Get-Content -LiteralPath $releaseInfoPath -Raw | ConvertFrom-Json
+    if ($targetInfo.schema -ne "chatgpt-desktop-local-bridge-release-v1" -or
+        [string]$targetInfo.tag -ne [string]$manifest.toTag) {
+        throw "Post-update verification failed: release marker does not match target."
+    }
+
+    if (Test-Path -LiteralPath $uninstallKey) {
+        try {
+            if (-not [string]::IsNullOrWhiteSpace([string]$targetInfo.appVersion)) {
+                Set-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -Value ([string]$targetInfo.appVersion) -ErrorAction Stop
+            }
+        }
+        catch {
+            Write-Warning "Update succeeded, but Windows Apps & Features version could not be refreshed: $($_.Exception.Message)"
         }
     }
 
