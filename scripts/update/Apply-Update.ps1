@@ -63,7 +63,7 @@ function Assert-LegacyInstallerVersion([string]$ExpectedVersion) {
 
 function Assert-ReleaseMarker([string]$ExpectedTag) {
     if (-not (Test-Path -LiteralPath $releaseInfoPath -PathType Leaf)) {
-        return
+        throw "Base version mismatch: release-info.json is missing. Use the full Setup installer."
     }
 
     $info = Get-Content -LiteralPath $releaseInfoPath -Raw | ConvertFrom-Json
