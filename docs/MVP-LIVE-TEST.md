@@ -30,9 +30,9 @@ LOCAL-BRIDGE-PROBE-01
 3. Sign in to ChatGPT inside the embedded browser if necessary.
 4. Open a new normal conversation.
 5. Click **Initialize Bridge**.
-6. Confirm the status line shows `Bridge initialized. Session ...`.
+6. Wait for the status line to show `Bridge ready. Session ...`.
 
-The bootstrap message is intentionally hidden by the Web adapter after it is sent.
+Initialization is not considered successful merely because the bootstrap was sent. ChatGPT must first return a nonce-bound `LOCAL_BRIDGE_READY_V1` handshake. Both the bootstrap message and the READY reply are hidden by the Web adapter.
 
 ## 3. Run the end-to-end probe
 
