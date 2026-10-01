@@ -28,6 +28,8 @@ AppPublisher={#MyAppPublisher}
 CreateAppDir=no
 Uninstallable=no
 PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename=ChatGptDesktopLocalBridge-Update-from-{#BaseTag}
 Compression=lzma2
@@ -59,6 +61,7 @@ var
   ScriptPath: String;
   Params: String;
 begin
+  Log('RunDeltaUpdater invoked in 64-bit install mode');
   PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
   ScriptPath := ExpandConstant('{tmp}\ChatGptDesktopLocalBridgeDelta\Apply-Update.ps1');
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '"';
