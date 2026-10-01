@@ -116,6 +116,38 @@ function Send-CdpCommand {
     }
 }
 
+function Get-CdpEvalValue {
+    param(
+        $Response,
+        [string]$Stage
+    )
+
+    if ($null -eq $Response) {
+        throw ($Stage + ': empty CDP response')
+    }
+
+    if ($null -ne $Response.PSObject.Properties['error']) {
+        throw ($Stage + ': CDP error: ' + ($Response.error | ConvertTo-Json -Depth 10 -Compress))
+    }
+
+    if ($null -eq $Response.PSObject.Properties['result']) {
+        throw ($Stage + ': missing outer result: ' + ($Response | ConvertTo-Json -Depth 10 -Compress))
+    }
+
+    $outer = $Response.result
+    if ($null -eq $outer.PSObject.Properties['result']) {
+        throw ($Stage + ': missing evaluation result: ' + ($Response | ConvertTo-Json -Depth 10 -Compress))
+    }
+
+    $inner = $outer.result
+    if ($null -eq $inner.PSObject.Properties['value']) {
+        throw ($Stage + ': missing by-value payload: ' + ($Response | ConvertTo-Json -Depth 10 -Compress))
+    }
+
+    return $inner.value
+}
+
+
 $installedExe = Join-Path $env:LOCALAPPDATA 'Programs\ChatGPT Desktop Local Bridge\ChatGptDesktopLocalBridge.exe'
 if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
     Write-ProjectResult -Status 'fail' -ExitCode 10 -ErrorText 'Installed bridge executable not found.'
@@ -189,7 +221,7 @@ try {
     }
     $id++
 
-    $focusValue = $focus.result.result.value
+    $focusValue = Get-CdpEvalValue -Response $focus -Stage 'focus'
     if ($null -eq $focusValue -or -not [bool]$focusValue.ok) {
         throw ('Composer preflight failed: ' + ($focusValue | ConvertTo-Json -Compress))
     }
@@ -227,7 +259,7 @@ try {
     }
     $id++
 
-    $state = $inspect.result.result.value
+    $state = Get-CdpEvalValue -Response $inspect -Stage 'inspect-after-insert'
     if ($null -eq $state -or [string]$state.text -ne $marker) {
         throw ('Native insert was not accepted by composer: ' + ($state | ConvertTo-Json -Compress))
     }
@@ -262,7 +294,7 @@ try {
         }
         $id++
 
-        $finalState = $probe.result.result.value
+        $finalState = Get-CdpEvalValue -Response $probe -Stage 'inspect-after-submit'
         $textNow = [string]$finalState.text
         $usersNow = [int]$finalState.users
 
