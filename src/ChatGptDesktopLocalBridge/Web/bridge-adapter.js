@@ -31,16 +31,31 @@
 
   const SEND_BUTTON_SELECTORS = [
     "button[data-testid='send-button']",
+    "button[data-testid='composer-submit-button']",
     "button[aria-label='Send prompt']",
     "button[aria-label='Send message']",
-    "button[aria-label*='Send']"
+    "button[aria-label*='Send' i]",
+    "button[aria-label*='Отправ' i]"
   ];
 
   function findSendButton(requireEnabled = true) {
-    for (const selector of SEND_BUTTON_SELECTORS) {
-      const element = document.querySelector(selector);
-      if (!element) continue;
-      if (!requireEnabled || !element.disabled) return element;
+    const composer = findComposer();
+    const roots = [];
+    const form = composer?.closest?.("form");
+    if (form) roots.push(form);
+    roots.push(document);
+
+    for (const root of roots) {
+      for (const selector of SEND_BUTTON_SELECTORS) {
+        const element = root.querySelector(selector);
+        if (!element) continue;
+        if (!requireEnabled || !element.disabled) return element;
+      }
+    }
+
+    if (form) {
+      const submit = form.querySelector("button[type='submit']");
+      if (submit && (!requireEnabled || !submit.disabled)) return submit;
     }
 
     return null;
@@ -69,13 +84,15 @@
     });
   }
 
-  function sendText(text, token) {
-    const composer = findComposer();
-    if (!composer) {
-      postSendResult(token, false, "composer-not-found");
-      return { accepted: false, reason: "composer-not-found" };
+  function getComposerText(composer) {
+    if (!composer) return "";
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      return composer.value || "";
     }
+    return composer.innerText || composer.textContent || "";
+  }
 
+  function replaceComposerText(composer, text) {
     composer.focus();
 
     if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
@@ -86,22 +103,81 @@
 
       if (setter) setter.call(composer, text);
       else composer.value = text;
-    } else {
-      composer.textContent = text;
+
+      composer.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertText",
+        data: text
+      }));
+      composer.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
     }
 
-    composer.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      inputType: "insertText",
-      data: text
-    }));
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(composer);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    let inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, text);
+    } catch {
+      inserted = false;
+    }
+
+    if (!inserted || getComposerText(composer).trim() !== text.trim()) {
+      composer.replaceChildren(document.createTextNode(text));
+      composer.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertText",
+        data: text
+      }));
+    }
 
     composer.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function describeComposerState(composer) {
+    const buttons = Array.from(document.querySelectorAll("button"))
+      .slice(-20)
+      .map(button => ({
+        testid: button.getAttribute("data-testid"),
+        aria: button.getAttribute("aria-label"),
+        type: button.getAttribute("type"),
+        disabled: Boolean(button.disabled)
+      }));
+
+    return JSON.stringify({
+      textLength: getComposerText(composer).length,
+      html: (composer.innerHTML || "").slice(0, 300),
+      buttons
+    });
+  }
+
+  function sendText(text, token) {
+    const composer = findComposer();
+    if (!composer) {
+      postSendResult(token, false, "composer-not-found");
+      return { accepted: false, reason: "composer-not-found" };
+    }
+
+    const existing = getComposerText(composer).trim();
+    if (existing) {
+      postSendResult(token, false, "composer-not-empty");
+      return { accepted: false, reason: "composer-not-empty" };
+    }
+
+    replaceComposerText(composer, text);
 
     void (async () => {
       const sendButton = await waitForSendButton();
       if (!sendButton) {
-        postSendResult(token, false, "send-button-not-found");
+        postSendResult(
+          token,
+          false,
+          "send-button-not-found " + describeComposerState(composer)
+        );
         return;
       }
 
