@@ -51,24 +51,30 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "{#DeltaDir}\payload\*"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta\payload"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall skipifsourcedoesntexist
 Source: "{#DeltaDir}\Apply-Update.ps1"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall
-Source: "{#DeltaDir}\update-manifest.json"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall; AfterInstall: RunDeltaUpdater
+Source: "{#DeltaDir}\update-manifest.json"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall
+
+[Run]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\ChatGptDesktopLocalBridgeDelta\Apply-Update.ps1"""; WorkingDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; StatusMsg: "Applying incremental update..."; Flags: waituntilterminated runhidden logoutput 64bit
 
 [Code]
-procedure RunDeltaUpdater();
-var
-  ResultCode: Integer;
-  PowerShellPath: String;
-  ScriptPath: String;
-  Params: String;
+function UpdateSucceeded(): Boolean;
 begin
-  Log('RunDeltaUpdater invoked in 64-bit install mode');
-  PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
-  ScriptPath := ExpandConstant('{tmp}\ChatGptDesktopLocalBridgeDelta\Apply-Update.ps1');
-  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '"';
+  Result := FileExists(ExpandConstant('{tmp}\ChatGptDesktopLocalBridgeDelta\update-success.marker'));
+end;
 
-  if not Exec(PowerShellPath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
-    RaiseException('Unable to launch the incremental updater.');
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and (not UpdateSucceeded()) then
+  begin
+    WizardForm.FinishedLabel.Caption :=
+      'Update failed. The previous application version was preserved or restored.';
+  end;
+end;
 
-  if ResultCode <> 0 then
-    RaiseException(Format('Incremental update failed with exit code %d. No partial update should remain.', [ResultCode]));
+function GetCustomSetupExitCode(): Integer;
+begin
+  if UpdateSucceeded() then
+    Result := 0
+  else
+    Result := 50;
 end;
