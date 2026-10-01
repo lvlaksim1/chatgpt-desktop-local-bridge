@@ -1,22 +1,20 @@
 # Current blockers and open risks
 
-Updated: 2026-10-01 19:31 MSK
+Updated: 2026-10-01 20:00 MSK
 
 ## Immediate BRIDGE-M1 gate
-The adapter-bootstrap fix is implemented, CI-verified, packaged, and published in `dev-450b884`, but not yet live-verified in a signed-in ChatGPT WebView2 session.
+The adapter fix and compact update system are implemented and CI-verified, but Owner-side live validation remains required.
 
-If Diagnostics on `dev-450b884` reports adapter v2, the earlier early-document hypothesis is confirmed and this blocker advances to handshake testing.
+## Legacy delta caveat
+`dev-1d00606` and `dev-9c8b8b7` predate exact release publish manifests. Their delta baselines use reconstruction fallback. The updater performs full baseline SHA verification and will refuse the update if reconstruction does not match the installed files; no partial update should occur.
 
-If it still reports adapter not injected, the root cause remains unresolved and the next investigation must focus on script registration/execution evidence.
+Once the installation reaches `dev-a43d236`, later delta baselines use exact release manifests.
 
 ## Authentication continuity
-The installed baseline already inherited the existing ChatGPT session successfully. The next upgrade from `dev-1d00606` to `dev-450b884` is the first direct in-place-upgrade persistence test.
-
-## Repository storage
-No active storage blocker. Retention is automatic and currently holds only the two newest installable dev prereleases.
+No known blocker. Setup migration already preserved ChatGPT authentication. Delta updater does not touch the WebView2 profile.
 
 ## Reliability debt before mutating tools
-Current request deduplication is process-memory-only. It is adequate for the read-only MVP test but not sufficient for destructive, write, shell, or process actions across restart/crash boundaries.
+RAM-only request deduplication remains insufficient for destructive/write/shell/process actions.
 
 ## Process-control debt
-There is not yet a Windows Job Object containment/emergency-STOP layer. Shell/process capabilities must not be treated as production-ready before that foundation exists.
+Windows Job Object emergency STOP is not yet implemented.

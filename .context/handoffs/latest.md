@@ -1,25 +1,20 @@
 # Latest handoff
 
-Updated: 2026-10-01 19:31 MSK
+Updated: 2026-10-01 20:00 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 5.
-Product authority: `main@450b884423696b70905db394c68ddc45b2ba03ec`.
+Manager generation: 6.
+Product authority: `main@a43d23653a056defffb987c342312b204d357012`.
 
-## Current release
-`dev-450b884` contains only `ChatGptDesktopLocalBridge-Setup.exe`.
-SHA-256: `0757703080c8d334602b6d9882da9f565cd6d5361a88b05d17404c3bc0cb4cb0`.
+## Incremental updates completed
+The project now publishes compact SHA-verified delta update ZIPs with rollback and keeps the full Setup as fallback.
 
-## BRIDGE-M1
-The live `adapter is not injected` failure was reproduced on the installed baseline. A focused document-start patch is now published:
-- bridge registration occurs before observer setup;
-- observer targets `document`;
-- health reports adapter v2;
-- JS syntax is checked in CI.
+`dev-a43d236` is the first release containing an exact `ChatGptDesktopLocalBridge-PublishManifest.json`. Future delta generation prefers this exact release evidence over reconstructed builds.
 
-All CI/package/release steps passed. Live validation remains open.
+## Current Owner path
+Owner is on `dev-1d00606`.
+Use:
+1. `dev-9c8b8b7 / Update-from-dev-1d00606` (~136 KB)
+2. `dev-a43d236 / Update-from-dev-9c8b8b7` (~134 KB)
 
-## Required continuation
-Install `dev-450b884` over the current installation. Confirm the ChatGPT session remains authenticated. Press Diagnostics before Initialize Bridge and report the exact result.
-
-Do not claim BRIDGE-M1 success until READY and a local `fs.read_text` round trip are both proven.
+Then rerun Diagnostics. Do not claim BRIDGE-M1 success until READY and `fs.read_text` round trip are proven.

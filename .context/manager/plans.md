@@ -2,59 +2,37 @@
 
 ## Current planning state
 
-Manager generation: 5.
-Product authority: `main@450b884423696b70905db394c68ddc45b2ba03ec`.
-Current installable release: `dev-450b884`.
-BRIDGE-M1: ACTIVE / adapter-bootstrap patch published, awaiting live upgrade validation.
+Manager generation: 6.
+Product authority: `main@a43d23653a056defffb987c342312b204d357012`.
+Current manifest-backed release: `dev-a43d236`.
+Owner installed baseline: `dev-1d00606`.
+BRIDGE-M1: ACTIVE.
 
-## Immediate continuation — BRIDGE-M1
+## Immediate live update path
 
-1. Install `dev-450b884 / ChatGptDesktopLocalBridge-Setup.exe` over the existing installed `dev-1d00606`.
-2. Verify the ChatGPT session remains authenticated after upgrade.
-3. Press Diagnostics before Initialize Bridge.
-4. If Diagnostics reports adapter v2, classify the document-start patch as live-confirmed.
-5. If Diagnostics still reports adapter not injected, collect the exact live status and inspect injection-registration evidence rather than broadening selectors.
-6. If diagnostics passes, initialize the bridge and require nonce-bound READY.
-7. Run a known-file `fs.read_text` round trip and verify the final model response.
-8. Persist exact live evidence.
+1. Apply `ChatGptDesktopLocalBridge-Update-from-dev-1d00606.zip` from release `dev-9c8b8b7`.
+2. Confirm updater succeeds and application restarts with ChatGPT session intact.
+3. Apply `ChatGptDesktopLocalBridge-Update-from-dev-9c8b8b7.zip` from release `dev-a43d236`.
+4. Confirm updater succeeds and ChatGPT session remains intact.
+5. The installation is then on the first exact-manifest update baseline.
+6. Press Diagnostics before Initialize Bridge.
+7. If Diagnostics reports adapter v2, proceed to Initialize Bridge and require nonce-bound READY.
+8. Prove one known-file `fs.read_text` round trip.
 
-## Phase 2 — BRIDGE-M2 adapter hardening
+## Future update policy
 
-1. Add explicit `isGenerating()` detection using current ChatGPT stop controls.
-2. Select only visible composer/send controls and prefer the composer-local send control.
-3. Preserve any non-empty user draft; bridge-generated result delivery must not overwrite a draft.
-4. Submit using bounded fallbacks: click -> form `requestSubmit` -> synthetic Enter.
-5. Verify that submission actually initiated/cleared the staged bridge message.
-6. On structural DOM failure, enter fail-closed `PAUSED / DOM ERROR` until explicit recovery.
-7. Add deterministic adapter tests where practical.
+- Prefer a matching `ChatGptDesktopLocalBridge-Update-from-dev-*.zip` over the full Setup.
+- Extract the ZIP and run `Apply-Update.cmd`.
+- The updater must refuse mismatched bases rather than partially updating.
+- Each release publishes an exact publish manifest; later deltas use it as authority.
+- Keep full Setup in the current release for fresh installation and recovery.
+- Retain compact development release storage according to DEC-0004.
 
-## Phase 3 — BRIDGE-M3 native reliability
+## Follow-on engineering
 
-1. Introduce an explicit state machine: DISCONNECTED, INITIALIZING, READY, RUNNING, PAUSED, ERROR.
-2. Replace the growing tool switch with a capability registry carrying schema, permission key, timeout policy, and handler.
-3. Add bounded-result storage: inline preview plus local full result, SHA-256, byte count, and path.
-4. Replace RAM-only request dedupe with a durable append-only execution ledger:
-   - same ID + same request hash -> duplicate/no replay;
-   - same ID + different hash -> conflict;
-   - interrupted nonterminal operations -> INTERRUPTED, never blind replay.
-5. Separate execution completion from delivery acknowledgement/retry.
-6. Add recovery, duplicate, malformed-state, and crash-window tests.
-
-## Phase 4 — BRIDGE-M4 capability expansion
-
-1. Add `fs.stat`.
-2. Add deterministic `fs.patch` before generic overwrite-heavy workflows.
-3. Add write/mkdir/copy/move/delete according to external permissions policy.
-4. Before shell/process tools, implement Windows Job Object containment and Emergency STOP.
-5. Then add process/shell, Git, Excel, browser/UI families incrementally with focused tests.
-
-## Packaging, storage, and authentication continuity
-
-- Preferred distribution: `ChatGptDesktopLocalBridge-Setup.exe`.
-- Newer installers upgrade the same per-user application identity.
-- Program files live under `%LOCALAPPDATA%\Programs\ChatGPT Desktop Local Bridge`.
-- WebView2 profile remains under `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2` and is not part of normal application upgrade.
-- Normal dev releases publish installer only; retain at most two newest installable `dev-*` prereleases.
-- Stable releases are excluded from cleanup.
-- Automatic background update discovery/download is not yet implemented; current guarantee is in-place upgrade when a newer Setup is run.
-- Stable/production release remains Owner-gated.
+After BRIDGE-M1 closes:
+1. BRIDGE-M2 adapter hardening.
+2. BRIDGE-M3 native reliability and durable execution.
+3. deterministic mutation primitives.
+4. Windows Job Object Emergency STOP.
+5. shell/process, Git, Excel, browser/UI capability families.

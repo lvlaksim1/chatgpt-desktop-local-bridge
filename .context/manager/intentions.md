@@ -4,53 +4,44 @@
 
 ### BRIDGE-M0 — MVP build and first development package
 - status: completed
-- product evidence: `main@977a504be19e2d21cb3c524275b003b9a6db7592`
-- release evidence: `dev-977a504`
-- verification: Windows CI restore/build/self-contained publish/ZIP/prerelease succeeded
 
 ### BRIDGE-M0A — Install/upgrade channel with persistent auth profile
 - status: completed
-- owner authorization: direct Owner directive on 2026-10-01
-- product evidence: `main@1d006065462d442e429478158e655e3edc5c7938`
-- release evidence: `dev-1d00606`
-- verification: PR CI and main CI successfully compiled the Inno Setup installer
-- continuity rule: program upgrades do not replace/delete `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`
+- evidence: `dev-1d00606`
+- rule: WebView2 profile remains outside install directory
 
 ### BRIDGE-M0B — Repository/release storage hygiene
 - status: completed
-- owner authorization: direct Owner directive on 2026-10-01
-- product evidence: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`
-- durable policy: retain at most two installable dev prereleases; delete portable-only dev releases/tags and redundant ZIP assets; do not touch stable releases; generated installers/packages remain ignored by Git
+- evidence: `main@724a64b7f1ccc0ec92cd95fb511ecf1acb74ca95`
+
+### BRIDGE-M0C — Incremental update channel
+- status: completed
+- owner authorization: direct Owner request on 2026-10-01
+- product evidence: `main@a43d23653a056defffb987c342312b204d357012`
+- CI evidence: PowerShell syntax, delta smoke generation, installer build, real delta generation, release publication, and retention cleanup all passed
+- release evidence: `dev-a43d236`
+- policy: delta update is preferred for ordinary upgrades; full Setup remains first-install/fallback
+- deterministic baseline: exact publish manifests are published beginning with `dev-a43d236`
 
 ## Active
 
 ### BRIDGE-M1 — Live end-to-end bridge proof
 - status: accepted/active
-- owner authorization: direct Owner development directive
-- live evidence: Diagnostics failed with `Local Bridge adapter is not injected` on both the prior portable build and installed `dev-1d00606`
-- focused patch: published as `dev-450b884`; CI including JS syntax, .NET build, self-contained publish, installer build, release publication, and retention cleanup passed
-- current gate: install `dev-450b884` over the existing installation, confirm ChatGPT auth persists, and rerun Diagnostics
-- objective: prove `ChatGPT -> Web adapter -> C# bridge -> local tool -> RESULT -> ChatGPT` on the Owner's Windows machine
+- live evidence: pre-fix Diagnostics failed with `Local Bridge adapter is not injected`
+- current gate: move Owner installation from `dev-1d00606` through compact delta updates to `dev-a43d236`, confirm authentication survives, then rerun Diagnostics
 - minimum acceptance evidence:
-  1. Diagnostics reports adapter/WebView/composer state;
+  1. Diagnostics reports adapter v2/WebView/composer state;
   2. Initialize reaches `Bridge ready. Session ...`;
-  3. `fs.read_text` reads a known local test file and the final answer returns through the same conversation.
-- responsibility: `chatgpt-desktop-local-bridge-project-manager`
+  3. `fs.read_text` reads a known local test file and final answer returns through the same conversation.
 
 ### BRIDGE-M2 — Web adapter reliability hardening
 - status: accepted/active
-- owner authorization: Owner approved the reviewed hardening roadmap on 2026-10-01
-- objective: add generation detection, visible DOM selection, verified submission, robust fallback submission, and fail-closed DOM pause/error behavior
-- completion rule: code merged to product authority only after Windows CI and a focused live acceptance check
+- objective: generation detection, visible DOM selection, verified submission, robust fallback submission, fail-closed DOM behavior
 
 ### BRIDGE-M3 — Durable execution foundation
 - status: accepted/active
-- owner authorization: Owner approved the reviewed hardening roadmap on 2026-10-01
-- objective: introduce explicit bridge states, capability registry, bounded large-result handling, durable request identity/replay protection, distinct result-delivery state, and recovery semantics
-- completion rule: deterministic tests plus recovery/replay tests must demonstrate no unintended re-execution
+- objective: explicit bridge states, capability registry, bounded results, durable exactly-once execution, separate delivery recovery
 
 ### BRIDGE-M4 — Controlled mutating/process capabilities
 - status: accepted/active
-- owner authorization: Owner approved the roadmap direction; implementation is gated by BRIDGE-M3
-- objective: add safe deterministic mutation primitives and later shell/process execution
-- prerequisite: durable replay protection must exist before destructive/mutating actions; Windows Job Object emergency STOP must exist before shell/process expansion
+- prerequisite: durable replay protection before destructive actions; Windows Job Object Emergency STOP before shell/process expansion

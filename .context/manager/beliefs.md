@@ -10,55 +10,44 @@
    - source: Owner-approved manager installation on 2026-10-01
    - authority: owner-directive
 
-3. Current product authority is `main@450b884423696b70905db394c68ddc45b2ba03ec`.
+3. Current product authority is `main@a43d23653a056defffb987c342312b204d357012`.
    - source: live GitHub repository state
    - authority: verified-repository
 
-4. Current installable development release is `dev-450b884`, containing only `ChatGptDesktopLocalBridge-Setup.exe`. Its SHA-256 is `0757703080c8d334602b6d9882da9f565cd6d5361a88b05d17404c3bc0cb4cb0`.
+4. Current installable development release is `dev-a43d236`. It contains a full fallback Setup, incremental update packages, and the first exact publish manifest.
+   - full Setup SHA-256: `78b81c79f1cc0edd8442cacc041c03159119331ccd0ef8bf5aaf415f5520e7f3`
+   - publish manifest SHA-256: `181b362d3f24d14863e72f018c00b9dfb36223ca911b348b7014d5e34d3cd380`
    - source: GitHub Release and successful main workflow
    - authority: verified-repository / verified-ci
 
-5. Repository storage policy is enforced in CI: generated binaries/packages are ignored by Git; ordinary development releases publish only the installer; obsolete portable-only dev releases/tags are deleted; at most the two newest installable dev prereleases are retained. Stable releases are not touched.
-   - source: current product source and successful cleanup workflows
+5. Incremental update packages are now the preferred ordinary upgrade path. A delta ZIP contains only changed/added application files, removed-file metadata, a base SHA-256 manifest, and a rollback-capable updater.
+   - source: `main@a43d23653a056defffb987c342312b204d357012`
    - authority: verified-repository / verified-ci / owner-directive
 
-6. The installer uses a stable Inno Setup AppId and installs for the current user under `%LOCALAPPDATA%\Programs\ChatGPT Desktop Local Bridge`. Running a newer installer upgrades the existing installation in place rather than intentionally creating a parallel installation.
-   - source: installer source + successful installer compilation
+6. The updater validates the expected installed base before changing files, closes the application, backs up touched files, applies the delta, verifies target hashes, rolls back on failure, and restarts the application. It never modifies the WebView2 profile path.
+   - source: updater implementation + CI syntax/smoke tests
    - authority: verified-repository / verified-ci
 
-7. ChatGPT authentication continuity is based on the dedicated WebView2 User Data Folder `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`, which is outside the application install directory. Installed builds continue to use this path across upgrades.
-   - source: product source + Microsoft WebView2 UDF behavior
-   - authority: verified-repository / trusted-external
+7. Starting with `dev-a43d236`, each development release publishes `ChatGptDesktopLocalBridge-PublishManifest.json` containing exact SHA-256 hashes for the actual publish used by that release. Future deltas prefer this manifest instead of reconstructing the old build.
+   - source: release `dev-a43d236`
+   - authority: verified-repository / verified-ci
 
-8. Automatic cloning of a live Yandex Browser ChatGPT session into WebView2 is not the selected continuity mechanism. Cross-browser cookie/profile copying is not a robust contract and may be blocked by application-bound browser data protection; a dedicated persistent WebView2 profile avoids this dependency.
-   - source: Yandex profile documentation, Chromium security documentation, WebView2 profile documentation
-   - authority: trusted-external + manager-inference
-
-9. The current MVP embeds `chatgpt.com` in WPF/WebView2 and uses injected JavaScript plus `window.chrome.webview.postMessage` to reach an in-process C# Local Bridge. It does not require an OpenAI API key, ChatGPT Work, a browser extension, or a localhost bridge server.
-   - source: product source at current main
+8. Legacy releases without an exact publish manifest use a reconstruction fallback. This path is fail-safe: a delta refuses to apply when the installed baseline hashes do not match.
+   - source: delta builder/updater implementation
    - authority: verified-repository
 
-10. Current implemented local tools are `system.info`, `fs.list`, and `fs.read_text`.
-    - source: `ToolRouter.cs` at current main
+9. The Owner's currently installed baseline is `dev-1d00606`. A legacy delta from that version to `dev-9c8b8b7` is published at 135,943 bytes, followed by a delta from `dev-9c8b8b7` to manifest-backed `dev-a43d236` at 133,678 bytes.
+   - source: current GitHub releases + Owner live status
+   - authority: verified-repository / verified-runtime
+
+10. Repository storage policy is enforced in CI: generated binaries/packages are ignored by Git; ordinary dev releases retain at most the two newest installable prereleases; stable releases are not touched.
+    - source: current product source and successful cleanup workflows
+    - authority: verified-repository / verified-ci / owner-directive
+
+11. ChatGPT authentication continuity is based on `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\WebView2`, outside the application install directory. Setup and delta update paths do not intentionally alter that profile.
+    - source: product architecture
     - authority: verified-repository
 
-11. BRIDGE-M1 live evidence from the Owner on 2026-10-01: Diagnostics on both the prior portable build and the installed `dev-1d00606` baseline returned `Diagnostics failed: Local Bridge adapter is not injected.`
-    - source: direct Owner live reports
-    - authority: verified-runtime
-
-12. A focused patch is now published in `dev-450b884`: `window.__localBridge` is registered before observer setup, and the MutationObserver targets the always-available `document` node instead of `document.documentElement`.
-    - source: `main@450b884423696b70905db394c68ddc45b2ba03ec`
-    - authority: verified-repository / verified-ci
-    - status: implementation verified; root-cause hypothesis still requires live confirmation
-
-13. Windows CI now checks `bridge-adapter.js` syntax with `node --check` before .NET restore/build.
-    - source: current workflow and successful CI
-    - authority: verified-repository / verified-ci
-
-14. Owner approved the hardening roadmap derived from comparison with relevant public projects: generation detection, visible composer/send selection, send verification, fail-closed DOM handling, explicit bridge states, capability registry, bounded large results, durable exactly-once execution, separate result-delivery state, and Windows Job Object emergency STOP before shell/process expansion.
-    - source: direct Owner directive on 2026-10-01
-    - authority: owner-directive
-
-15. External reference projects are evidence and design input, not project authority. Code from projects without an explicit compatible license must not be copied; concepts may be reimplemented independently.
-    - source: engineering review on 2026-10-01
-    - authority: manager-inference from verified repository metadata
+12. BRIDGE-M1 live evidence remains: Diagnostics on the pre-fix installed baseline returned `Diagnostics failed: Local Bridge adapter is not injected.` The document-start adapter fix is present in all current post-fix releases, but still awaits Owner live validation.
+    - source: Owner live report + current source
+    - authority: verified-runtime / verified-repository
