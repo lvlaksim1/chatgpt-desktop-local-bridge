@@ -155,9 +155,10 @@ jobs:
             .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $deltaDir
 
             Write-Host "=== direct updater script probe ==="
-            $direct = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $deltaDir "Apply-Update.ps1")) -Wait -PassThru
-            if ($direct.ExitCode -ne 0) {
-              throw "Direct Apply-Update.ps1 failed with exit code $($direct.ExitCode)."
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $deltaDir "Apply-Update.ps1")
+            $directExit = $LASTEXITCODE
+            if ($directExit -ne 0) {
+              throw "Direct Apply-Update.ps1 failed with exit code $directExit."
             }
 
             $releaseInfo = Join-Path $installDir "release-info.json"
