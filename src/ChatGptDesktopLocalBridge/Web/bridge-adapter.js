@@ -205,7 +205,7 @@
     const sendButton = findSendButton(false);
 
     return {
-      version: 1,
+      version: 2,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -231,19 +231,19 @@
     }, 120);
   }
 
-  const observer = new MutationObserver(scheduleScan);
-  observer.observe(document.documentElement, {
-    subtree: true,
-    childList: true,
-    characterData: true
-  });
-
   window.__localBridge = {
     sendText,
     scan: scheduleScan,
     health,
-    version: 1
+    version: 2
   };
+
+  const observer = new MutationObserver(scheduleScan);
+  observer.observe(document, {
+    subtree: true,
+    childList: true,
+    characterData: true
+  });
 
   scheduleScan();
 })();
