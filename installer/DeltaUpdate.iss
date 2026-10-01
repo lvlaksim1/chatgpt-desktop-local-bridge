@@ -47,26 +47,25 @@ VersionInfoProductName={#MyAppName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "{#DeltaDir}\*"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall
+Source: "{#DeltaDir}\payload\*"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta\payload"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall
+Source: "{#DeltaDir}\Apply-Update.ps1"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall
+Source: "{#DeltaDir}\update-manifest.json"; DestDir: "{tmp}\ChatGptDesktopLocalBridgeDelta"; Flags: ignoreversion deleteafterinstall; AfterInstall: RunDeltaUpdater
 
 [Code]
-procedure CurStepChanged(CurStep: TSetupStep);
+procedure RunDeltaUpdater();
 var
   ResultCode: Integer;
   PowerShellPath: String;
   ScriptPath: String;
   Params: String;
 begin
-  if CurStep = ssPostInstall then
-  begin
-    PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
-    ScriptPath := ExpandConstant('{tmp}\ChatGptDesktopLocalBridgeDelta\Apply-Update.ps1');
-    Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '"';
+  PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  ScriptPath := ExpandConstant('{tmp}\ChatGptDesktopLocalBridgeDelta\Apply-Update.ps1');
+  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '"';
 
-    if not Exec(PowerShellPath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
-      RaiseException('Unable to launch the incremental updater.');
+  if not Exec(PowerShellPath, Params, '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+    RaiseException('Unable to launch the incremental updater.');
 
-    if ResultCode <> 0 then
-      RaiseException(Format('Incremental update failed with exit code %d. No partial update should remain.', [ResultCode]));
-  end;
+  if ResultCode <> 0 then
+    RaiseException(Format('Incremental update failed with exit code %d. No partial update should remain.', [ResultCode]));
 end;
