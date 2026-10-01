@@ -119,7 +119,9 @@
 
     const selection = window.getSelection();
     const range = document.createRange();
-    range.selectNodeContents(composer);
+    const insertionRoot = composer.querySelector("p") || composer;
+    range.selectNodeContents(insertionRoot);
+    range.collapse(true);
     selection?.removeAllRanges();
     selection?.addRange(range);
 
@@ -131,12 +133,13 @@
     }
 
     if (!inserted || getComposerText(composer).trim() !== text.trim()) {
-      composer.replaceChildren(document.createTextNode(text));
-      composer.dispatchEvent(new InputEvent("input", {
-        bubbles: true,
-        inputType: "insertText",
-        data: text
-      }));
+      try {
+        composer.focus();
+        document.execCommand("selectAll", false, null);
+        inserted = document.execCommand("insertText", false, text);
+      } catch {
+        inserted = false;
+      }
     }
 
     composer.dispatchEvent(new Event("change", { bubbles: true }));
