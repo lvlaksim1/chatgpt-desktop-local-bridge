@@ -15,22 +15,27 @@ public sealed class BridgeHost
     private readonly PermissionPolicy _policy;
     private readonly Func<string, Task<bool>> _sendToChat;
     private readonly Action<string> _status;
-    private readonly ToolRouter _router = new();
-    private readonly HashSet<string> _executedRequestIds = new(StringComparer.Ordinal);
+    private readonly ToolRouter _router;
+    private readonly BridgeExecutionLedger _ledger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _logDirectory;
 
     public BridgeHost(
         PermissionPolicy policy,
         Func<string, Task<bool>> sendToChat,
-        Action<string> status)
+        Action<string> status,
+        BridgeExecutionLedger? ledger = null,
+        ToolRouter? router = null,
+        string? logDirectory = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
         _status = status;
+        _router = router ?? new ToolRouter();
+        _ledger = ledger ?? new BridgeExecutionLedger();
         SessionId = Guid.NewGuid().ToString("N");
 
-        _logDirectory = Path.Combine(
+        _logDirectory = logDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ChatGptDesktopLocalBridge",
             "logs");
@@ -93,23 +98,9 @@ public sealed class BridgeHost
         await _gate.WaitAsync();
         try
         {
-            BridgeRequest? request;
-            try
+            var request = ParseRequest(requestElement);
+            if (request is null)
             {
-                request = requestElement.Deserialize<BridgeRequest>(
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            }
-            catch (Exception ex)
-            {
-                _status($"Rejected malformed bridge request: {ex.Message}");
-                return;
-            }
-
-            if (request is null ||
-                string.IsNullOrWhiteSpace(request.Id) ||
-                string.IsNullOrWhiteSpace(request.Tool))
-            {
-                _status("Rejected malformed bridge request.");
                 return;
             }
 
@@ -119,58 +110,79 @@ public sealed class BridgeHost
                 return;
             }
 
-            if (!_executedRequestIds.Add(request.Id))
+            var capability = BridgeCapabilityRegistry.Resolve(request.Tool);
+            var fingerprint = BridgeExecutionLedger.ComputeRequestFingerprint(request);
+            var existing = await _ledger.GetAsync(request.Session, request.Id);
+
+            if (existing is not null)
             {
-                _status($"Ignored duplicate request {request.Id}.");
+                await HandleExistingAsync(request, fingerprint, existing);
                 return;
             }
 
-            var capability = ToolRouter.GetCapability(request.Tool);
-            var decision = _policy.GetDecision(capability);
+            var record = _ledger.CreateReceived(request, capability);
+            await _ledger.SaveAsync(record);
+
+            if (!capability.Known)
+            {
+                await PersistResultAndDeliverAsync(
+                    request,
+                    capability,
+                    record,
+                    new BridgeResult(
+                        SessionId,
+                        request.Id,
+                        false,
+                        Error: new BridgeError(
+                            "unknown_tool",
+                            $"Unknown local tool: {request.Tool}")),
+                    executionOk: false,
+                    errorCode: "unknown_tool",
+                    elapsedMs: 0);
+                return;
+            }
+
+            var decision = _policy.GetDecision(capability.Capability);
 
             if (decision == PermissionDecision.Deny)
             {
-                await SendErrorAsync(request, "permission_denied", $"Capability {capability} is denied.");
-                await WriteAuditAsync(request, false, "permission_denied", 0);
+                await PersistResultAndDeliverAsync(
+                    request,
+                    capability,
+                    record,
+                    new BridgeResult(
+                        SessionId,
+                        request.Id,
+                        false,
+                        Error: new BridgeError(
+                            "permission_denied",
+                            $"Capability {capability.Capability} is denied.")),
+                    executionOk: false,
+                    errorCode: "permission_denied",
+                    elapsedMs: 0);
                 return;
             }
 
             if (decision == PermissionDecision.Ask)
             {
-                await SendErrorAsync(
+                await PersistResultAndDeliverAsync(
                     request,
-                    "permission_requires_confirmation",
-                    $"Capability {capability} is configured as ASK. Interactive confirmation UI is the next implementation stage.");
-                await WriteAuditAsync(request, false, "permission_requires_confirmation", 0);
+                    capability,
+                    record,
+                    new BridgeResult(
+                        SessionId,
+                        request.Id,
+                        false,
+                        Error: new BridgeError(
+                            "permission_requires_confirmation",
+                            $"Capability {capability.Capability} is configured as ASK. Interactive confirmation UI is the next implementation stage.")),
+                    executionOk: false,
+                    errorCode: "permission_requires_confirmation",
+                    elapsedMs: 0);
                 return;
             }
 
-            var stopwatch = Stopwatch.StartNew();
-            try
-            {
-                _status($"Running {request.Tool} ({request.Id})…");
-                var result = await _router.ExecuteAsync(request.Tool, request.Args);
-                stopwatch.Stop();
-
-                var envelope = new BridgeResult(SessionId, request.Id, true, result);
-                await SendResultAsync(envelope);
-                await WriteAuditAsync(request, true, null, stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} completed in {stopwatch.ElapsedMilliseconds} ms.");
-            }
-            catch (BridgeToolException ex)
-            {
-                stopwatch.Stop();
-                await SendErrorAsync(request, ex.Code, ex.Message);
-                await WriteAuditAsync(request, false, ex.Code, stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} failed: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                stopwatch.Stop();
-                await SendErrorAsync(request, "tool_error", ex.Message);
-                await WriteAuditAsync(request, false, "tool_error", stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} failed: {ex.Message}");
-            }
+            await ExecuteOnceAsync(request, capability, record);
         }
         finally
         {
@@ -178,54 +190,383 @@ public sealed class BridgeHost
         }
     }
 
-    private async Task SendErrorAsync(BridgeRequest request, string code, string message)
+    private BridgeRequest? ParseRequest(JsonElement requestElement)
     {
-        var envelope = new BridgeResult(
-            SessionId,
-            request.Id,
-            false,
-            Error: new BridgeError(code, message));
+        BridgeRequest? request;
+        try
+        {
+            request = requestElement.Deserialize<BridgeRequest>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            _status($"Rejected malformed bridge request: {ex.Message}");
+            return null;
+        }
 
-        await SendResultAsync(envelope);
+        if (request is null ||
+            string.IsNullOrWhiteSpace(request.Session) ||
+            string.IsNullOrWhiteSpace(request.Id) ||
+            string.IsNullOrWhiteSpace(request.Tool))
+        {
+            _status("Rejected malformed bridge request.");
+            return null;
+        }
+
+        return request;
     }
 
-    private async Task SendResultAsync(BridgeResult result)
+    private async Task HandleExistingAsync(
+        BridgeRequest request,
+        string fingerprint,
+        BridgeLedgerRecord existing)
     {
-        var json = JsonSerializer.Serialize(result, new JsonSerializerOptions
+        if (!string.Equals(
+                fingerprint,
+                existing.RequestFingerprint,
+                StringComparison.Ordinal))
         {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        });
+            _status($"Rejected conflicting duplicate request {request.Id}.");
+            await TrySendTransientErrorAsync(
+                request,
+                "request_id_conflict",
+                "The same bridge request id was reused with different tool arguments.");
+            return;
+        }
 
-        var message = $"{ResultStart}\n{json}\n{ResultEnd}";
-        var sent = await _sendToChat(message);
-
-        if (!sent)
+        switch (existing.State)
         {
-            throw new InvalidOperationException("Could not inject bridge result into the ChatGPT composer.");
+            case BridgeRequestState.Received:
+                var capability = BridgeCapabilityRegistry.Resolve(existing.Tool);
+                _status($"Resuming received request {request.Id} before local execution.");
+                await ResumeReceivedAsync(request, capability, existing);
+                return;
+
+            case BridgeRequestState.ExecutionStarted:
+                _status(
+                    $"Request {request.Id} has uncertain execution state; refusing blind re-execution.");
+                await TrySendTransientErrorAsync(
+                    request,
+                    "execution_state_uncertain",
+                    "Local execution may have started before an interruption. The bridge will not execute this request again automatically.");
+                return;
+
+            case BridgeRequestState.ResultReady:
+                _status($"Delivering durable result for duplicate request {request.Id}.");
+                await DeliverStoredResultAsync(existing);
+                return;
+
+            case BridgeRequestState.DeliveryPending:
+                _status(
+                    $"Request {request.Id} has uncertain delivery state; refusing blind result replay.");
+                await TrySendTransientErrorAsync(
+                    request,
+                    "delivery_state_uncertain",
+                    "A durable result exists, but prior delivery may already have reached ChatGPT. The bridge will not replay it automatically.");
+                return;
+
+            case BridgeRequestState.Delivered:
+                _status($"Ignored already delivered duplicate request {request.Id}.");
+                return;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Unsupported bridge ledger state {existing.State}.");
         }
     }
 
-    private async Task WriteAuditAsync(
+    private async Task ResumeReceivedAsync(
+        BridgeRequest request,
+        BridgeCapabilityDefinition capability,
+        BridgeLedgerRecord record)
+    {
+        if (!capability.Known)
+        {
+            await PersistResultAndDeliverAsync(
+                request,
+                capability,
+                record,
+                new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(
+                        "unknown_tool",
+                        $"Unknown local tool: {request.Tool}")),
+                executionOk: false,
+                errorCode: "unknown_tool",
+                elapsedMs: 0);
+            return;
+        }
+
+        var decision = _policy.GetDecision(capability.Capability);
+        if (decision != PermissionDecision.Auto)
+        {
+            var code = decision == PermissionDecision.Ask
+                ? "permission_requires_confirmation"
+                : "permission_denied";
+            var message = decision == PermissionDecision.Ask
+                ? $"Capability {capability.Capability} is configured as ASK. Interactive confirmation UI is the next implementation stage."
+                : $"Capability {capability.Capability} is denied.";
+
+            await PersistResultAndDeliverAsync(
+                request,
+                capability,
+                record,
+                new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(code, message)),
+                executionOk: false,
+                errorCode: code,
+                elapsedMs: 0);
+            return;
+        }
+
+        await ExecuteOnceAsync(request, capability, record);
+    }
+
+    private async Task ExecuteOnceAsync(
+        BridgeRequest request,
+        BridgeCapabilityDefinition capability,
+        BridgeLedgerRecord record)
+    {
+        var executionRecord = record with
+        {
+            State = BridgeRequestState.ExecutionStarted
+        };
+        await _ledger.SaveAsync(executionRecord);
+
+        var stopwatch = Stopwatch.StartNew();
+        BridgeResult envelope;
+        bool executionOk;
+        string? errorCode;
+
+        _status($"Running {request.Tool} ({request.Id})…");
+
+        try
+        {
+            var result = await _router.ExecuteAsync(request.Tool, request.Args);
+            stopwatch.Stop();
+
+            envelope = new BridgeResult(
+                SessionId,
+                request.Id,
+                true,
+                result);
+            executionOk = true;
+            errorCode = null;
+        }
+        catch (BridgeToolException ex)
+        {
+            stopwatch.Stop();
+
+            envelope = new BridgeResult(
+                SessionId,
+                request.Id,
+                false,
+                Error: new BridgeError(ex.Code, ex.Message));
+            executionOk = false;
+            errorCode = ex.Code;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+
+            envelope = new BridgeResult(
+                SessionId,
+                request.Id,
+                false,
+                Error: new BridgeError("tool_error", ex.Message));
+            executionOk = false;
+            errorCode = "tool_error";
+        }
+
+        await PersistResultAndDeliverAsync(
+            request,
+            capability,
+            executionRecord,
+            envelope,
+            executionOk,
+            errorCode,
+            stopwatch.ElapsedMilliseconds);
+    }
+
+    private async Task PersistResultAndDeliverAsync(
+        BridgeRequest request,
+        BridgeCapabilityDefinition capability,
+        BridgeLedgerRecord record,
+        BridgeResult envelope,
+        bool executionOk,
+        string? errorCode,
+        long elapsedMs)
+    {
+        var serialized = BridgeResultCodec.SerializeBounded(
+            envelope,
+            capability.MaxResultBytes);
+
+        var persistedErrorCode = serialized.Envelope.Error?.Code ?? errorCode;
+        var resultRecord = record with
+        {
+            State = BridgeRequestState.ResultReady,
+            ResultEnvelopeJson = serialized.Json,
+            ExecutionOk = executionOk,
+            ErrorCode = persistedErrorCode,
+            ElapsedMs = elapsedMs
+        };
+
+        await _ledger.SaveAsync(resultRecord);
+
+        await TryWriteAuditAsync(
+            request,
+            serialized.Envelope.Ok,
+            persistedErrorCode,
+            elapsedMs);
+
+        if (serialized.WasBounded)
+        {
+            _status(
+                $"{request.Tool} completed, but its {serialized.OriginalBytes}-byte result exceeded the {capability.MaxResultBytes}-byte bridge limit.");
+        }
+        else if (executionOk)
+        {
+            _status($"{request.Tool} completed in {elapsedMs} ms; delivering durable result.");
+        }
+        else
+        {
+            _status($"{request.Tool} failed locally; delivering durable error result.");
+        }
+
+        var delivered = await DeliverStoredResultAsync(resultRecord);
+        if (!delivered)
+        {
+            _status(
+                $"{request.Tool} result is durable, but delivery was not confirmed. Automatic replay is disabled.");
+        }
+    }
+
+    private async Task<bool> DeliverStoredResultAsync(BridgeLedgerRecord record)
+    {
+        if (record.State == BridgeRequestState.Delivered)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(record.ResultEnvelopeJson))
+        {
+            throw new InvalidOperationException(
+                $"Bridge ledger result is missing for request {record.RequestId}.");
+        }
+
+        if (record.State == BridgeRequestState.DeliveryPending)
+        {
+            return false;
+        }
+
+        if (record.State != BridgeRequestState.ResultReady)
+        {
+            throw new InvalidOperationException(
+                $"Request {record.RequestId} is not ready for result delivery from state {record.State}.");
+        }
+
+        var deliveryRecord = record with
+        {
+            State = BridgeRequestState.DeliveryPending
+        };
+        await _ledger.SaveAsync(deliveryRecord);
+
+        bool sent;
+        try
+        {
+            sent = await SendResultJsonAsync(record.ResultEnvelopeJson);
+        }
+        catch (Exception ex)
+        {
+            _status(
+                $"Bridge result delivery failed for {record.RequestId}: {ex.Message}");
+            return false;
+        }
+
+        if (!sent)
+        {
+            return false;
+        }
+
+        var deliveredRecord = deliveryRecord with
+        {
+            State = BridgeRequestState.Delivered
+        };
+        await _ledger.SaveAsync(deliveredRecord);
+        return true;
+    }
+
+    private async Task<bool> SendResultJsonAsync(string json)
+    {
+        var message = $"{ResultStart}\n{json}\n{ResultEnd}";
+        return await _sendToChat(message);
+    }
+
+    private async Task TrySendTransientErrorAsync(
+        BridgeRequest request,
+        string code,
+        string message)
+    {
+        try
+        {
+            var envelope = new BridgeResult(
+                SessionId,
+                request.Id,
+                false,
+                Error: new BridgeError(code, message));
+            var serialized = BridgeResultCodec.SerializeBounded(
+                envelope,
+                64 * 1024);
+
+            if (!await SendResultJsonAsync(serialized.Json))
+            {
+                _status(
+                    $"Could not deliver transient bridge error {code} for {request.Id}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _status(
+                $"Could not deliver transient bridge error {code} for {request.Id}: {ex.Message}");
+        }
+    }
+
+    private async Task TryWriteAuditAsync(
         BridgeRequest request,
         bool ok,
         string? errorCode,
         long elapsedMs)
     {
-        var record = new
+        try
         {
-            timestampUtc = DateTimeOffset.UtcNow,
-            session = SessionId,
-            requestId = request.Id,
-            tool = request.Tool,
-            ok,
-            errorCode,
-            elapsedMs
-        };
+            var record = new
+            {
+                timestampUtc = DateTimeOffset.UtcNow,
+                session = SessionId,
+                requestId = request.Id,
+                tool = request.Tool,
+                ok,
+                errorCode,
+                elapsedMs
+            };
 
-        var path = Path.Combine(
-            _logDirectory,
-            $"bridge-{DateTime.UtcNow:yyyyMMdd}.jsonl");
+            var path = Path.Combine(
+                _logDirectory,
+                $"bridge-{DateTime.UtcNow:yyyyMMdd}.jsonl");
 
-        await File.AppendAllTextAsync(path, JsonSerializer.Serialize(record) + Environment.NewLine);
+            await File.AppendAllTextAsync(
+                path,
+                JsonSerializer.Serialize(record) + Environment.NewLine);
+        }
+        catch (Exception ex)
+        {
+            _status(
+                $"Bridge audit write failed for {request.Id}: {ex.Message}");
+        }
     }
 }

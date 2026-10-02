@@ -16,13 +16,8 @@ public sealed class ToolRouter
         };
     }
 
-    public static string GetCapability(string tool) => tool switch
-    {
-        "system.info" => "system.info",
-        "fs.list" => "fs.list",
-        "fs.read_text" => "fs.read_text",
-        _ => tool
-    };
+    public static string GetCapability(string tool) =>
+        BridgeCapabilityRegistry.Resolve(tool).Capability;
 
     private static object GetSystemInfo() => new
     {
