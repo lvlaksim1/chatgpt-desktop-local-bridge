@@ -102,10 +102,23 @@ dotnet run --project .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.c
 3. Нажать **Diagnostics** и убедиться, что WebView и composer определяются корректно.
 4. Нажать **Initialize Bridge**.
 5. После bootstrap-сообщения можно попросить ChatGPT, например:
-   `Посмотри список файлов в C:\Temp`.
+   `Посмотри список файлов в C:/Temp`.
 6. Если модель корректно запросит `fs.list`, приложение выполнит запрос локально и автоматически вернёт результат в тот же разговор.
 
-Кнопка **Diagnostics** показывает состояние WebView adapter: версию, наличие IPC, найден ли composer и обнаружена ли кнопка отправки. Это позволяет отличить несовместимость DOM ChatGPT от ошибок native LocalToolHost.
+В bridge JSON Windows-пути передаются с прямыми слэшами (`C:/...`), чтобы Markdown/JSON-рендеринг ChatGPT не искажал обратные слэши.
+
+Кнопка **Diagnostics** показывает состояние WebView adapter: версию, наличие IPC, найден ли composer, готов ли native input, а также последнюю безопасную protocol-диагностику. Содержимое локальных запросов в эту диагностику не копируется.
+
+### Надёжность Web adapter
+
+Текущий adapter:
+- вводит служебные сообщения через native Chromium/WebView2 input, а не прямой DOM mutation;
+- поддерживает текущие и legacy-селекторы сообщений ChatGPT;
+- исполняет только строгий точный `LOCAL_BRIDGE_REQUEST_V1` envelope и fail-closed отклоняет всё остальное;
+- ждёт стабильности streaming-ответа перед dispatch;
+- показывает payload-free причину malformed bridge-кандидата в Diagnostics;
+- никогда не перезаписывает обычный пользовательский draft;
+- может заменить только собственный stale draft, начинающийся с `LOCAL_BRIDGE_BOOTSTRAP_V1` или `LOCAL_BRIDGE_RESULT_V1`.
 
 ## Важная архитектурная граница
 
@@ -127,4 +140,4 @@ Audit log:
 
 ## Статус
 
-MVP / feasibility prototype.
+BRIDGE-M1 live end-to-end proof завершён: READY и `fs.read_text` подтверждены на реальном Windows PC. Активен BRIDGE-M2 — hardening Web adapter перед durable execution foundation.
