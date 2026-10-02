@@ -7,9 +7,11 @@
 
 ### BRIDGE-M1
 - CLOSED
+- canonical live transport baseline is now explicitly pinned to application source `ea074e0`
 
 ### BRIDGE-M2
-- CLOSED
+- CLOSED as a feature milestone
+- any M2 adapter hardening must be rechecked against the `ea074e0` transport invariant
 
 ## Active
 
@@ -23,17 +25,17 @@ Implemented product foundation:
 - 256 KiB serialized-result bound;
 - centralized capability registry.
 
-Owner machine:
-- updated to `dev-31e823e` by gateway #174 PASS.
-
 Current live blocker:
-- bounded live regression #175 FAIL;
-- exact application status: `Chat send failed: native-submit-not-confirmed`;
-- failure is on the normal Initialize Bridge send-confirmation boundary before M3 ledger assertions are reached.
+- post-`ea074e0` transport regression prevents reliable bootstrap/READY on current code.
+
+Canonical proof:
+- Owner manually revalidated exact-morning `ea074e0` with the `C:/Windows/win.ini` scenario;
+- full request -> local read -> result -> final ChatGPT answer succeeded visibly;
+- app reported `fs.read_text completed in 2 ms.`.
 
 Immediate commitment:
-1. Do not update the Owner PC again.
-2. Do not create another generic E2E variant.
-3. Analyze the current submit/confirmation contract and determine whether the message actually sends while the composer-empty confirmation is unreliable, or whether form submission itself is failing.
-4. Make one targeted product fix only if the evidence identifies a product defect.
-5. Re-run the single bounded M3 regression after that fix.
+1. Treat the complete `ea074e0` send/bootstrap behavior as immutable reference behavior.
+2. Stop inventing alternative send transports while this baseline exists.
+3. Diff post-`ea074e0` changes affecting MainWindow send logic, bridge adapter, bootstrap/READY handling, message hiding and conversation handling.
+4. Reintroduce later M2/M3 changes in small groups while preserving the exact `win.ini` benchmark after each transport-relevant group.
+5. Only after the benchmark remains PASS on current M3 code, resume final durable-ledger live validation.
