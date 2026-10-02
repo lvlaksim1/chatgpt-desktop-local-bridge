@@ -7,12 +7,12 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
-$BaseTag = 'dev-aea8ad2'
-$BaseCommit = 'aea8ad2971dd7e138434b60d5dfd90c63a0f4a34'
+$BaseTag = 'dev-85c714c'
+$BaseCommit = '85c714c9b46df2c8ea5329b2d265953d9735ee3f'
 $TargetTag = 'dev-31e823e'
 $TargetCommit = '31e823ef7854a18bb2ad10e94ec71c51814628eb'
-$UpdateAsset = 'ChatGptDesktopLocalBridge-Update-from-dev-aea8ad2.exe'
-$ExpectedUpdateSha256 = '876804533411b86970e4d6245b72232e040e12e762ae47c9d0a02f998e309d42'
+$UpdateAsset = 'ChatGptDesktopLocalBridge-Update-from-dev-85c714c.exe'
+$ExpectedUpdateSha256 = '017c9494c31feec8bb42f0078fcc2b376e9c352cfcd6df3dfb6e50faa3e174b5'
 $RequestId = 'req-m3-live-31e823e'
 
 $InstallRoot = Join-Path $env:LOCALAPPDATA 'Programs\ChatGPT Desktop Local Bridge'
