@@ -270,6 +270,20 @@ try {
       html:n.outerHTML.slice(0,2500)
     }));
 
+  function describe(node) {
+    if (!node) return null;
+    return {
+      tag:node.tagName,
+      id:node.id||null,
+      cls:(typeof node.className==="string"?node.className:null),
+      attrs:Array.from(node.attributes||[]).reduce((o,a)=>{
+        if (a.name.startsWith("data-") || a.name==="role" || a.name==="aria-label") o[a.name]=a.value;
+        return o;
+      },{}),
+      text:(node.innerText||node.textContent||"").trim().slice(0,400)
+    };
+  }
+
   const allMarkerNodes=Array.from(document.querySelectorAll("body *"))
     .filter(n => {
       const own=Array.from(n.childNodes||[])
@@ -278,24 +292,17 @@ try {
       return own.includes(marker);
     })
     .slice(0,20)
-    .map(n=>({
-      tag:n.tagName,
-      id:n.id||null,
-      cls:(typeof n.className==="string"?n.className:null),
-      attrs:Array.from(n.attributes||[]).reduce((o,a)=>{
-        if (a.name.startsWith("data-") || a.name==="role" || a.name==="aria-label") o[a.name]=a.value;
-        return o;
-      },{}),
-      parent:n.parentElement?{
-        tag:n.parentElement.tagName,
-        id:n.parentElement.id||null,
-        cls:(typeof n.parentElement.className==="string"?n.parentElement.className:null),
-        attrs:Array.from(n.parentElement.attributes||[]).reduce((o,a)=>{
-          if (a.name.startsWith("data-") || a.name==="role" || a.name==="aria-label") o[a.name]=a.value;
-          return o;
-        },{})
-      }:null
-    }));
+    .map(n=>{
+      const ancestors=[];
+      let p=n;
+      for (let depth=0; p && depth<10; depth++, p=p.parentElement) {
+        ancestors.push(describe(p));
+      }
+      return {
+        node:describe(n),
+        ancestors
+      };
+    });
 
   return {
     markerVisible:bodyText.includes(marker),
