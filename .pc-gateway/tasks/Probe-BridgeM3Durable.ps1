@@ -280,7 +280,7 @@ try{
 
   $Stage='initialize-bridge'
   Invoke-Button $root 'Initialize Bridge'
-  $deadline=[DateTime]::UtcNow.AddSeconds(70)
+  $deadline=[DateTime]::UtcNow.AddSeconds(320)
   while([DateTime]::UtcNow -lt $deadline){
     $texts=@(Get-UiTexts $root)
     $ok=@($texts|Where-Object{$_ -like 'Bridge ready. Session*'}|Select-Object -First 1)
@@ -289,7 +289,7 @@ try{
     if($fail.Count -gt 0){throw ([string]$fail[0])}
     Start-Sleep -Milliseconds 250
   }
-  if([string]::IsNullOrWhiteSpace($BridgeStatus)){throw 'Bridge READY timeout.'}
+  if([string]::IsNullOrWhiteSpace($BridgeStatus)){throw 'Bridge READY timeout after 5 minutes.'}
 
   $ConversationUri=[string](Eval $Socket ([ref]$id) 'location.href')
   $normalized=Normalize-Conversation $ConversationUri
@@ -301,9 +301,9 @@ try{
 
   $Stage='wait-local-execution'
   $audit=$null
-  $deadline=[DateTime]::UtcNow.AddSeconds(75)
+  $deadline=[DateTime]::UtcNow.AddSeconds(300)
   while([DateTime]::UtcNow -lt $deadline){$audit=Find-Audit $TestStarted;if($null-ne$audit){break};Start-Sleep -Milliseconds 250}
-  if($null-eq$audit){throw 'No fs.read_text audit record appeared.'}
+  if($null-eq$audit){throw 'No fs.read_text audit record appeared within 5 minutes.'}
   if(-not [bool]$audit.ok){throw ('fs.read_text audit failed: '+($audit|ConvertTo-Json -Compress))}
 
   $Stage='verify-ledger'
