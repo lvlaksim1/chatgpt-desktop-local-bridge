@@ -25,7 +25,8 @@ public sealed class BridgeHost
         Func<string, Task<bool>> sendToChat,
         Action<string> status,
         BridgeExecutionLedger? ledger = null,
-        ToolRouter? router = null)
+        ToolRouter? router = null,
+        string? logDirectory = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
@@ -34,7 +35,7 @@ public sealed class BridgeHost
         _ledger = ledger ?? new BridgeExecutionLedger();
         SessionId = Guid.NewGuid().ToString("N");
 
-        _logDirectory = Path.Combine(
+        _logDirectory = logDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ChatGptDesktopLocalBridge",
             "logs");
@@ -419,7 +420,7 @@ public sealed class BridgeHost
 
         await TryWriteAuditAsync(
             request,
-            executionOk,
+            serialized.Envelope.Ok,
             persistedErrorCode,
             elapsedMs);
 
