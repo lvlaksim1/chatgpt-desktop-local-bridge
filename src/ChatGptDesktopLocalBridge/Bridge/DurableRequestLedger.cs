@@ -16,6 +16,7 @@ public enum DurableDeliveryState
 {
     NotReady,
     Pending,
+    Sending,
     Delivered
 }
 
@@ -31,6 +32,7 @@ public sealed record DurableRequestRecord(
     string Session,
     string RequestId,
     string Tool,
+    string ConversationKey,
     string FingerprintSha256,
     DurableExecutionState ExecutionState,
     DurableDeliveryState DeliveryState,
@@ -38,7 +40,10 @@ public sealed record DurableRequestRecord(
     DateTimeOffset UpdatedUtc,
     bool? Ok = null,
     string? ErrorCode = null,
-    long? ElapsedMs = null);
+    long? ElapsedMs = null,
+    string? PendingResultMessage = null,
+    string? PendingResultSha256 = null,
+    int? PendingResultBytes = null);
 
 public sealed record DurableReservation(
     DurableReservationStatus Status,
@@ -46,7 +51,7 @@ public sealed record DurableReservation(
 
 public sealed class DurableRequestLedger
 {
-    public const string Schema = "local-bridge-request-ledger-v1";
+    public const string Schema = "local-bridge-request-ledger-v2";
 
     private readonly string _directory;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -67,8 +72,14 @@ public sealed class DurableRequestLedger
 
     public async Task<DurableReservation> ReserveAsync(
         BridgeRequest request,
+        string conversationKey,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(conversationKey))
+        {
+            throw new ArgumentException("Conversation key is required.", nameof(conversationKey));
+        }
+
         var path = GetRecordPath(request.Session, request.Id);
         var fingerprint = ComputeFingerprint(request);
 
@@ -80,6 +91,7 @@ public sealed class DurableRequestLedger
                 return CompareExisting(
                     await ReadRecordAsync(path, cancellationToken),
                     request,
+                    conversationKey,
                     fingerprint);
             }
 
@@ -89,6 +101,7 @@ public sealed class DurableRequestLedger
                 request.Session,
                 request.Id,
                 request.Tool,
+                conversationKey,
                 fingerprint,
                 DurableExecutionState.Reserved,
                 DurableDeliveryState.NotReady,
@@ -105,6 +118,7 @@ public sealed class DurableRequestLedger
                 return CompareExisting(
                     await ReadRecordAsync(path, cancellationToken),
                     request,
+                    conversationKey,
                     fingerprint);
             }
         }
@@ -145,8 +159,13 @@ public sealed class DurableRequestLedger
         bool ok,
         string? errorCode,
         long elapsedMs,
+        string pendingResultMessage,
         CancellationToken cancellationToken = default)
-        => UpdateAsync(
+    {
+        var bytes = Encoding.UTF8.GetBytes(pendingResultMessage);
+        var sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+        return UpdateAsync(
             record,
             current =>
             {
@@ -154,13 +173,20 @@ public sealed class DurableRequestLedger
                 {
                     if (current.Ok == ok &&
                         string.Equals(current.ErrorCode, errorCode, StringComparison.Ordinal) &&
-                        current.ElapsedMs == elapsedMs)
+                        current.ElapsedMs == elapsedMs &&
+                        string.Equals(current.PendingResultSha256, sha256, StringComparison.Ordinal))
                     {
                         return current;
                     }
 
                     throw new InvalidOperationException(
                         $"Request {current.RequestId} is already completed with a different outcome.");
+                }
+
+                if (current.ExecutionState != DurableExecutionState.Executing)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot complete request {current.RequestId} from {current.ExecutionState}.");
                 }
 
                 return current with
@@ -170,6 +196,44 @@ public sealed class DurableRequestLedger
                     Ok = ok,
                     ErrorCode = errorCode,
                     ElapsedMs = elapsedMs,
+                    PendingResultMessage = pendingResultMessage,
+                    PendingResultSha256 = sha256,
+                    PendingResultBytes = bytes.Length,
+                    UpdatedUtc = DateTimeOffset.UtcNow
+                };
+            },
+            cancellationToken);
+    }
+
+    public Task<DurableRequestRecord> MarkSendingAsync(
+        DurableRequestRecord record,
+        CancellationToken cancellationToken = default)
+        => UpdateAsync(
+            record,
+            current =>
+            {
+                if (current.ExecutionState != DurableExecutionState.Completed)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot send request {current.RequestId} result before execution is completed.");
+                }
+
+                if (current.DeliveryState == DurableDeliveryState.Sending)
+                {
+                    return current;
+                }
+
+                if (current.DeliveryState != DurableDeliveryState.Pending)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot transition request {current.RequestId} from delivery state {current.DeliveryState} to sending.");
+                }
+
+                EnsurePendingPayload(current);
+
+                return current with
+                {
+                    DeliveryState = DurableDeliveryState.Sending,
                     UpdatedUtc = DateTimeOffset.UtcNow
                 };
             },
@@ -193,7 +257,7 @@ public sealed class DurableRequestLedger
                     return current;
                 }
 
-                if (current.DeliveryState != DurableDeliveryState.Pending)
+                if (current.DeliveryState is not (DurableDeliveryState.Pending or DurableDeliveryState.Sending))
                 {
                     throw new InvalidOperationException(
                         $"Cannot transition request {current.RequestId} from delivery state {current.DeliveryState} to delivered.");
@@ -202,10 +266,53 @@ public sealed class DurableRequestLedger
                 return current with
                 {
                     DeliveryState = DurableDeliveryState.Delivered,
+                    PendingResultMessage = null,
                     UpdatedUtc = DateTimeOffset.UtcNow
                 };
             },
             cancellationToken);
+
+    public async Task<IReadOnlyList<DurableRequestRecord>> FindRecoverableAsync(
+        string conversationKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(conversationKey))
+        {
+            return Array.Empty<DurableRequestRecord>();
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var records = new List<DurableRequestRecord>();
+
+            foreach (var path in Directory.EnumerateFiles(_directory, "*.json", SearchOption.TopDirectoryOnly))
+            {
+                var record = await ReadRecordAsync(path, cancellationToken);
+                if (!string.Equals(record.Schema, Schema, StringComparison.Ordinal) ||
+                    !string.Equals(record.ConversationKey, conversationKey, StringComparison.Ordinal) ||
+                    record.ExecutionState != DurableExecutionState.Completed ||
+                    record.DeliveryState is not (DurableDeliveryState.Pending or DurableDeliveryState.Sending))
+                {
+                    continue;
+                }
+
+                EnsurePendingPayload(record);
+                records.Add(record);
+            }
+
+            return records
+                .OrderBy(record => record.CreatedUtc)
+                .ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public static void ValidatePendingPayload(DurableRequestRecord record)
+        => EnsurePendingPayload(record);
 
     private async Task<DurableRequestRecord> UpdateAsync(
         DurableRequestRecord record,
@@ -221,7 +328,7 @@ public sealed class DurableRequestLedger
             EnsureSameIdentity(record, current);
 
             var updated = transition(current);
-            if (ReferenceEquals(updated, current) || updated == current)
+            if (updated == current)
             {
                 return current;
             }
@@ -238,6 +345,7 @@ public sealed class DurableRequestLedger
     private DurableReservation CompareExisting(
         DurableRequestRecord existing,
         BridgeRequest request,
+        string conversationKey,
         string fingerprint)
     {
         var same =
@@ -245,6 +353,7 @@ public sealed class DurableRequestLedger
             string.Equals(existing.Session, request.Session, StringComparison.Ordinal) &&
             string.Equals(existing.RequestId, request.Id, StringComparison.Ordinal) &&
             string.Equals(existing.Tool, request.Tool, StringComparison.Ordinal) &&
+            string.Equals(existing.ConversationKey, conversationKey, StringComparison.Ordinal) &&
             string.Equals(existing.FingerprintSha256, fingerprint, StringComparison.Ordinal);
 
         return new DurableReservation(
@@ -260,10 +369,32 @@ public sealed class DurableRequestLedger
             !string.Equals(expected.Session, actual.Session, StringComparison.Ordinal) ||
             !string.Equals(expected.RequestId, actual.RequestId, StringComparison.Ordinal) ||
             !string.Equals(expected.Tool, actual.Tool, StringComparison.Ordinal) ||
+            !string.Equals(expected.ConversationKey, actual.ConversationKey, StringComparison.Ordinal) ||
             !string.Equals(expected.FingerprintSha256, actual.FingerprintSha256, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 $"Durable ledger identity changed for request {expected.RequestId}.");
+        }
+    }
+
+    private static void EnsurePendingPayload(DurableRequestRecord record)
+    {
+        if (string.IsNullOrEmpty(record.PendingResultMessage) ||
+            string.IsNullOrWhiteSpace(record.PendingResultSha256) ||
+            record.PendingResultBytes is null)
+        {
+            throw new InvalidOperationException(
+                $"Durable pending result is incomplete for request {record.RequestId}.");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(record.PendingResultMessage);
+        var sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+        if (bytes.Length != record.PendingResultBytes.Value ||
+            !string.Equals(sha256, record.PendingResultSha256, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Durable pending result failed integrity validation for request {record.RequestId}.");
         }
     }
 
