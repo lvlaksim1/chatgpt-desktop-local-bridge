@@ -1,21 +1,23 @@
 # Current state
 
-Updated: 2026-10-02 05:44 MSK
+Updated: 2026-10-02 06:36 MSK
 
-- manager generation: 9
+- manager generation: 10
 - product authority: `main`
-- current verified product release: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`
-- Owner installed release: `dev-ea074e0`
-- adapter: v5
+- current product head: `64152b68205a59e7df59d842c2acf972f717de33`
+- current verified / Owner-installed release: `dev-aea8ad2@aea8ad2971dd7e138434b60d5dfd90c63a0f4a34`
+- adapter: v7
 - native composer transport: Chromium/WebView2 `Input.insertText`
-- current ChatGPT assistant selector: `[data-markdown-text-style='assistant-message']`
-- current ChatGPT user selector: `[data-user-message-bubble='true']`
-- legacy message selectors retained as fallbacks
 - bridge protocol: strict `LOCAL_BRIDGE_REQUEST_V1 / LOCAL_BRIDGE_RESULT_V1`
-- Windows paths in bridge JSON: use forward slashes
+- Windows paths in bridge JSON: forward slashes
 - BRIDGE-M1: CLOSED
-- READY live proof: pc-runner-gateway #160 PASS
-- fs.read_text live proof: #164 PASS
-- final `dev-ea074e0` round-trip regression: #166 PASS
-- BRIDGE-M2: ACTIVE
-- immediate M2 focus: payload-free diagnostics for malformed bridge request candidates; no weakening of strict parser
+- BRIDGE-M2: CLOSED
+- M2 live reliability proof: pc-runner-gateway #168 PASS
+- BRIDGE-M3: ACTIVE
+- M3 durable request-ledger foundation: merged to `main@64152b6`
+- durable execution states: `reserved -> executing -> completed`
+- durable delivery states: `notReady -> pending -> delivered`
+- durable-ledger regression: PASS
+- post-merge main CI: PASS
+- result payload replay for `completed/pending`: not yet implemented
+- no additional Owner update is planned until the next coherent M3 slice is ready
