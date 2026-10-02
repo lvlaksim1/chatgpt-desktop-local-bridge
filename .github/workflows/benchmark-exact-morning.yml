@@ -21,7 +21,7 @@ jobs:
       - name: Publish exact morning application
         shell: pwsh
         run: |
-          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj
+          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
           dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output .\publish\win-x64
           Compress-Archive -Path .\publish\win-x64\* -DestinationPath .\ChatGptDesktopLocalBridge-ea074e0-portable.zip -Force
 
