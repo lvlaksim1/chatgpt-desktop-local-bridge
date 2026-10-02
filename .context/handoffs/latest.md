@@ -1,37 +1,21 @@
 # Latest handoff
 
-Updated: 2026-10-02 13:20 MSK
+Updated: 2026-10-02 13:25 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 11.
+Manager generation: 12.
 Product authority: `main`.
 Current product head: `9461fffbacceceeb6f1404bebf76d521e4578c01`.
-Latest published release: `dev-31e823e@31e823ef7854a18bb2ad10e94ec71c51814628eb`.
-Owner-installed release: `dev-85c714c@85c714c9b46df2c8ea5329b2d265953d9735ee3f`.
+Current published and Owner-installed release: `dev-31e823e@31e823ef7854a18bb2ad10e94ec71c51814628eb`.
 
 BRIDGE-M1 and BRIDGE-M2 are CLOSED.
 
-BRIDGE-M3 implementation now includes:
-- durable request execution state;
-- persisted pending result envelope;
-- replay-safe request classification;
-- conversation-safe crash recovery;
-- suppression of already delivered replay;
-- delivered payload retirement;
-- 256 KiB result transport bound;
-- centralized capability registry.
+BRIDGE-M3 implementation includes durable request/result recovery, conversation binding, 256 KiB result bounds and a central capability registry.
 
-Final M3 live closure is still open.
+Latest real PC evidence:
+- #174 update to `dev-31e823e`: PASS.
+- #175 bounded M3 live regression: FAIL with `Chat send failed: native-submit-not-confirmed`.
+- The failure occurs during Initialize Bridge before the regression reaches local `fs.read_text` or durable ledger verification.
+- #176 was a redundant update request discovered during reconciliation and is closed as duplicate.
 
-Gateway history:
-- #169 owner update to `dev-85c714c`: PASS.
-- #170 crash-recovery probe: FAIL, chat submit not confirmed.
-- #171: FAIL, wrong installed-base expectation.
-- #172: FAIL, non-empty composer.
-- #173: FAIL in the validation harness.
-
-Current main contains:
-- `dd26c48`: exact bounded updater `dev-85c714c -> dev-31e823e`;
-- `9461fff`: one bounded final M3 live regression.
-
-At this checkpoint both corresponding repository CI runs are in progress. Next action is to wait for those two results only, then perform one update and one live regression.
+Next task is analysis of the submit-confirmation boundary, not another generic live probe.
