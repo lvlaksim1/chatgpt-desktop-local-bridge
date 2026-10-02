@@ -13,7 +13,7 @@
   "id": "req-0001",
   "tool": "fs.list",
   "args": {
-    "path": "C:\\Temp"
+    "path": "C:/Temp"
   }
 }
 [[/LOCAL_BRIDGE_REQUEST_V1]]
@@ -43,6 +43,31 @@
 ```
 
 Result автоматически отправляется в тот же conversation как служебное user message.
+
+## Durable request lifecycle
+
+До выполнения native client резервирует пару `session + request_id` в локальном ledger:
+
+`%LOCALAPPDATA%\ChatGptDesktopLocalBridge\state\requests`
+
+Execution state проходит последовательность:
+
+`reserved -> executing -> completed`
+
+Delivery state ведётся отдельно:
+
+`notReady -> pending -> delivered`
+
+Практические инварианты:
+
+- повтор того же `session + request_id` с тем же tool/args не запускает tool повторно;
+- повтор того же id с другим tool/args считается конфликтом и fail-closed отклоняется;
+- после локального завершения execution сначала фиксируется `completed/pending`, и только затем выполняется отправка `LOCAL_BRIDGE_RESULT_V1`;
+- успешная отправка отдельно фиксируется как `delivered`;
+- crash/restart не стирает факт уже начатого или завершённого execution;
+- ledger не хранит аргументы запроса или payload результата — только fingerprint, состояния и технические метаданные.
+
+Текущий этап M3 намеренно ещё не выполняет replay payload для записи `completed/pending`. Такая запись блокирует слепой повтор execution и остаётся видимой как незавершённая доставка для следующего слоя recovery.
 
 ## Bootstrap
 
