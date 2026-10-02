@@ -2,49 +2,37 @@
 
 ## Completed
 
-### BRIDGE-M0A — Install/upgrade channel
-- completed
-
-### BRIDGE-M0B — Repository/release storage hygiene
-- completed
-
-### BRIDGE-M0C — Incremental update channel
-- completed
-
-### BRIDGE-M0D — Single-file incremental updater
-- completed
-- real Windows legacy/update E2E evidence exists
-
-### BRIDGE-M0E — Delta-safe uninstall behavior
-- completed
-- normal uninstall asks whether to delete settings/working data
-- quiet uninstall preserves user data
-- automated preservation E2E exists
+### BRIDGE-M0A through BRIDGE-M0E
+- install/upgrade, storage hygiene, incremental updates, single-file updater, and delta-safe uninstall are completed.
 
 ### BRIDGE-M1 — Live end-to-end bridge proof
 - completed
 - READY and `fs.read_text` proven on the Owner PC
-- final product-release regression: pc-runner-gateway #166
 
 ### BRIDGE-M2 — Web adapter reliability hardening
 - completed
-- strict exact-envelope parser retained
-- payload-free malformed-request diagnostics added and deterministically tested
-- ordinary user drafts are protected
-- only bridge-owned stale drafts may be replaced
-- live reliability regression: pc-runner-gateway #168 PASS on `dev-aea8ad2`
+- strict protocol diagnostics, draft protection, and stale bridge-draft recovery are live-proven
 
 ## Active
 
-### BRIDGE-M3 — Durable execution foundation
-- active
-- foundation merged to `main@64152b68205a59e7df59d842c2acf972f717de33`
-- durable request lifecycle and separate delivery state are implemented
-- duplicate execution is no longer RAM-only
-- one deterministic restart/dedupe/conflict regression is wired into CI and PASS
-- next: design and implement bounded result persistence/replay for `completed/pending` without re-executing the local tool
-- follow with capability registry and bounded result transport
-- avoid a new Owner update for every internal M3 sub-step; publish and live-test a coherent M3 slice
+### BRIDGE-M3 — Durable execution and delivery
+- product implementation is substantially complete
+- durable request ledger survives restart
+- execution and delivery states are separate
+- bounded pending result payload is persisted
+- replay decisions prevent blind re-execution
+- pending results are recoverable only in the originating conversation
+- delivered payloads are retired
+- serialized result transport is capped at 256 KiB
+- capability registry is centralized
+- deterministic CI coverage exists
+
+### Immediate commitment
+1. Finish the two currently running CI workflows for `dd26c48` and `9461fff`.
+2. If both are green, update the Owner PC once: `dev-85c714c -> dev-31e823e`.
+3. Run exactly one bounded M3 live regression.
+4. On PASS, close the current M3 durable-foundation slice and persist evidence.
+5. On FAIL, analyze the single concrete failure before writing any further test variant.
 
 ### BRIDGE-M4 — Controlled mutating/process capabilities
-- accepted; follows reliability foundations
+- follows M3 closure
