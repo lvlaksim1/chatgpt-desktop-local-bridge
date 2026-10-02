@@ -98,6 +98,44 @@ function Wait-Adapter($Socket,[ref]$Id,[int]$TimeoutSeconds=30){
   }
   throw 'Adapter v9+ did not become ready.'
 }
+function Clear-KnownSafeDraft($Socket,[ref]$Id){
+  $classification=Eval $Socket $Id @'
+(() => {
+  const selectors=["#prompt-textarea","textarea[data-testid='prompt-textarea']","div[contenteditable='true'][data-testid='prompt-textarea']","div[contenteditable='true'][role='textbox']"];
+  let n=null;for(const s of selectors){n=document.querySelector(s);if(n)break;}
+  if(!n)return {composerFound:false,empty:true,recognized:false,kind:"none"};
+  const text=(n.innerText||n.value||n.textContent||"").trim();
+  if(!text)return {composerFound:true,empty:true,recognized:false,kind:"empty"};
+  const bridgeOwned=text.startsWith("[[LOCAL_BRIDGE_BOOTSTRAP_V1]]")||text.startsWith("[[LOCAL_BRIDGE_RESULT_V1]]");
+  const knownProbe=text.startsWith("Use the current Local Bridge session. Respond with EXACTLY ONE LOCAL_BRIDGE_REQUEST_V1 request and no human prose.")&&text.includes("req-m3-live-final")&&text.includes("C:/Windows/win.ini");
+  const ownDiag=text==="LOCAL-BRIDGE-SUBMIT-DIAG-20261002";
+  const recognized=bridgeOwned||knownProbe||ownDiag;
+  if(recognized){
+    n.focus();
+    if(typeof n.select==="function"){n.select();}
+    else{
+      const sel=window.getSelection();if(!sel)return {composerFound:true,empty:false,recognized:false,kind:"selection-unavailable"};
+      const r=document.createRange();r.selectNodeContents(n);sel.removeAllRanges();sel.addRange(r);
+    }
+  }
+  return {composerFound:true,empty:false,recognized,kind:bridgeOwned?"bridge-envelope":knownProbe?"m3-probe":ownDiag?"send-control-diag":"unrecognized"};
+})()
+'@
+  if([bool]$classification.empty){return $classification}
+  if(-not [bool]$classification.recognized){
+    throw ('Composer contains an unrecognized draft; diagnostic left it untouched. kind='+[string]$classification.kind)
+  }
+  [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='rawKeyDown';key='Backspace';code='Backspace';windowsVirtualKeyCode=8;nativeVirtualKeyCode=8});$Id.Value++
+  [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='keyUp';key='Backspace';code='Backspace';windowsVirtualKeyCode=8;nativeVirtualKeyCode=8});$Id.Value++
+  $deadline=[DateTime]::UtcNow.AddSeconds(5)
+  while([DateTime]::UtcNow -lt $deadline){
+    $state=Eval $Socket $Id 'window.__localBridge?.nativeSendState?.() ?? null'
+    if($null-ne$state -and [bool]$state.composerEmpty){return $classification}
+    Start-Sleep -Milliseconds 100
+  }
+  throw 'Recognized stale diagnostic/bridge draft did not clear.'
+}
+
 function Clear-ExactMarker($Socket,[ref]$Id){
   $expected=$Marker|ConvertTo-Json -Compress
   $selected=[bool](Eval $Socket $Id @"
@@ -143,14 +181,7 @@ try{
   $Stage='prepare'
   [void](Send-Cdp $Socket $id 'Page.navigate' @{url='https://chatgpt.com/'});$id++
   $health=Wait-Adapter $Socket ([ref]$id) 30
-  $current=[string](Eval $Socket ([ref]$id) @'
-(() => {
-  const s=["#prompt-textarea","textarea[data-testid='prompt-textarea']","div[contenteditable='true'][data-testid='prompt-textarea']","div[contenteditable='true'][role='textbox']"];
-  for(const x of s){const n=document.querySelector(x);if(n)return (n.innerText||n.value||n.textContent||"").trim();}
-  return "";
-})()
-'@)
-  if(-not [string]::IsNullOrWhiteSpace($current)){throw 'Composer is not empty; diagnostic will not modify it.'}
+  $cleared=Clear-KnownSafeDraft $Socket ([ref]$id)
 
   $Stage='insert-marker'
   $prepare=Eval $Socket ([ref]$id) 'window.__localBridge.prepareNativeSend()'
@@ -196,6 +227,7 @@ try{
     form_found=[bool]$controls.formFound
     buttons=$controls.buttons
     known_controls=$controls.known
+    cleared_stale_kind=[string]$cleared.kind
   }
 }catch{
   Finish 'fail' 31 $_.Exception.Message
