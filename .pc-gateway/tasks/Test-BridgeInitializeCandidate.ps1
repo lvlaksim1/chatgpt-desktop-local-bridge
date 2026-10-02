@@ -178,7 +178,7 @@ try {
     while ([DateTime]::UtcNow -lt $preflightDeadline) {
         Start-Sleep -Seconds 2
         $lastPreflight = Get-DiagnosticsDetails -Root $root
-        if ($lastPreflight -match '"version"\s*:\s*4' -and
+        if ($lastPreflight -match '"version"\s*:\s*5' -and
             $lastPreflight -match '"composerFound"\s*:\s*true' -and
             $lastPreflight -match '"nativeInputReady"\s*:\s*true' -and
             $lastPreflight -match '"readyState"\s*:\s*"complete"') {
