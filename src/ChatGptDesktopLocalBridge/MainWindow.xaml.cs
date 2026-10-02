@@ -83,10 +83,12 @@ public partial class MainWindow
                     }
 
                     var requestCopy = requestElement.Clone();
+                    var requestSource = e.Source;
 
                     // WebView2 callbacks are serialized. Run the bridge loop only after this
                     // WebMessageReceived callback returns so a later send-result message can arrive.
-                    Dispatcher.BeginInvoke(new Action(() => _ = HandleBridgeRequestAsync(requestCopy)));
+                    Dispatcher.BeginInvoke(
+                        new Action(() => _ = HandleBridgeRequestAsync(requestCopy, requestSource)));
                     return;
             }
         }
@@ -114,13 +116,15 @@ public partial class MainWindow
         _bridgeReadyCompletion?.TrySetResult(true);
     }
 
-    private async Task HandleBridgeRequestAsync(JsonElement request)
+    private async Task HandleBridgeRequestAsync(
+        JsonElement request,
+        string? conversationUri)
     {
         try
         {
             if (_bridgeHost is not null)
             {
-                await _bridgeHost.HandleAsync(request);
+                await _bridgeHost.HandleAsync(request, conversationUri);
             }
         }
         catch (Exception ex)
@@ -149,10 +153,48 @@ public partial class MainWindow
         try
         {
             var policy = PermissionPolicy.LoadOrCreate();
+            var statusSink = new Action<string>(
+                message => Dispatcher.Invoke(() => StatusText.Text = message));
+
+            var currentConversationUri = Browser.Source?.AbsoluteUri;
+            var pendingDeliveries =
+                await BridgeHost.GetPendingDeliveriesForConversationAsync(currentConversationUri);
+
+            if (pendingDeliveries.Count > 1)
+            {
+                StatusText.Text =
+                    "Bridge recovery is blocked: multiple pending results exist for this conversation.";
+                return;
+            }
+
+            if (pendingDeliveries.Count == 1)
+            {
+                var pending = pendingDeliveries[0];
+
+                _bridgeHost = new BridgeHost(
+                    policy,
+                    SendTextToChatAsync,
+                    statusSink,
+                    pending.Session);
+
+                var resultAlreadyVisible =
+                    await HasBridgeResultInCurrentConversationAsync(
+                        pending.Session,
+                        pending.RequestId);
+
+                await _bridgeHost.RecoverPendingDeliveryAsync(
+                    pending,
+                    resultAlreadyVisible);
+
+                StatusText.Text =
+                    $"Bridge resumed. Session {_bridgeHost.SessionId[..8]}…";
+                return;
+            }
+
             _bridgeHost = new BridgeHost(
                 policy,
                 SendTextToChatAsync,
-                message => Dispatcher.Invoke(() => StatusText.Text = message));
+                statusSink);
 
             readyCompletion = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -265,6 +307,25 @@ public partial class MainWindow
         {
             StatusText.Text = $"Diagnostics failed: {ex.Message}";
         }
+    }
+
+    private async Task<bool> HasBridgeResultInCurrentConversationAsync(
+        string session,
+        string requestId)
+    {
+        if (Browser.CoreWebView2 is null)
+        {
+            return false;
+        }
+
+        var sessionArgument = JsonSerializer.Serialize(session);
+        var requestIdArgument = JsonSerializer.Serialize(requestId);
+
+        var raw = await Browser.ExecuteScriptAsync(
+            $"window.__localBridge?.hasResult?.({sessionArgument}, {requestIdArgument}) ?? false");
+
+        using var document = JsonDocument.Parse(raw);
+        return document.RootElement.ValueKind == JsonValueKind.True;
     }
 
     private async Task<bool> SendTextToChatAsync(string text)
