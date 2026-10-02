@@ -22,25 +22,29 @@
 - automated preservation E2E exists
 
 ### BRIDGE-M1 — Live end-to-end bridge proof
-- status: completed
-- product release: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`
-- live READY proof: pc-runner-gateway issue #160
-- live local read round trip proof: issue #164
-- final product-release regression: issue #166
-- proven chain: Initialize -> nonce-bound READY -> LOCAL_BRIDGE_REQUEST_V1 -> fs.read_text -> LOCAL_BRIDGE_RESULT_V1/local audit
-- path-format defect found during proof and fixed by requiring forward-slash Windows paths in bridge JSON
+- completed
+- READY and `fs.read_text` proven on the Owner PC
+- final product-release regression: pc-runner-gateway #166
+
+### BRIDGE-M2 — Web adapter reliability hardening
+- completed
+- strict exact-envelope parser retained
+- payload-free malformed-request diagnostics added and deterministically tested
+- ordinary user drafts are protected
+- only bridge-owned stale drafts may be replaced
+- live reliability regression: pc-runner-gateway #168 PASS on `dev-aea8ad2`
 
 ## Active
 
-### BRIDGE-M2 — Web adapter reliability hardening
-- active
-- first task: make malformed bridge-request candidates diagnosable immediately without weakening the strict request envelope
-- retain fail-closed DOM behavior, current+legacy selectors, streaming stability gate, draft preservation, and no blind retries
-- require bounded focused tests, not broad repeated E2E runs
-
 ### BRIDGE-M3 — Durable execution foundation
-- accepted; follows M2
-- explicit state machine, capability registry, bounded results, durable request ledger, delivery recovery
+- active
+- foundation merged to `main@64152b68205a59e7df59d842c2acf972f717de33`
+- durable request lifecycle and separate delivery state are implemented
+- duplicate execution is no longer RAM-only
+- one deterministic restart/dedupe/conflict regression is wired into CI and PASS
+- next: design and implement bounded result persistence/replay for `completed/pending` without re-executing the local tool
+- follow with capability registry and bounded result transport
+- avoid a new Owner update for every internal M3 sub-step; publish and live-test a coherent M3 slice
 
 ### BRIDGE-M4 — Controlled mutating/process capabilities
 - accepted; follows reliability foundations
