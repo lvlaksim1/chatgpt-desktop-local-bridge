@@ -348,6 +348,45 @@ public partial class MainWindow
 
         try
         {
+            var readinessDeadline = DateTime.UtcNow.AddMinutes(2);
+            var readinessNoticeAt = DateTime.UtcNow.AddSeconds(10);
+            var nativeInputReady = false;
+
+            while (DateTime.UtcNow < readinessDeadline)
+            {
+                var healthRaw = await Browser.ExecuteScriptAsync(
+                    "window.__localBridge?.health?.() ?? null");
+
+                if (!string.IsNullOrWhiteSpace(healthRaw) && healthRaw != "null")
+                {
+                    using var healthDocument = JsonDocument.Parse(healthRaw);
+                    var health = healthDocument.RootElement;
+                    nativeInputReady =
+                        health.TryGetProperty("nativeInputReady", out var readyElement) &&
+                        readyElement.ValueKind == JsonValueKind.True;
+
+                    if (nativeInputReady)
+                    {
+                        break;
+                    }
+                }
+
+                if (DateTime.UtcNow >= readinessNoticeAt)
+                {
+                    StatusText.Text =
+                        "ChatGPT composer is temporarily non-interactive; waiting for it to become ready…";
+                    readinessNoticeAt = DateTime.MaxValue;
+                }
+
+                await Task.Delay(250);
+            }
+
+            if (!nativeInputReady)
+            {
+                StatusText.Text = "Chat send failed: composer-ui-not-interactive";
+                return false;
+            }
+
             var baselineRaw = await Browser.ExecuteScriptAsync(
                 "window.__localBridge?.nativeSendReceipt?.(null, 0)?.userMessageCount ?? null");
 
@@ -419,6 +458,54 @@ public partial class MainWindow
             if (!inserted)
             {
                 StatusText.Text = "Chat send failed: native-input-not-accepted";
+                return false;
+            }
+
+            var submitReadyDeadline = DateTime.UtcNow.AddMinutes(2);
+            var submitNoticeAt = DateTime.UtcNow.AddSeconds(10);
+            var submitReady = false;
+
+            while (DateTime.UtcNow < submitReadyDeadline)
+            {
+                var stateRaw = await Browser.ExecuteScriptAsync(
+                    $"window.__localBridge?.nativeSendState?.({expectedArgument}) ?? null");
+
+                if (!string.IsNullOrWhiteSpace(stateRaw) && stateRaw != "null")
+                {
+                    using var stateDocument = JsonDocument.Parse(stateRaw);
+                    var state = stateDocument.RootElement;
+
+                    var textStillMatches =
+                        state.TryGetProperty("textMatches", out var textMatchesElement) &&
+                        textMatchesElement.ValueKind == JsonValueKind.True;
+                    if (!textStillMatches)
+                    {
+                        StatusText.Text = "Chat send failed: composer-changed-before-submit";
+                        return false;
+                    }
+
+                    submitReady =
+                        state.TryGetProperty("submitReady", out var submitReadyElement) &&
+                        submitReadyElement.ValueKind == JsonValueKind.True;
+                    if (submitReady)
+                    {
+                        break;
+                    }
+                }
+
+                if (DateTime.UtcNow >= submitNoticeAt)
+                {
+                    StatusText.Text =
+                        "ChatGPT send control is temporarily unavailable; waiting before submit…";
+                    submitNoticeAt = DateTime.MaxValue;
+                }
+
+                await Task.Delay(250);
+            }
+
+            if (!submitReady)
+            {
+                StatusText.Text = "Chat send failed: submit-control-not-ready";
                 return false;
             }
 
