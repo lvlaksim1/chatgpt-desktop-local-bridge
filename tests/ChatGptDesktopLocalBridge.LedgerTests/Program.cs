@@ -113,16 +113,16 @@ try
         "Delivered request replay was not detected.");
     Require(replayDelivered.Record.DeliveryState == DurableDeliveryState.Delivered,
         "Delivered state did not survive restart.");
-    Require(replayDelivered.Record.ResultEnvelopeJson == resultEnvelopeJson,
-        "Delivered record lost the persisted result payload.");
+    Require(replayDelivered.Record.ResultEnvelopeJson is null,
+        "Delivered record retained a result payload that should have been retired.");
     Require(
-        DurableRequestLedger.GetReplayAction(replayDelivered.Record) == DurableReplayAction.RedeliverResult,
-        "Completed delivered replay was not classified for safe result re-delivery.");
+        DurableRequestLedger.GetReplayAction(replayDelivered.Record) == DurableReplayAction.IgnoreDelivered,
+        "Completed delivered replay was not classified as already delivered.");
 
-    var completedWithoutPayload = replayDelivered.Record with { ResultEnvelopeJson = null };
+    var pendingWithoutPayload = replayPending.Record with { ResultEnvelopeJson = null };
     Require(
-        DurableRequestLedger.GetReplayAction(completedWithoutPayload) == DurableReplayAction.BlockMissingResult,
-        "Completed record without a durable result payload was not blocked.");
+        DurableRequestLedger.GetReplayAction(pendingWithoutPayload) == DurableReplayAction.BlockMissingResult,
+        "Pending completed record without a durable result payload was not blocked.");
 
     var noPendingDeliveries = await thirdRestart.GetPendingDeliveriesAsync(conversationUri);
     Require(noPendingDeliveries.Count == 0, "Delivered result remained in the pending-delivery set.");
@@ -141,6 +141,33 @@ try
     var conflict = await thirdRestart.ReserveAsync(conflictingRequest, conversationUri);
     Require(conflict.Status == DurableReservationStatus.Conflict,
         "Conflicting reuse of a durable request id was not rejected.");
+
+    var smallPrepared = BridgeResultTransport.Prepare(
+        new BridgeResult(session, "req-small", true, new { text = "ok" }),
+        ok: true,
+        errorCode: null);
+    Require(smallPrepared.Ok, "Small result unexpectedly failed transport preparation.");
+    Require(!smallPrepared.ReplacedOversizeResult, "Small result was incorrectly treated as oversized.");
+    Require(
+        System.Text.Encoding.UTF8.GetByteCount(smallPrepared.Message) <= BridgeResultTransport.MaxMessageBytes,
+        "Small result exceeded the transport bound.");
+
+    var hugePrepared = BridgeResultTransport.Prepare(
+        new BridgeResult(
+            session,
+            "req-huge",
+            true,
+            new { text = new string('x', BridgeResultTransport.MaxMessageBytes + 4096) }),
+        ok: true,
+        errorCode: null);
+    Require(!hugePrepared.Ok, "Oversized result was not converted to a bounded error.");
+    Require(hugePrepared.ReplacedOversizeResult, "Oversized result replacement was not reported.");
+    Require(
+        hugePrepared.ErrorCode == "result_too_large_after_execution",
+        "Oversized result error code changed.");
+    Require(
+        System.Text.Encoding.UTF8.GetByteCount(hugePrepared.Message) <= BridgeResultTransport.MaxMessageBytes,
+        "Oversized-result error envelope exceeded the transport bound.");
 
     Console.WriteLine("durable request ledger regression: PASS");
 }
