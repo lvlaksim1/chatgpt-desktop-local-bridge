@@ -40,3 +40,12 @@ Implemented:
 ## Release discipline
 - No repeat update while `dev-31e823e` is installed.
 - No new broad probes.
+
+## Live validation interpretation rule
+
+Because the Owner's Internet connection and ChatGPT service can be transiently unstable, network/service-bound failures are classified conservatively:
+1. Preserve the exact first failure.
+2. For a safe/idempotent validation, repeat the unchanged bounded test once.
+3. If the retry passes, classify the first failure as transient/ambiguous rather than a confirmed product defect.
+4. If the same stage fails again with the same product build, investigate the product boundary.
+5. Never use this retry rule for a mutating request whose execution outcome is uncertain.
