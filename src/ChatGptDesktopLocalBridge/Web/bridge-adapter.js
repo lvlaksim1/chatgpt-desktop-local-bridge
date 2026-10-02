@@ -75,6 +75,27 @@
     return normalizeBridgeText(getComposerText(composer));
   }
 
+  function isBridgeOwnedDraft(text) {
+    const normalized = normalizeBridgeText(text).trim();
+    return normalized.startsWith(BOOTSTRAP_START) ||
+      normalized.startsWith(RESULT_START);
+  }
+
+  function selectComposerContents(composer) {
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      composer.select();
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    const range = document.createRange();
+    range.selectNodeContents(composer);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
   function prepareNativeSend() {
     const composer = findComposer();
     if (!composer) {
@@ -84,16 +105,38 @@
 
     const currentText = normalizedComposerText(composer).trim();
     if (currentText.length > 0) {
+      if (!isBridgeOwnedDraft(currentText)) {
+        lastNativeSendDebug = {
+          stage: "prepare",
+          accepted: false,
+          reason: "composer-not-empty",
+          composerTextLength: currentText.length,
+          bridgeOwnedDraft: false
+        };
+        return {
+          accepted: false,
+          reason: "composer-not-empty",
+          composerTextLength: currentText.length,
+          bridgeOwnedDraft: false
+        };
+      }
+
+      composer.focus();
+      selectComposerContents(composer);
+
       lastNativeSendDebug = {
         stage: "prepare",
-        accepted: false,
-        reason: "composer-not-empty",
-        composerTextLength: currentText.length
+        accepted: true,
+        replacingBridgeDraft: true,
+        composerTextLength: currentText.length,
+        formFound: Boolean(composer.closest("form"))
       };
+
       return {
-        accepted: false,
-        reason: "composer-not-empty",
-        composerTextLength: currentText.length
+        accepted: true,
+        replacingBridgeDraft: true,
+        composerTextLength: currentText.length,
+        formFound: Boolean(composer.closest("form"))
       };
     }
 
@@ -103,11 +146,13 @@
     lastNativeSendDebug = {
       stage: "prepare",
       accepted: true,
+      replacingBridgeDraft: false,
       formFound: Boolean(composer.closest("form"))
     };
 
     return {
       accepted: true,
+      replacingBridgeDraft: false,
       formFound: Boolean(composer.closest("form"))
     };
   }
@@ -370,7 +415,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 6,
+      version: 7,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -406,7 +451,7 @@
     submitNativeSend,
     scan: scheduleScan,
     health,
-    version: 6
+    version: 7
   };
 
   const observer = new MutationObserver(scheduleScan);
