@@ -26,6 +26,14 @@ public enum DurableReservationStatus
     Conflict
 }
 
+public enum DurableReplayAction
+{
+    ResumeReserved,
+    BlockExecutionUncertain,
+    RedeliverResult,
+    BlockMissingResult
+}
+
 public sealed record DurableRequestRecord(
     string Schema,
     string Session,
@@ -221,6 +229,18 @@ public sealed class DurableRequestLedger
                 };
             },
             cancellationToken);
+
+    public static DurableReplayAction GetReplayAction(DurableRequestRecord record)
+        => record.ExecutionState switch
+        {
+            DurableExecutionState.Reserved => DurableReplayAction.ResumeReserved,
+            DurableExecutionState.Executing => DurableReplayAction.BlockExecutionUncertain,
+            DurableExecutionState.Completed when string.IsNullOrWhiteSpace(record.ResultEnvelopeJson)
+                => DurableReplayAction.BlockMissingResult,
+            DurableExecutionState.Completed => DurableReplayAction.RedeliverResult,
+            _ => throw new InvalidOperationException(
+                $"Unknown durable execution state for request {record.RequestId}: {record.ExecutionState}.")
+        };
 
     public async Task<IReadOnlyList<DurableRequestRecord>> GetPendingDeliveriesAsync(
         CancellationToken cancellationToken = default)
