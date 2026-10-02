@@ -1,0 +1,108 @@
+name: Process Run Build
+
+on:
+  push:
+    branches:
+      - m4-process-run-write-tools
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build and publish target
+        shell: pwsh
+        run: |
+          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output .\publish\win-x64
+
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = "dev-process-run"
+            commit = "${{ github.sha }}"
+            appVersion = "0.1.40.0"
+          } | ConvertTo-Json | Set-Content .\publish\win-x64\release-info.json -Encoding UTF8
+
+      - name: Reconstruct installed write-tools base
+        shell: pwsh
+        run: |
+          $baseWorktree = Join-Path $PWD "base-write-tools"
+          $basePublish = Join-Path $PWD "publish-base-write-tools"
+          git worktree add --detach $baseWorktree 38c2aca554268a07343b8e1a6c805e787b3971f9
+          try {
+            dotnet restore (Join-Path $baseWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --runtime win-x64
+            dotnet publish (Join-Path $baseWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --no-restore --output $basePublish
+            [ordered]@{
+              schema = "chatgpt-desktop-local-bridge-release-v1"
+              tag = "dev-ea074e0-write-tools"
+              commit = "38c2aca554268a07343b8e1a6c805e787b3971f9"
+              appVersion = "0.1.39.0"
+            } | ConvertTo-Json | Set-Content (Join-Path $basePublish "release-info.json") -Encoding UTF8
+          }
+          finally {
+            git worktree remove --force $baseWorktree
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build full setup
+        shell: pwsh
+        run: |
+          $sourceDir = (Resolve-Path ".\publish\win-x64").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DMyAppVersion=0.1.40.0" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" ".\installer\ChatGptDesktopLocalBridge.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Setup.exe")) { throw "Full setup was not produced." }
+          Move-Item ".\ChatGptDesktopLocalBridge-Setup.exe" ".\ChatGptDesktopLocalBridge-process-run-Setup.exe" -Force
+
+      - name: Build incremental update from write-tools
+        shell: pwsh
+        run: |
+          $basePublish = (Resolve-Path ".\publish-base-write-tools").Path
+          $currentPublish = (Resolve-Path ".\publish\win-x64").Path
+          $deltaDir = Join-Path $PWD "delta-process-run"
+
+          .\scripts\build-delta-update.ps1 `
+            -BasePublishDir $basePublish `
+            -CurrentPublishDir $currentPublish `
+            -BaseTag "dev-ea074e0-write-tools" `
+            -TargetTag "dev-process-run" `
+            -TargetCommit "${{ github.sha }}" `
+            -OutputPath $deltaDir
+
+          $manifestPath = Join-Path $deltaDir "update-manifest.json"
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $stable = @("Config/permissions.default.json", "Web/bridge-adapter.js", "Support/Uninstall-Bridge.ps1")
+          $manifest.baseline = @($manifest.baseline | Where-Object { $stable -contains [string]$_.path })
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          $resolvedDelta = (Resolve-Path $deltaDir).Path
+          ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$PWD" "/DBaseTag=dev-ea074e0-write-tools" "/DTargetTag=dev-process-run" "/DUpdateVersion=0.1.40.0" ".\installer\DeltaUpdate.iss"
+
+          $expected = ".\ChatGptDesktopLocalBridge-Update-from-dev-ea074e0-write-tools.exe"
+          if (-not (Test-Path $expected)) { throw "Incremental updater was not produced." }
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev-process-run --cleanup-tag --yes 2>$null
+          gh release create dev-process-run `
+            .\ChatGptDesktopLocalBridge-Update-from-dev-ea074e0-write-tools.exe `
+            .\ChatGptDesktopLocalBridge-process-run-Setup.exe `
+            --target "${{ github.sha }}" `
+            --prerelease `
+            --title "Local Bridge process.run" `
+            --notes "Adds process.run for local git/gh/PowerShell execution while preserving the proven ea074e0 ChatGPT transport and existing file tools. Uses the existing process.start permission."
