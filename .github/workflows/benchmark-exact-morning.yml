@@ -25,10 +25,23 @@ jobs:
           dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output .\publish\win-x64
           Compress-Archive -Path .\publish\win-x64\* -DestinationPath .\ChatGptDesktopLocalBridge-ea074e0-portable.zip -Force
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build exact morning installer
+        shell: pwsh
+        run: |
+          $sourceDir = (Resolve-Path ".\publish\win-x64").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DMyAppVersion=0.1.38.0" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" ".\installer\ChatGptDesktopLocalBridge.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Setup.exe")) { throw "Installer was not produced." }
+          Move-Item ".\ChatGptDesktopLocalBridge-Setup.exe" ".\ChatGptDesktopLocalBridge-ea074e0-Setup.exe" -Force
+
       - name: Publish temporary benchmark release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete benchmark-ea074e0 --cleanup-tag --yes 2>$null
-          gh release create benchmark-ea074e0 .\ChatGptDesktopLocalBridge-ea074e0-portable.zip --target "${{ github.sha }}" --prerelease --title "Temporary exact morning benchmark ea074e0" --notes "Temporary portable build for reproducing the proven morning Local Bridge fs.read_text flow. Remove after benchmark."
+          gh release create benchmark-ea074e0 .\ChatGptDesktopLocalBridge-ea074e0-portable.zip .\ChatGptDesktopLocalBridge-ea074e0-Setup.exe --target "${{ github.sha }}" --prerelease --title "Temporary exact morning benchmark ea074e0" --notes "Exact morning benchmark build for reproducing the proven Local Bridge fs.read_text flow."
