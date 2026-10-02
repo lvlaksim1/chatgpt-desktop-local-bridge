@@ -3,26 +3,74 @@ using System.Text.Json;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
 
+public sealed record BridgeToolDefinition(
+    string Name,
+    string Capability,
+    string Description,
+    string ArgsExample,
+    Func<JsonElement, Task<object?>> ExecuteAsync);
+
 public sealed class ToolRouter
 {
+    private static readonly IReadOnlyList<BridgeToolDefinition> ToolDefinitions =
+        new BridgeToolDefinition[]
+        {
+            new(
+                "system.info",
+                "system.info",
+                "Return basic Windows, runtime, and process architecture information.",
+                "{}",
+                _ => Task.FromResult<object?>(GetSystemInfo())),
+            new(
+                "fs.list",
+                "fs.list",
+                "List up to 500 entries from a local directory.",
+                "{ \"path\": \"C:/some/directory\" }",
+                args => Task.FromResult<object?>(ListDirectory(args))),
+            new(
+                "fs.read_text",
+                "fs.read_text",
+                "Read a bounded amount of text from a local file.",
+                "{ \"path\": \"C:/some/file.txt\", \"max_chars\": 200000 }",
+                async args => await ReadTextAsync(args))
+        };
+
+    private static readonly IReadOnlyDictionary<string, BridgeToolDefinition> ToolDefinitionsByName =
+        ToolDefinitions.ToDictionary(
+            definition => definition.Name,
+            StringComparer.Ordinal);
+
+    public static IReadOnlyList<BridgeToolDefinition> Definitions => ToolDefinitions;
+
     public async Task<object?> ExecuteAsync(string tool, JsonElement args)
     {
-        return tool switch
+        if (!ToolDefinitionsByName.TryGetValue(tool, out var definition))
         {
-            "system.info" => GetSystemInfo(),
-            "fs.list" => ListDirectory(args),
-            "fs.read_text" => await ReadTextAsync(args),
-            _ => throw new BridgeToolException("unknown_tool", $"Unknown local tool: {tool}")
-        };
+            throw new BridgeToolException("unknown_tool", $"Unknown local tool: {tool}");
+        }
+
+        return await definition.ExecuteAsync(args);
     }
 
-    public static string GetCapability(string tool) => tool switch
+    public static string GetCapability(string tool)
+        => ToolDefinitionsByName.TryGetValue(tool, out var definition)
+            ? definition.Capability
+            : tool;
+
+    public static IReadOnlyList<string> GetBootstrapToolLines()
     {
-        "system.info" => "system.info",
-        "fs.list" => "fs.list",
-        "fs.read_text" => "fs.read_text",
-        _ => tool
-    };
+        var lines = new List<string>();
+
+        for (var index = 0; index < ToolDefinitions.Count; index++)
+        {
+            var definition = ToolDefinitions[index];
+            lines.Add($"{index + 1}. {definition.Name}");
+            lines.Add($"   args: {definition.ArgsExample}");
+            lines.Add(string.Empty);
+        }
+
+        return lines;
+    }
 
     private static object GetSystemInfo() => new
     {
