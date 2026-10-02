@@ -44,8 +44,7 @@ if (Test-Path -LiteralPath $updateLog -PathType Leaf) {
     $tail = (@(Get-Content -LiteralPath $updateLog -Tail 30 -ErrorAction SilentlyContinue) -join [Environment]::NewLine)
 }
 
-Write-Result @{
-    status = 'success'
+$details = @{
     app_exists = (Test-Path -LiteralPath $appExe -PathType Leaf)
     release_tag = if ($null -ne $release) { [string]$release.tag } else { $null }
     release_commit = if ($null -ne $release) { [string]$release.commit } else { $null }
@@ -53,3 +52,14 @@ Write-Result @{
     processes = $apps
     update_log_tail = $tail
 }
+
+Write-Result @{
+    status = 'diagnostic'
+    error = ($details | ConvertTo-Json -Depth 12 -Compress)
+    app_exists = $details.app_exists
+    release_tag = $details.release_tag
+    release_commit = $details.release_commit
+    app_version = $details.app_version
+    processes = $details.processes
+    update_log_tail = $details.update_log_tail
+} 31
