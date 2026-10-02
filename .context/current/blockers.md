@@ -1,18 +1,23 @@
 # Current blockers and open risks
 
-Updated: 2026-10-02 05:44 MSK
+Updated: 2026-10-02 06:36 MSK
 
 ## BRIDGE-M1
-No blocker. CLOSED with live READY and fs.read_text evidence on the Owner PC.
+No blocker. CLOSED.
 
-## BRIDGE-M2 reliability debt
-Malformed bridge-request candidates are currently ignored silently by the adapter. When ChatGPT emits a bridge-looking response that is not valid protocol JSON, Diagnostics does not expose the parse reason. This can turn a simple protocol-format problem into a long timeout.
+## BRIDGE-M2
+No blocker. CLOSED with deterministic diagnostics coverage and live reliability regression #168.
 
-## DOM drift
-ChatGPT DOM is not a stable public API. Current and legacy selectors are isolated in the adapter and must continue to fail closed. Live DOM success does not remove the need for explicit diagnostics.
+## BRIDGE-M3 delivery recovery
+The durable ledger now prevents blind re-execution across process state loss, but a `completed/pending` record does not yet contain a replayable result payload. A restart after local execution but before ChatGPT delivery therefore preserves the fact that execution happened, but cannot yet complete delivery automatically.
 
-## BRIDGE-M3 durability debt
-Request dedupe is still RAM-only. Exactly-once local execution and exactly-once result delivery are separate problems. Durable request ledger and delivery recovery remain open.
+Recovery must also be bound to the correct ChatGPT conversation/session so a pending result can never be injected into an unrelated chat.
 
-## BRIDGE-M4 process safety debt
+## BRIDGE-M3 bounded results
+Transport-level serialized result bounds are not yet centralized. Tool-specific limits exist, but result delivery needs one explicit upper bound before larger capability families are added.
+
+## BRIDGE-M3 capability registry
+Tool execution and capability mapping are still switch-based and bootstrap exposure is still manually listed. A single registry remains required before capability expansion.
+
+## BRIDGE-M4 process safety
 Mutating/process capabilities are not yet opened broadly. Windows Job Object Emergency STOP remains required before general shell/process expansion.
