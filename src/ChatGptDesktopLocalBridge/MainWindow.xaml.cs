@@ -217,14 +217,25 @@ public partial class MainWindow
 
             try
             {
-                await readyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(60));
+                var initialReadyWindow = Task.Delay(TimeSpan.FromSeconds(60));
+                var firstCompletion = await Task.WhenAny(
+                    readyCompletion.Task,
+                    initialReadyWindow);
+
+                if (!ReferenceEquals(firstCompletion, readyCompletion.Task))
+                {
+                    StatusText.Text =
+                        $"Bootstrap sent. ChatGPT response is delayed; still waiting for handshake {_bridgeHost.SessionId[..8]}…";
+                }
+
+                await readyCompletion.Task.WaitAsync(TimeSpan.FromMinutes(4));
                 StatusText.Text =
                     $"Bridge ready. Session {_bridgeHost.SessionId[..8]}…";
             }
             catch (TimeoutException)
             {
                 StatusText.Text =
-                    "Bridge bootstrap was sent, but ChatGPT did not return the expected READY handshake.";
+                    "Bridge bootstrap was sent, but ChatGPT did not return the expected READY handshake within 5 minutes.";
             }
         }
         catch (Exception ex)
