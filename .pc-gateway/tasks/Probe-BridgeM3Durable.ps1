@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
 
-$TargetTag='dev-31e823e'
-$TargetCommit='31e823ef7854a18bb2ad10e94ec71c51814628eb'
+$TargetTag='dev-95f54d7'
+$TargetCommit='95f54d7e0e5d97247bc761871fbbe8813427a930'
 $RequestId='req-m3-live-final'
 $InstallRoot=Join-Path $env:LOCALAPPDATA 'Programs\ChatGPT Desktop Local Bridge'
 $AppExe=Join-Path $InstallRoot 'ChatGptDesktopLocalBridge.exe'
