@@ -29,87 +29,119 @@
     return null;
   }
 
-  const SEND_BUTTON_SELECTORS = [
-    "button[data-testid='send-button']",
-    "button[aria-label='Send prompt']",
-    "button[aria-label='Send message']",
-    "button[aria-label*='Send']"
-  ];
+  function getComposerText(composer = findComposer()) {
+    if (!composer) return "";
 
-  function findSendButton(requireEnabled = true) {
-    for (const selector of SEND_BUTTON_SELECTORS) {
-      const element = document.querySelector(selector);
-      if (!element) continue;
-      if (!requireEnabled || !element.disabled) return element;
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      return composer.value || "";
     }
 
-    return null;
+    return composer.innerText || composer.textContent || "";
   }
 
-  async function waitForSendButton(timeoutMs = 5000) {
-    const startedAt = Date.now();
-
-    while (Date.now() - startedAt < timeoutMs) {
-      const button = findSendButton(true);
-      if (button) return button;
-      await new Promise(resolve => setTimeout(resolve, 100));
+  function positionCaretForNativeInput(composer) {
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      const end = composer.value.length;
+      composer.setSelectionRange?.(end, end);
+      return;
     }
 
-    return null;
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    const range = document.createRange();
+    const insertionRoot = composer.querySelector("p") || composer;
+    range.selectNodeContents(insertionRoot);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 
-  function postSendResult(token, ok, reason = null) {
-    if (!token || !window.chrome?.webview) return;
-
-    window.chrome.webview.postMessage({
-      type: "bridge.send_result",
-      token,
-      ok,
-      reason
-    });
+  function normalizedComposerText(composer = findComposer()) {
+    return getComposerText(composer).replace(/\u200B/g, "");
   }
 
-  function sendText(text, token) {
+  function prepareNativeSend() {
     const composer = findComposer();
     if (!composer) {
-      postSendResult(token, false, "composer-not-found");
       return { accepted: false, reason: "composer-not-found" };
     }
 
-    composer.focus();
-
-    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
-      const setter = Object.getOwnPropertyDescriptor(
-        Object.getPrototypeOf(composer),
-        "value"
-      )?.set;
-
-      if (setter) setter.call(composer, text);
-      else composer.value = text;
-    } else {
-      composer.textContent = text;
+    const currentText = normalizedComposerText(composer).trim();
+    if (currentText.length > 0) {
+      return {
+        accepted: false,
+        reason: "composer-not-empty",
+        composerTextLength: currentText.length
+      };
     }
 
-    composer.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      inputType: "insertText",
-      data: text
-    }));
+    composer.focus();
+    positionCaretForNativeInput(composer);
 
-    composer.dispatchEvent(new Event("change", { bubbles: true }));
+    return {
+      accepted: true,
+      formFound: Boolean(composer.closest("form"))
+    };
+  }
 
-    void (async () => {
-      const sendButton = await waitForSendButton();
-      if (!sendButton) {
-        postSendResult(token, false, "send-button-not-found");
-        return;
-      }
+  function nativeSendState(expectedText = null) {
+    const composer = findComposer();
+    const text = normalizedComposerText(composer);
+    const meaningfulText = text.trim();
 
-      sendButton.click();
-      postSendResult(token, true);
-    })();
+    return {
+      composerFound: Boolean(composer),
+      composerTextLength: text.length,
+      composerMeaningfulLength: meaningfulText.length,
+      composerEmpty: meaningfulText.length === 0,
+      textMatches: typeof expectedText === "string"
+        ? meaningfulText === expectedText.trim()
+        : null,
+      formFound: Boolean(composer?.closest("form"))
+    };
+  }
 
-    return { accepted: true };
+  function submitNativeSend() {
+    const composer = findComposer();
+    if (!composer) {
+      return { accepted: false, reason: "composer-not-found" };
+    }
+
+    const form = composer.closest("form");
+    if (!form) {
+      return { accepted: false, reason: "composer-form-not-found" };
+    }
+
+    const currentText = normalizedComposerText(composer).trim();
+    if (!currentText) {
+      return { accepted: false, reason: "composer-empty" };
+    }
+
+    try {
+      form.requestSubmit();
+      return { accepted: true, strategy: "requestSubmit" };
+    } catch (error) {
+      return {
+        accepted: false,
+        reason: "request-submit-failed",
+        detail: String(error)
+      };
+    }
+  }
+
+  function getAssistantMessageNodes() {
+    return document.querySelectorAll(
+      "[data-message-author-role='assistant'], " +
+      "[data-markdown-text-style='assistant-message']"
+    );
+  }
+
+  function getUserMessageNodes() {
+    return document.querySelectorAll(
+      "[data-message-author-role='user'], " +
+      "[data-user-message-bubble='true']"
+    );
   }
 
   function extractRequest(text) {
@@ -135,8 +167,7 @@
   }
 
   function hideServiceMessages() {
-    document
-      .querySelectorAll("[data-message-author-role='user']")
+    getUserMessageNodes()
       .forEach(node => {
         const text = node.innerText || "";
         if (text.includes(RESULT_START) || text.includes(BOOTSTRAP_START)) {
@@ -148,8 +179,7 @@
   function scanAssistantMessages() {
     const now = Date.now();
 
-    document
-      .querySelectorAll("[data-message-author-role='assistant']")
+    getAssistantMessageNodes()
       .forEach(node => {
         const text = (node.innerText || "").trim();
 
@@ -202,20 +232,20 @@
 
   function health() {
     const composer = findComposer();
-    const sendButton = findSendButton(false);
+    const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 2,
+      version: 3,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
       composerFound: Boolean(composer),
       composerTag: composer?.tagName || null,
       composerContentEditable: composer?.getAttribute?.("contenteditable") || null,
-      sendButtonFound: Boolean(sendButton),
-      sendButtonDisabled: sendButton ? Boolean(sendButton.disabled) : null,
-      assistantMessages: document.querySelectorAll("[data-message-author-role='assistant']").length,
-      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+      composerFormFound: Boolean(composerForm),
+      nativeInputReady: Boolean(composer && composerForm),
+      assistantMessages: getAssistantMessageNodes().length,
+      userMessages: getUserMessageNodes().length
     };
   }
 
@@ -232,10 +262,12 @@
   }
 
   window.__localBridge = {
-    sendText,
+    prepareNativeSend,
+    nativeSendState,
+    submitNativeSend,
     scan: scheduleScan,
     health,
-    version: 2
+    version: 3
   };
 
   const observer = new MutationObserver(scheduleScan);
