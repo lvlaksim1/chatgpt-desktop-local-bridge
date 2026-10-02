@@ -71,19 +71,79 @@ function messageNode(text) {
   return { innerText: text, textContent: text, style: {} };
 }
 
-function composerNode(text) {
+function buttonNode({ type = "button", disabled = false, ariaLabel = null } = {}) {
+  return {
+    disabled,
+    hidden: false,
+    getAttribute(name) {
+      if (name === "type") return type;
+      if (name === "aria-label") return ariaLabel;
+      return null;
+    },
+    getBoundingClientRect() {
+      return { width: 20, height: 20 };
+    }
+  };
+}
+
+function composerNode(text, { interactive = true, submitDisabled = true } = {}) {
+  const utilityButton = buttonNode({
+    type: "button",
+    disabled: !interactive,
+    ariaLabel: "utility"
+  });
+  const submitButton = buttonNode({
+    type: "submit",
+    disabled: submitDisabled,
+    ariaLabel: "send"
+  });
+  const form = {
+    querySelectorAll(selector) {
+      return selector === "button" ? [utilityButton, submitButton] : [];
+    },
+    querySelector(selector) {
+      if (selector === "button[type='submit']") return submitButton;
+      return null;
+    }
+  };
+
   return {
     innerText: text,
     textContent: text,
     style: {},
     focus() {},
     querySelector() { return null; },
-    closest(selector) { return selector === "form" ? {} : null; },
-    getAttribute(name) { return name === "contenteditable" ? "true" : null; }
+    closest(selector) { return selector === "form" ? form : null; },
+    getAttribute(name) { return name === "contenteditable" ? "true" : null; },
+    __utilityButton: utilityButton,
+    __submitButton: submitButton
   };
 }
 
 await sleep(180);
+
+composer = composerNode("", { interactive: false, submitDisabled: true });
+let readinessHealth = window.__localBridge.health();
+assert(readinessHealth.nativeInputReady === false,
+  "Non-interactive ChatGPT composer was reported native-input ready.");
+let blockedPrepare = window.__localBridge.prepareNativeSend();
+assert(blockedPrepare.accepted === false,
+  "Non-interactive ChatGPT composer accepted a bridge send.");
+assert(blockedPrepare.reason === "composer-ui-not-interactive",
+  "Non-interactive composer rejection reason changed.");
+
+composer = composerNode("bridge text", { interactive: true, submitDisabled: true });
+let submitState = window.__localBridge.nativeSendState("bridge text");
+assert(submitState.formInteractive === true,
+  "Interactive form was not recognized.");
+assert(submitState.submitFound === true,
+  "Submit control was not found.");
+assert(submitState.submitReady === false,
+  "Disabled submit control was reported ready.");
+composer.__submitButton.disabled = false;
+submitState = window.__localBridge.nativeSendState("bridge text");
+assert(submitState.submitReady === true,
+  "Enabled visible submit control was not reported ready.");
 
 composer = composerNode("my unsent user draft");
 let prepare = window.__localBridge.prepareNativeSend();
@@ -116,7 +176,7 @@ assert(
 );
 
 let health = window.__localBridge.health();
-assert(health.version === 9, "Expected adapter v9.");
+assert(health.version === 10, "Expected adapter v10.");
 assert(health.lastProtocolDebug?.reason === "request-json-invalid", "Malformed request reason was not request-json-invalid.");
 assert(!posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-bad"),
   "Malformed request was dispatched.");
