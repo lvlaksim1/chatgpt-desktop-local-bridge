@@ -116,7 +116,7 @@ assert(
 );
 
 let health = window.__localBridge.health();
-assert(health.version === 8, "Expected adapter v8.");
+assert(health.version === 9, "Expected adapter v9.");
 assert(health.lastProtocolDebug?.reason === "request-json-invalid", "Malformed request reason was not request-json-invalid.");
 assert(!posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-bad"),
   "Malformed request was dispatched.");
@@ -175,4 +175,23 @@ assert(
 assert(
   window.__localBridge.hasResult("fedcba9876543210fedcba9876543210", "req-good") === false,
   "Result detection matched the wrong session.");
+
+
+const priorPrompt = messageNode("same service prompt");
+userNodes.push(priorPrompt);
+let receipt = window.__localBridge.nativeSendReceipt("same service prompt", userNodes.length);
+assert(receipt.exactNewUserMessage === false,
+  "Send receipt matched a user message that existed before the send baseline.");
+assert(receipt.confirmed === false,
+  "Send receipt was confirmed by an old user message.");
+
+const sentPrompt = messageNode("same service prompt");
+userNodes.push(sentPrompt);
+receipt = window.__localBridge.nativeSendReceipt("same service prompt", userNodes.length - 1);
+assert(receipt.exactNewUserMessage === true,
+  "Send receipt did not detect the exact newly added user message.");
+assert(receipt.confirmed === true,
+  "Exact new user message did not confirm the send receipt.");
+assert(receipt.userMessageCount === userNodes.length,
+  "Send receipt reported the wrong user-message count.");
 console.log("bridge-adapter protocol diagnostics test: PASS");
