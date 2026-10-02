@@ -44,14 +44,19 @@ try
     Require(replayWhileExecuting.Record.ExecutionState == DurableExecutionState.Executing,
         "Replay did not recover the executing state.");
 
+    var resultEnvelopeJson =
+        "{\"session\":\"0123456789abcdef0123456789abcdef\",\"request_id\":\"req-durable-001\",\"ok\":true,\"result\":{\"text\":\"ok\"}}";
+
     var completed = await afterRestart.MarkCompletedAsync(
         replayWhileExecuting.Record,
         ok: true,
         errorCode: null,
-        elapsedMs: 37);
+        elapsedMs: 37,
+        resultEnvelopeJson: resultEnvelopeJson);
 
     Require(completed.ExecutionState == DurableExecutionState.Completed, "Completed state was not persisted.");
     Require(completed.DeliveryState == DurableDeliveryState.Pending, "Completion did not create pending delivery.");
+    Require(completed.ResultEnvelopeJson == resultEnvelopeJson, "Completed request did not persist its result envelope.");
 
     var equivalentRequest = new BridgeRequest(
         session,
@@ -65,6 +70,14 @@ try
         "Canonical equivalent request was not recognized as the same durable request.");
     Require(replayPending.Record.DeliveryState == DurableDeliveryState.Pending,
         "Pending delivery state did not survive restart.");
+    Require(replayPending.Record.ResultEnvelopeJson == resultEnvelopeJson,
+        "Pending result payload did not survive restart.");
+
+    var pendingDeliveries = await secondRestart.GetPendingDeliveriesAsync();
+    Require(pendingDeliveries.Count == 1, "Pending delivery enumeration did not return exactly one record.");
+    Require(pendingDeliveries[0].RequestId == request.Id, "Pending delivery enumeration returned the wrong request.");
+    Require(pendingDeliveries[0].ResultEnvelopeJson == resultEnvelopeJson,
+        "Pending delivery enumeration lost the persisted result payload.");
 
     var delivered = await secondRestart.MarkDeliveredAsync(replayPending.Record);
     Require(delivered.DeliveryState == DurableDeliveryState.Delivered, "Delivered state was not persisted.");
@@ -75,6 +88,11 @@ try
         "Delivered request replay was not detected.");
     Require(replayDelivered.Record.DeliveryState == DurableDeliveryState.Delivered,
         "Delivered state did not survive restart.");
+    Require(replayDelivered.Record.ResultEnvelopeJson == resultEnvelopeJson,
+        "Delivered record lost the persisted result payload.");
+
+    var noPendingDeliveries = await thirdRestart.GetPendingDeliveriesAsync();
+    Require(noPendingDeliveries.Count == 0, "Delivered result remained in the pending-delivery set.");
 
     var conflictingRequest = new BridgeRequest(
         session,

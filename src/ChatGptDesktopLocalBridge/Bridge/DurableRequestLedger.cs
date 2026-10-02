@@ -38,7 +38,8 @@ public sealed record DurableRequestRecord(
     DateTimeOffset UpdatedUtc,
     bool? Ok = null,
     string? ErrorCode = null,
-    long? ElapsedMs = null);
+    long? ElapsedMs = null,
+    string? ResultEnvelopeJson = null);
 
 public sealed record DurableReservation(
     DurableReservationStatus Status,
@@ -140,13 +141,24 @@ public sealed class DurableRequestLedger
             },
             cancellationToken);
 
-    public Task<DurableRequestRecord> MarkCompletedAsync(
+    public async Task<DurableRequestRecord> MarkCompletedAsync(
         DurableRequestRecord record,
         bool ok,
         string? errorCode,
         long elapsedMs,
+        string resultEnvelopeJson,
         CancellationToken cancellationToken = default)
-        => UpdateAsync(
+    {
+        if (string.IsNullOrWhiteSpace(resultEnvelopeJson))
+        {
+            throw new ArgumentException("Result envelope JSON must not be empty.", nameof(resultEnvelopeJson));
+        }
+
+        using (JsonDocument.Parse(resultEnvelopeJson))
+        {
+        }
+
+        return await UpdateAsync(
             record,
             current =>
             {
@@ -154,7 +166,8 @@ public sealed class DurableRequestLedger
                 {
                     if (current.Ok == ok &&
                         string.Equals(current.ErrorCode, errorCode, StringComparison.Ordinal) &&
-                        current.ElapsedMs == elapsedMs)
+                        current.ElapsedMs == elapsedMs &&
+                        string.Equals(current.ResultEnvelopeJson, resultEnvelopeJson, StringComparison.Ordinal))
                     {
                         return current;
                     }
@@ -170,10 +183,12 @@ public sealed class DurableRequestLedger
                     Ok = ok,
                     ErrorCode = errorCode,
                     ElapsedMs = elapsedMs,
+                    ResultEnvelopeJson = resultEnvelopeJson,
                     UpdatedUtc = DateTimeOffset.UtcNow
                 };
             },
             cancellationToken);
+    }
 
     public Task<DurableRequestRecord> MarkDeliveredAsync(
         DurableRequestRecord record,
@@ -206,6 +221,39 @@ public sealed class DurableRequestLedger
                 };
             },
             cancellationToken);
+
+    public async Task<IReadOnlyList<DurableRequestRecord>> GetPendingDeliveriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var records = new List<DurableRequestRecord>();
+
+            foreach (var path in Directory.EnumerateFiles(_directory, "*.json")
+                         .OrderBy(path => path, StringComparer.Ordinal))
+            {
+                var record = await ReadRecordAsync(path, cancellationToken);
+
+                if (string.Equals(record.Schema, Schema, StringComparison.Ordinal) &&
+                    record.ExecutionState == DurableExecutionState.Completed &&
+                    record.DeliveryState == DurableDeliveryState.Pending &&
+                    !string.IsNullOrWhiteSpace(record.ResultEnvelopeJson))
+                {
+                    records.Add(record);
+                }
+            }
+
+            return records
+                .OrderBy(record => record.CreatedUtc)
+                .ThenBy(record => record.RequestId, StringComparer.Ordinal)
+                .ToArray();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     private async Task<DurableRequestRecord> UpdateAsync(
         DurableRequestRecord record,

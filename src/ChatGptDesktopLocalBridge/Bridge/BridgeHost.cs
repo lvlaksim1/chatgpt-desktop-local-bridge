@@ -5,6 +5,11 @@ namespace ChatGptDesktopLocalBridge.Bridge;
 
 public sealed class BridgeHost
 {
+    private static readonly JsonSerializerOptions ResultJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     private const string RequestStart = "[[LOCAL_BRIDGE_REQUEST_V1]]";
     private const string RequestEnd = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
     private const string ResultStart = "[[LOCAL_BRIDGE_RESULT_V1]]";
@@ -138,6 +143,32 @@ public sealed class BridgeHost
             if (reservation.Status == DurableReservationStatus.Duplicate)
             {
                 var existing = reservation.Record;
+
+                if (existing.ExecutionState == DurableExecutionState.Completed &&
+                    existing.DeliveryState == DurableDeliveryState.Pending)
+                {
+                    if (string.IsNullOrWhiteSpace(existing.ResultEnvelopeJson))
+                    {
+                        _status(
+                            $"Cannot recover pending result delivery for {request.Id}: " +
+                            "the durable record has no result payload.");
+                        return;
+                    }
+
+                    try
+                    {
+                        await SendSerializedResultAsync(existing.ResultEnvelopeJson);
+                        await _requestLedger.MarkDeliveredAsync(existing);
+                        _status($"Recovered pending result delivery for {request.Id} without re-executing {request.Tool}.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _status($"Pending result delivery for {request.Id} is still awaiting recovery: {ex.Message}");
+                    }
+
+                    return;
+                }
+
                 _status(
                     $"Ignored durable duplicate request {request.Id}: " +
                     $"execution={existing.ExecutionState}, delivery={existing.DeliveryState}.");
@@ -261,11 +292,14 @@ public sealed class BridgeHost
         long elapsedMs,
         string deliveredStatus)
     {
+        var resultJson = SerializeResult(result);
+
         var completed = await _requestLedger.MarkCompletedAsync(
             ledgerRecord,
             ok,
             errorCode,
-            elapsedMs);
+            elapsedMs,
+            resultJson);
 
         try
         {
@@ -278,7 +312,7 @@ public sealed class BridgeHost
 
         try
         {
-            await SendResultAsync(result);
+            await SendSerializedResultAsync(resultJson);
         }
         catch (Exception ex)
         {
@@ -322,12 +356,17 @@ public sealed class BridgeHost
         }
     }
 
-    private async Task SendResultAsync(BridgeResult result)
+    private Task SendResultAsync(BridgeResult result)
+        => SendSerializedResultAsync(SerializeResult(result));
+
+    private static string SerializeResult(BridgeResult result)
+        => JsonSerializer.Serialize(result, ResultJsonOptions);
+
+    private async Task SendSerializedResultAsync(string json)
     {
-        var json = JsonSerializer.Serialize(result, new JsonSerializerOptions
+        using (JsonDocument.Parse(json))
         {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        });
+        }
 
         var message = $"{ResultStart}\n{json}\n{ResultEnd}";
         var sent = await _sendToChat(message);
