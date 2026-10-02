@@ -112,7 +112,7 @@ dotnet run --project .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.c
 ### Надёжность Web adapter
 
 Текущий adapter:
-- вводит служебные сообщения через native Chromium/WebView2 input, а не прямой DOM mutation;
+- вводит служебные сообщения через native Chromium/WebView2 input (`Input.insertText` + native `Enter`), а не прямой DOM mutation или JavaScript `form.requestSubmit()`;
 - поддерживает текущие и legacy-селекторы сообщений ChatGPT;
 - исполняет только строгий точный `LOCAL_BRIDGE_REQUEST_V1` envelope и fail-closed отклоняет всё остальное;
 - ждёт стабильности streaming-ответа перед dispatch;
