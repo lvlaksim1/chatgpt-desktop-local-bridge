@@ -57,8 +57,20 @@
     selection.addRange(range);
   }
 
+  function normalizeBridgeText(value) {
+    return (value || "")
+      .replace(/\u200B/g, "")
+      .replace(/\r\n?/g, "\n");
+  }
+
+  function canonicalizeBridgeText(value) {
+    return normalizeBridgeText(value)
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function normalizedComposerText(composer = findComposer()) {
-    return getComposerText(composer).replace(/\u200B/g, "");
+    return normalizeBridgeText(getComposerText(composer));
   }
 
   function prepareNativeSend() {
@@ -96,7 +108,7 @@
       composerMeaningfulLength: meaningfulText.length,
       composerEmpty: meaningfulText.length === 0,
       textMatches: typeof expectedText === "string"
-        ? meaningfulText === expectedText.trim()
+        ? canonicalizeBridgeText(text) === canonicalizeBridgeText(expectedText)
         : null,
       formFound: Boolean(composer?.closest("form"))
     };
@@ -235,7 +247,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 3,
+      version: 4,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -267,7 +279,7 @@
     submitNativeSend,
     scan: scheduleScan,
     health,
-    version: 3
+    version: 4
   };
 
   const observer = new MutationObserver(scheduleScan);
