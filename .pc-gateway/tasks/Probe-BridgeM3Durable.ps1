@@ -158,6 +158,7 @@ function Clear-KnownTestDraft($Socket,[ref]$Id){
   throw 'Known test draft did not clear.'
 }
 function Send-ChatText($Socket,[ref]$Id,[string]$Text){
+  $baseline=[int](Eval $Socket $Id 'document.querySelectorAll("[data-message-author-role=''user''],[data-user-message-bubble=''true'']").length')
   $prepare=Eval $Socket $Id 'window.__localBridge?.prepareNativeSend?.() ?? {accepted:false,reason:"adapter-not-ready"}'
   if($null-eq$prepare -or -not [bool]$prepare.accepted){throw ('Chat preflight rejected: '+($prepare|ConvertTo-Json -Compress))}
   [void](Send-Cdp $Socket $Id.Value 'Input.insertText' @{text=$Text});$Id.Value++
@@ -172,13 +173,25 @@ function Send-ChatText($Socket,[ref]$Id,[string]$Text){
   if($null-eq$state -or -not [bool]$state.textMatches){throw 'Prompt insert was not verified.'}
   [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='rawKeyDown';key='Enter';code='Enter';windowsVirtualKeyCode=13;nativeVirtualKeyCode=13});$Id.Value++
   [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='keyUp';key='Enter';code='Enter';windowsVirtualKeyCode=13;nativeVirtualKeyCode=13});$Id.Value++
-  $deadline=[DateTime]::UtcNow.AddSeconds(10)
+  $deadline=[DateTime]::UtcNow.AddSeconds(30)
   while([DateTime]::UtcNow -lt $deadline){
     $state=Eval $Socket $Id 'window.__localBridge?.nativeSendState?.() ?? null'
     if($null-ne$state -and [bool]$state.composerEmpty){return}
+    $receipt=Eval $Socket $Id @"
+(() => {
+  const canonical = value => (value || "").replace(/\u200B/g, "").replace(/\r\n?/g, "\n").replace(/\s+/g, " ").trim();
+  const expected = canonical($expected);
+  const nodes = Array.from(document.querySelectorAll("[data-message-author-role='user'],[data-user-message-bubble='true']"));
+  for (let i = $baseline; i < nodes.length; i++) {
+    if (canonical(nodes[i].innerText || nodes[i].textContent || "") === expected) return true;
+  }
+  return false;
+})()
+"@
+    if([bool]$receipt){return}
     Start-Sleep -Milliseconds 100
   }
-  throw 'Prompt submit was not confirmed.'
+  throw 'Prompt submit was not confirmed by composer state or exact new user message.'
 }
 function Find-Audit([DateTimeOffset]$StartedAfter){
   if(-not(Test-Path -LiteralPath $LogRoot -PathType Container)){return $null}
@@ -235,7 +248,16 @@ try{
   $target=Wait-Target $port 30
   if($null-eq$target){throw 'CDP target unavailable.'}
   $Socket=New-Object Net.WebSockets.ClientWebSocket
-  $Socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+  $connectCts=New-Object Threading.CancellationTokenSource
+  $connectCts.CancelAfter(10000)
+  try{
+    try{
+      $Socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,$connectCts.Token).GetAwaiter().GetResult()
+    }catch{
+      if($connectCts.IsCancellationRequested){throw 'CDP websocket connect timed out after 10 seconds.'}
+      throw
+    }
+  }finally{$connectCts.Dispose()}
   $id=1
 
   $Stage='prepare-clean-chat'
