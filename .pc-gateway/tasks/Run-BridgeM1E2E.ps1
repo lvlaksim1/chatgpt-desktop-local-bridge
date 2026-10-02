@@ -351,7 +351,8 @@ function Send-CdpCommand {
         [System.Net.WebSockets.ClientWebSocket]$Socket,
         [int]$Id,
         [string]$Method,
-        [hashtable]$Params = @{}
+        [hashtable]$Params = @{},
+        [int]$TimeoutMs = 12000
     )
 
     $payload = @{
@@ -362,40 +363,64 @@ function Send-CdpCommand {
 
     $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
     $segment = New-Object ArraySegment[byte] -ArgumentList (, $bytes)
+    $cts = New-Object System.Threading.CancellationTokenSource
+    $cts.CancelAfter($TimeoutMs)
 
-    [void]($Socket.SendAsync(
-        $segment,
-        [System.Net.WebSockets.WebSocketMessageType]::Text,
-        $true,
-        [Threading.CancellationToken]::None).GetAwaiter().GetResult())
-
-    while ($true) {
-        $memory = New-Object IO.MemoryStream
+    try {
         try {
-            do {
-                $buffer = New-Object byte[] 65536
-                $bufferSegment = New-Object ArraySegment[byte] -ArgumentList (, $buffer)
-                $receive = $Socket.ReceiveAsync(
-                    $bufferSegment,
-                    [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+            [void]($Socket.SendAsync(
+                $segment,
+                [System.Net.WebSockets.WebSocketMessageType]::Text,
+                $true,
+                $cts.Token).GetAwaiter().GetResult())
+        }
+        catch {
+            if ($cts.IsCancellationRequested) {
+                throw "CDP send timeout after $TimeoutMs ms for $Method (id=$Id)."
+            }
+            throw
+        }
 
-                if ($receive.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) {
-                    throw 'CDP websocket closed.'
+        while ($true) {
+            $memory = New-Object IO.MemoryStream
+            try {
+                do {
+                    $buffer = New-Object byte[] 65536
+                    $bufferSegment = New-Object ArraySegment[byte] -ArgumentList (, $buffer)
+
+                    try {
+                        $receive = $Socket.ReceiveAsync(
+                            $bufferSegment,
+                            $cts.Token).GetAwaiter().GetResult()
+                    }
+                    catch {
+                        if ($cts.IsCancellationRequested) {
+                            throw "CDP receive timeout after $TimeoutMs ms for $Method (id=$Id)."
+                        }
+                        throw
+                    }
+
+                    if ($receive.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) {
+                        throw 'CDP websocket closed.'
+                    }
+
+                    $memory.Write($buffer, 0, $receive.Count)
+                } while (-not $receive.EndOfMessage)
+
+                $text = [Text.Encoding]::UTF8.GetString($memory.ToArray())
+                $message = $text | ConvertFrom-Json
+
+                if ($null -ne $message.PSObject.Properties['id'] -and [int]$message.id -eq $Id) {
+                    return $message
                 }
-
-                $memory.Write($buffer, 0, $receive.Count)
-            } while (-not $receive.EndOfMessage)
-
-            $text = [Text.Encoding]::UTF8.GetString($memory.ToArray())
-            $message = $text | ConvertFrom-Json
-
-            if ($null -ne $message.PSObject.Properties['id'] -and [int]$message.id -eq $Id) {
-                return $message
+            }
+            finally {
+                $memory.Dispose()
             }
         }
-        finally {
-            $memory.Dispose()
-        }
+    }
+    finally {
+        $cts.Dispose()
     }
 }
 
@@ -670,6 +695,7 @@ $testStarted = [DateTimeOffset]::UtcNow
 
 try {
     $baseTag = Get-InstalledTag
+    Write-Host ('BRIDGE_M1_STAGE=installed-tag:' + [string]$baseTag)
     if ([string]::IsNullOrWhiteSpace($baseTag)) {
         throw 'Installed release could not be identified safely.'
     }
@@ -678,6 +704,7 @@ try {
     Stop-BridgeWebViewProcesses
 
     $updateResult = Update-ToTarget -BaseTag $baseTag
+    Write-Host ('BRIDGE_M1_STAGE=update-complete:' + [string]$updateResult.updated)
 
     Stop-BridgeApp
     Stop-BridgeWebViewProcesses
@@ -693,6 +720,7 @@ try {
     if ($null -eq $appProcess) {
         throw 'Updated application main window did not appear.'
     }
+    Write-Host 'BRIDGE_M1_STAGE=app-window-ready'
 
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
@@ -706,6 +734,7 @@ try {
     if ($null -eq $target) {
         throw 'Updated WebView2 CDP target did not appear.'
     }
+    Write-Host 'BRIDGE_M1_STAGE=cdp-target-ready'
 
     $socket = New-Object System.Net.WebSockets.ClientWebSocket
     $socket.ConnectAsync(
@@ -716,11 +745,15 @@ try {
         url = 'https://chatgpt.com/'
     })
     $cdpId++
+    Write-Host 'BRIDGE_M1_STAGE=page-navigated'
 
     $health = Wait-AdapterReady -Socket $socket -Id ([ref]$cdpId) -TimeoutSeconds 75
+    Write-Host ('BRIDGE_M1_STAGE=adapter-ready:v' + [string]$health.version)
 
     Invoke-UiButton -Root $uiRoot -Name 'Initialize Bridge'
+    Write-Host 'BRIDGE_M1_STAGE=initialize-clicked'
     $bridgeReadyText = Wait-BridgeReadyStatus -Root $uiRoot -TimeoutSeconds 90
+    Write-Host ('BRIDGE_M1_STAGE=bridge-ready:' + $bridgeReadyText)
 
     if ($bridgeReadyText -match 'Session\s+([0-9a-fA-F]{8})') {
         $sessionPrefix = $Matches[1].ToLowerInvariant()
@@ -734,8 +767,10 @@ try {
         $marker + '. If the tool fails, do not use that marker.'
 
     Send-ChatText -Socket $socket -Id ([ref]$cdpId) -Text $prompt
+    Write-Host 'BRIDGE_M1_STAGE=fs-prompt-sent'
 
     $assistant = Wait-AssistantMarker -Socket $socket -Id ([ref]$cdpId) -Marker $marker -TimeoutSeconds 180
+    Write-Host 'BRIDGE_M1_STAGE=assistant-marker-seen'
 
     $auditDeadline = [DateTime]::UtcNow.AddSeconds(30)
     $audit = $null
@@ -756,6 +791,7 @@ try {
     if (-not [bool]$audit.ok) {
         throw ('fs.read_text audit record is not successful: ' + ($audit | ConvertTo-Json -Depth 10 -Compress))
     }
+    Write-Host 'BRIDGE_M1_STAGE=fs-audit-ok'
 
     Write-ProjectResult -Status 'pass' -ExitCode 0 -Extra @{
         installed_before = $baseTag
