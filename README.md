@@ -118,7 +118,8 @@ dotnet run --project .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.c
 - ждёт стабильности streaming-ответа перед dispatch;
 - показывает payload-free причину malformed bridge-кандидата в Diagnostics;
 - никогда не перезаписывает обычный пользовательский draft;
-- может заменить только собственный stale draft, начинающийся с `LOCAL_BRIDGE_BOOTSTRAP_V1` или `LOCAL_BRIDGE_RESULT_V1`.
+- может заменить только собственный stale draft, начинающийся с `LOCAL_BRIDGE_BOOTSTRAP_V1` или `LOCAL_BRIDGE_RESULT_V1`;
+- умеет определить, что конкретный `LOCAL_BRIDGE_RESULT_V1` уже присутствует в текущем разговоре, чтобы crash-recovery не дублировал доставленный результат.
 
 ## Важная архитектурная граница
 
@@ -140,4 +141,6 @@ Audit log:
 
 ## Статус
 
-BRIDGE-M1 live end-to-end proof завершён: READY и `fs.read_text` подтверждены на реальном Windows PC. Активен BRIDGE-M2 — hardening Web adapter перед durable execution foundation.
+- BRIDGE-M1 закрыт: READY и `fs.read_text` подтверждены на реальном Windows PC.
+- BRIDGE-M2 закрыт: Web adapter fail-closed, диагностирует protocol-кандидаты и защищает пользовательский draft.
+- BRIDGE-M3 активен: request ledger переживает restart, отделяет execution от delivery, блокирует небезопасный replay состояния `Executing`, хранит готовый result payload и восстанавливает Pending-result только в исходном ChatGPT conversation.
