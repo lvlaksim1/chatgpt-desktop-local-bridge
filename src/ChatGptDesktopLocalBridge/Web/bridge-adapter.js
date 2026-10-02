@@ -29,23 +29,6 @@
     return null;
   }
 
-  const SEND_BUTTON_SELECTORS = [
-    "button[data-testid='send-button']",
-    "button[aria-label='Send prompt']",
-    "button[aria-label='Send message']",
-    "button[aria-label*='Send']"
-  ];
-
-  function findSendButton(requireEnabled = true) {
-    for (const selector of SEND_BUTTON_SELECTORS) {
-      const element = document.querySelector(selector);
-      if (!element) continue;
-      if (!requireEnabled || !element.disabled) return element;
-    }
-
-    return null;
-  }
-
   function getComposerText(composer = findComposer()) {
     if (!composer) return "";
 
@@ -74,13 +57,17 @@
     selection.addRange(range);
   }
 
+  function normalizedComposerText(composer = findComposer()) {
+    return getComposerText(composer).replace(/\u200B/g, "");
+  }
+
   function prepareNativeSend() {
     const composer = findComposer();
     if (!composer) {
       return { accepted: false, reason: "composer-not-found" };
     }
 
-    const currentText = getComposerText(composer).replace(/\u200B/g, "").trim();
+    const currentText = normalizedComposerText(composer).trim();
     if (currentText.length > 0) {
       return {
         accepted: false,
@@ -94,23 +81,53 @@
 
     return {
       accepted: true,
-      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+      formFound: Boolean(composer.closest("form"))
     };
   }
 
   function nativeSendState(expectedText = null) {
     const composer = findComposer();
-    const text = getComposerText(composer).replace(/\u200B/g, "");
-    const sendButton = findSendButton(false);
+    const text = normalizedComposerText(composer);
+    const meaningfulText = text.trim();
 
     return {
       composerFound: Boolean(composer),
       composerTextLength: text.length,
-      textMatches: typeof expectedText === "string" ? text.trim() === expectedText.trim() : null,
-      sendButtonFound: Boolean(sendButton),
-      sendButtonDisabled: sendButton ? Boolean(sendButton.disabled) : null,
-      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+      composerMeaningfulLength: meaningfulText.length,
+      composerEmpty: meaningfulText.length === 0,
+      textMatches: typeof expectedText === "string"
+        ? meaningfulText === expectedText.trim()
+        : null,
+      formFound: Boolean(composer?.closest("form"))
     };
+  }
+
+  function submitNativeSend() {
+    const composer = findComposer();
+    if (!composer) {
+      return { accepted: false, reason: "composer-not-found" };
+    }
+
+    const form = composer.closest("form");
+    if (!form) {
+      return { accepted: false, reason: "composer-form-not-found" };
+    }
+
+    const currentText = normalizedComposerText(composer).trim();
+    if (!currentText) {
+      return { accepted: false, reason: "composer-empty" };
+    }
+
+    try {
+      form.requestSubmit();
+      return { accepted: true, strategy: "requestSubmit" };
+    } catch (error) {
+      return {
+        accepted: false,
+        reason: "request-submit-failed",
+        detail: String(error)
+      };
+    }
   }
 
   function extractRequest(text) {
@@ -203,7 +220,7 @@
 
   function health() {
     const composer = findComposer();
-    const sendButton = findSendButton(false);
+    const composerForm = composer?.closest("form") || null;
 
     return {
       version: 3,
@@ -213,8 +230,8 @@
       composerFound: Boolean(composer),
       composerTag: composer?.tagName || null,
       composerContentEditable: composer?.getAttribute?.("contenteditable") || null,
-      sendButtonFound: Boolean(sendButton),
-      sendButtonDisabled: sendButton ? Boolean(sendButton.disabled) : null,
+      composerFormFound: Boolean(composerForm),
+      nativeInputReady: Boolean(composer && composerForm),
       assistantMessages: document.querySelectorAll("[data-message-author-role='assistant']").length,
       userMessages: document.querySelectorAll("[data-message-author-role='user']").length
     };
@@ -235,6 +252,7 @@
   window.__localBridge = {
     prepareNativeSend,
     nativeSendState,
+    submitNativeSend,
     scan: scheduleScan,
     health,
     version: 3
