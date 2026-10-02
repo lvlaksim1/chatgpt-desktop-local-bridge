@@ -19,3 +19,5 @@ Latest real PC evidence:
 - #176 was a redundant update request discovered during reconciliation and is closed as duplicate.
 
 Next task is analysis of the submit-confirmation boundary, not another generic live probe.
+
+Validation environment note: Owner reports unstable Internet and intermittent ChatGPT service delays/additional review. Treat a single network/service-bound live failure as ambiguous; for safe/idempotent validation, retry the unchanged bounded scenario once before changing product code. Current unchanged retry is pc-runner-gateway #179.
