@@ -3,20 +3,26 @@
 ## Active verified beliefs
 
 1. Product repository: `lvlaksim1/chatgpt-desktop-local-bridge`.
-2. Product authority: `main`; BRIDGE-M1 product release evidence: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`.
+2. Product authority: `main`; current product head after the first BRIDGE-M3 durability merge is `64152b68205a59e7df59d842c2acf972f717de33`.
 3. Manager-state authority: `manager-state`.
-4. Owner machine is updated to `dev-ea074e0`; the prior intermediate installed baseline was `dev-450b884 / 0.1.28.0`.
+4. Current verified and Owner-installed release: `dev-aea8ad2@aea8ad2971dd7e138434b60d5dfd90c63a0f4a34`.
 5. Ordinary user-facing incremental updates are single EXE installers. ZIP delta packages are obsolete.
-6. Delta updates validate the base, back up touched files, apply changed files, verify target hashes, roll back on failure, write `update-last.log`, preserve the WebView2 profile, and preserve normal uninstall behavior.
-7. The bridge composer transport is proven on the Owner PC. JavaScript DOM mutation was not accepted by ChatGPT ProseMirror; native Chromium/WebView2 `Input.insertText` is accepted and is the supported bridge text injection mechanism.
-8. Current ChatGPT DOM evidence uses `data-user-message-bubble="true"` for user messages and `data-markdown-text-style="assistant-message"` for assistant messages, with legacy selectors retained as fallbacks.
-9. Adapter v5 detects nonce-bound READY and strict `LOCAL_BRIDGE_REQUEST_V1` envelopes, waits for a stable assistant message before dispatch, hides service messages, and preserves non-empty user drafts.
-10. BRIDGE-M1 is CLOSED by live Windows evidence:
-    - gateway #160: `Initialize Bridge -> Bridge ready. Session...` PASS;
-    - gateway #164: `READY -> fs.read_text(C:/Windows/win.ini) -> successful local audit` PASS on `dev-72b6766`;
-    - gateway #166: the same round trip PASS on product-fixed `dev-ea074e0`.
-11. The failed fs.read probes exposed a concrete protocol/Markdown interaction: Windows paths containing backslashes can be altered by ChatGPT Markdown/JSON rendering. Using forward slashes (`C:/Windows/win.ini`) avoids the corruption.
-12. `dev-ea074e0` fixes the product bootstrap so Windows path examples and rules require forward slashes in bridge JSON.
-13. The next active milestone is BRIDGE-M2 Web adapter reliability hardening. The first evidence-backed debt is silent rejection of malformed bridge request candidates: today it manifested as a long audit timeout instead of an immediate diagnostic reason.
-14. BRIDGE-M3 remains the durable execution foundation: explicit state machine, capability registry, bounded results, durable request ledger, and delivery recovery.
-15. BRIDGE-M4 remains controlled mutating/process capabilities, including deterministic mutations and Windows Job Object Emergency STOP.
+6. The bridge composer transport is proven on the Owner PC. Native Chromium/WebView2 `Input.insertText` is the supported bridge text injection mechanism.
+7. Current ChatGPT DOM evidence uses `data-user-message-bubble="true"` for user messages and `data-markdown-text-style="assistant-message"` for assistant messages, with legacy selectors retained as fallbacks.
+8. Adapter v7 executes only exact `LOCAL_BRIDGE_REQUEST_V1` envelopes, waits for stable streaming output, exposes payload-free protocol diagnostics, preserves ordinary user drafts, and may replace only bridge-owned stale drafts.
+9. BRIDGE-M1 is CLOSED by live Windows evidence:
+   - #160: `Initialize Bridge -> READY` PASS;
+   - #164: `READY -> fs.read_text(C:/Windows/win.ini) -> local execution/audit` PASS;
+   - #166: final M1 round-trip PASS on `dev-ea074e0`.
+10. Windows paths in bridge JSON use forward slashes because backslashes can be altered by ChatGPT Markdown/JSON rendering.
+11. BRIDGE-M2 is CLOSED. Gateway #168 passed the live reliability regression on Owner-installed `dev-aea8ad2`, including bridge-owned stale-draft recovery and a successful `fs.read_text` round trip.
+12. BRIDGE-M3 is ACTIVE. The first durable execution foundation is merged to `main` at `64152b6`:
+    - RAM-only request dedupe was replaced by an on-disk durable request ledger;
+    - execution states are `reserved -> executing -> completed`;
+    - delivery states are tracked separately as `notReady -> pending -> delivered`;
+    - conflicting reuse of the same session/request id with different tool/args is fail-closed;
+    - the ledger stores fingerprints/state, not request args or tool result payloads.
+13. The deterministic durable-ledger regression and the full Windows build/update workflow passed before and after merge.
+14. M3 delivery recovery remains intentionally incomplete: `completed/pending` is durable and prevents blind re-execution, but the result payload is not yet persisted/replayed after restart.
+15. Remaining M3 scope includes bounded result transport, result-delivery recovery, capability registry, and explicit recovery semantics for session/conversation continuity.
+16. BRIDGE-M4 remains controlled mutating/process capabilities, including deterministic mutations and Windows Job Object Emergency STOP.
