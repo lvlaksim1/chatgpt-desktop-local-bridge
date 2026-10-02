@@ -1,14 +1,11 @@
 # Next actions
 
-Updated: 2026-10-02 06:36 MSK
+Updated: 2026-10-02 13:20 MSK
 
-1. Do not rerun BRIDGE-M1 or BRIDGE-M2 unless later product changes touch those proven boundaries.
-2. Continue BRIDGE-M3 with one coherent design for pending-result recovery:
-   - persist a bounded replayable `LOCAL_BRIDGE_RESULT_V1` payload only after local execution completes;
-   - do not rerun the tool when delivery state is `pending`;
-   - bind recovery to the correct conversation/session;
-   - delete or retire replay payload after delivery is committed.
-3. Add centralized serialized-result bounds as part of the same delivery layer.
-4. Add a single capability registry after delivery semantics are stable.
-5. Keep changes on development branches with deterministic CI; avoid publishing a new Owner update for each internal sub-step.
-6. When the coherent M3 slice is ready, publish one dev release, update the Owner PC once, and run one bounded live integration regression that checks local execution plus durable `completed/delivered` state.
+1. Monitor only the two currently running CI workflows for `dd26c48` and `9461fff`.
+2. If both PASS:
+   - submit one pc-runner-gateway request to update the Owner PC from `dev-85c714c` to `dev-31e823e`;
+   - immediately submit one bounded M3 live regression after the update completes.
+3. Accept M3 live PASS only when the real read succeeds and the ledger is `completed/delivered`, conversation-bound, with delivered payload retired.
+4. Do not write further probe variants unless that single bounded regression returns a concrete failure.
+5. Persist the live evidence and close the current M3 durable-foundation slice on PASS.
