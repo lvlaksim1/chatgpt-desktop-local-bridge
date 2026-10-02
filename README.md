@@ -138,6 +138,12 @@ Audit log:
 
 `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\logs\bridge-YYYYMMDD.jsonl`
 
+Durable request ledger:
+
+`%LOCALAPPDATA%\ChatGptDesktopLocalBridge\state\requests`
+
+Ledger хранит только идентичность запроса, fingerprint и состояния исполнения/доставки. Содержимое аргументов и результаты локальных tools туда не копируются.
+
 ## Статус
 
-BRIDGE-M1 live end-to-end proof завершён: READY и `fs.read_text` подтверждены на реальном Windows PC. Активен BRIDGE-M2 — hardening Web adapter перед durable execution foundation.
+BRIDGE-M1 закрыт: READY и `fs.read_text` подтверждены на реальном Windows PC. BRIDGE-M2 закрыт: строгий parser, payload-free protocol diagnostics и восстановление только bridge-owned stale drafts подтверждены live regression. Активен BRIDGE-M3 — durable execution foundation: request lifecycle теперь сохраняется на диске, а завершение локального исполнения отделено от доставки результата.
