@@ -12,7 +12,7 @@ $BaseCommit = 'aea8ad2971dd7e138434b60d5dfd90c63a0f4a34'
 $TargetTag = 'dev-31e823e'
 $TargetCommit = '31e823ef7854a18bb2ad10e94ec71c51814628eb'
 $UpdateAsset = 'ChatGptDesktopLocalBridge-Update-from-dev-aea8ad2.exe'
-$ExpectedUpdateSha256 = '__RELEASE_SHA256_PENDING__'
+$ExpectedUpdateSha256 = '876804533411b86970e4d6245b72232e040e12e762ae47c9d0a02f998e309d42'
 $RequestId = 'req-m3-live-31e823e'
 
 $InstallRoot = Join-Path $env:LOCALAPPDATA 'Programs\ChatGPT Desktop Local Bridge'
