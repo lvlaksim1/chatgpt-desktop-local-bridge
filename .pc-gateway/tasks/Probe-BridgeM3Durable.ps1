@@ -170,8 +170,8 @@ function Send-ChatText($Socket,[ref]$Id,[string]$Text){
   }
   $state=Eval $Socket $Id ('window.__localBridge?.nativeSendState?.('+$expected+') ?? null')
   if($null-eq$state -or -not [bool]$state.textMatches){throw 'Prompt insert was not verified.'}
-  $submit=Eval $Socket $Id 'window.__localBridge?.submitNativeSend?.() ?? {accepted:false,reason:"adapter-not-ready"}'
-  if($null-eq$submit -or -not [bool]$submit.accepted){throw ('Prompt submit rejected: '+($submit|ConvertTo-Json -Compress))}
+  [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='rawKeyDown';key='Enter';code='Enter';windowsVirtualKeyCode=13;nativeVirtualKeyCode=13});$Id.Value++
+  [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='keyUp';key='Enter';code='Enter';windowsVirtualKeyCode=13;nativeVirtualKeyCode=13});$Id.Value++
   $deadline=[DateTime]::UtcNow.AddSeconds(10)
   while([DateTime]::UtcNow -lt $deadline){
     $state=Eval $Socket $Id 'window.__localBridge?.nativeSendState?.() ?? null'
