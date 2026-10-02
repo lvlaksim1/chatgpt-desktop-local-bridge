@@ -1,11 +1,12 @@
 # Next actions
 
-Updated: 2026-10-02 13:20 MSK
+Updated: 2026-10-02 13:25 MSK
 
-1. Monitor only the two currently running CI workflows for `dd26c48` and `9461fff`.
-2. If both PASS:
-   - submit one pc-runner-gateway request to update the Owner PC from `dev-85c714c` to `dev-31e823e`;
-   - immediately submit one bounded M3 live regression after the update completes.
-3. Accept M3 live PASS only when the real read succeeds and the ledger is `completed/delivered`, conversation-bound, with delivered payload retired.
-4. Do not write further probe variants unless that single bounded regression returns a concrete failure.
-5. Persist the live evidence and close the current M3 durable-foundation slice on PASS.
+1. Keep Owner release at `dev-31e823e`; no further update is needed now.
+2. Analyze `native-submit-not-confirmed` at the existing send boundary:
+   - compare composer state before/after `requestSubmit()`;
+   - use existing assistant/user DOM evidence to determine whether the bootstrap actually appeared in the conversation;
+   - distinguish failed submission from failed confirmation.
+3. Change product code only if that analysis identifies the exact defect.
+4. Run the existing single bounded M3 regression once after the fix.
+5. On PASS, persist # evidence and close the M3 durable-foundation slice.
