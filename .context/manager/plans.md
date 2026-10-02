@@ -1,45 +1,54 @@
 # Manager plans
 
-Manager generation: 10.
+Manager generation: 11.
 Product authority: `main`.
-Current product head: `64152b68205a59e7df59d842c2acf972f717de33`.
-Current verified release and Owner-installed release: `dev-aea8ad2@aea8ad2971dd7e138434b60d5dfd90c63a0f4a34`.
+Current product head: `9461fffbacceceeb6f1404bebf76d521e4578c01`.
+Latest published release: `dev-31e823e@31e823ef7854a18bb2ad10e94ec71c51814628eb`.
+Owner-installed release: `dev-85c714c@85c714c9b46df2c8ea5329b2d265953d9735ee3f`.
 
 ## Closed milestones
 
-1. BRIDGE-M1: live READY and `fs.read_text` round trip are proven; do not rerun unless a later product change touches that boundary.
-2. BRIDGE-M2: strict parser diagnostics, current/legacy DOM compatibility, streaming stability, draft protection, and bridge-owned stale-draft recovery are closed by deterministic checks plus live gateway #168.
+1. BRIDGE-M1 — CLOSED.
+2. BRIDGE-M2 — CLOSED.
 
-## BRIDGE-M3 foundation now merged
+## BRIDGE-M3 implemented foundation
 
-1. Replace RAM-only request-id dedupe with an on-disk request ledger.
-2. Persist `reserved`, `executing`, and `completed` execution states.
-3. Track result delivery independently as `notReady`, `pending`, and `delivered`.
-4. Fail closed on conflicting reuse of the same session/request id with different tool/args.
-5. Persist only request fingerprint/state metadata; do not copy request arguments or local result contents into the ledger.
-6. Mark execution completed before attempting ChatGPT result delivery, so delivery failure cannot cause blind local re-execution.
-7. Deterministic restart/dedupe/conflict regression: PASS.
-8. Full PR CI and post-merge main CI: PASS.
+1. Durable request reservation and execution state.
+2. Separate durable delivery state.
+3. Persisted bounded pending result envelope.
+4. Explicit replay classification; uncertain execution never reruns blindly.
+5. Conversation-bound pending-result recovery.
+6. Already-delivered result suppression and payload retirement.
+7. Central 256 KiB serialized-result transport bound.
+8. Central capability registry for dispatch, permissions, metadata and bootstrap.
+9. Deterministic regression coverage in CI.
 
-## Immediate M3 path
+## Current validation state
 
-1. Define bounded durable storage for a completed result that is still `pending` delivery.
-2. Define recovery binding so an old result is never injected into the wrong ChatGPT conversation/session.
-3. Implement recovery of `completed/pending` by replaying the stored result, never by rerunning the local tool.
-4. Add a capability registry so tool metadata, permission capability and bootstrap exposure have one authority.
-5. Enforce a transport-level bound for serialized result payloads.
-6. After this coherent M3 slice is complete, create one dev release, update the Owner PC once, and run one bounded live integration regression.
+- Owner machine successfully updated to `dev-85c714c` via gateway #169.
+- Crash-recovery/live probes #170-#173 did not produce final M3 proof; failures were in send/test-harness paths.
+- Latest published coherent target is `dev-31e823e`.
+- `main@dd26c48` contains the exact owner update task `dev-85c714c -> dev-31e823e`.
+- `main@9461fff` contains the bounded final live regression.
+- Both corresponding CI runs are currently in progress.
 
-## Follow-on engineering
+## Immediate plan
 
-After M3:
-1. Deterministic filesystem mutation primitives.
-2. Windows Job Object Emergency STOP.
-3. Shell/process, Git, Excel, browser/UI capability families.
+1. Do not add another probe while the two current CI runs are unresolved.
+2. After both are green, issue one gateway update to `dev-31e823e`.
+3. Immediately follow with one gateway run of the bounded M3 live regression.
+4. PASS criteria:
+   - bridge READY;
+   - real `fs.read_text(C:/Windows/win.ini)` succeeds;
+   - durable record is `executionState=completed`;
+   - durable record is `deliveryState=delivered`;
+   - conversation binding matches the active ChatGPT conversation;
+   - `resultEnvelopeJson` is retired after delivery.
+5. If PASS, close this M3 slice and proceed toward BRIDGE-M4 preparation.
+6. If FAIL, diagnose only that failure before changing product or tests.
 
-## Release/update policy
+## Release discipline
 
-- Give Owner one matching `Update-from-*.exe`, not ZIP archives.
-- Full Setup is first-install/fallback only.
-- Keep at most two installable dev releases and avoid ordinary Actions artifacts.
-- Do not create a new product release for test-script-only or every internal M3 sub-step.
+- One coherent owner update, not a release per internal step.
+- No ZIP deltas.
+- No unnecessary Actions artifacts.
