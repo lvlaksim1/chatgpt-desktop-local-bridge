@@ -723,7 +723,21 @@ finally {
         throw 'Known test draft could not be selected safely.'
     }
 
-    [void](Send-Cdp -Socket $Socket -Id $Id.Value -Method 'Input.insertText' -Params @{ text='' })
+    [void](Send-Cdp -Socket $Socket -Id $Id.Value -Method 'Input.dispatchKeyEvent' -Params @{
+        type='rawKeyDown'
+        key='Backspace'
+        code='Backspace'
+        windowsVirtualKeyCode=8
+        nativeVirtualKeyCode=8
+    })
+    $Id.Value++
+    [void](Send-Cdp -Socket $Socket -Id $Id.Value -Method 'Input.dispatchKeyEvent' -Params @{
+        type='keyUp'
+        key='Backspace'
+        code='Backspace'
+        windowsVirtualKeyCode=8
+        nativeVirtualKeyCode=8
+    })
     $Id.Value++
 
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
