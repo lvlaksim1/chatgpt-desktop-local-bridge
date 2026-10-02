@@ -1,40 +1,45 @@
 # Manager plans
 
-Manager generation: 9.
+Manager generation: 10.
 Product authority: `main`.
-Current verified release: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`.
-Owner installed release: `dev-ea074e0`.
+Current product head: `64152b68205a59e7df59d842c2acf972f717de33`.
+Current verified release and Owner-installed release: `dev-aea8ad2@aea8ad2971dd7e138434b60d5dfd90c63a0f4a34`.
 
-## BRIDGE-M1 closure evidence
+## Closed milestones
 
-1. `Initialize Bridge -> READY`: PASS, pc-runner-gateway #160.
-2. `READY -> fs.read_text(C:/Windows/win.ini) -> successful local execution/audit`: PASS, #164.
-3. Product bootstrap corrected to require forward-slash Windows paths in bridge JSON.
-4. Updated Owner PC to `dev-ea074e0`.
-5. Final round-trip regression on `dev-ea074e0`: PASS, #166.
-6. BRIDGE-M1 is CLOSED. Do not repeat M1 probes unless a later product change regresses this boundary.
+1. BRIDGE-M1: live READY and `fs.read_text` round trip are proven; do not rerun unless a later product change touches that boundary.
+2. BRIDGE-M2: strict parser diagnostics, current/legacy DOM compatibility, streaming stability, draft protection, and bridge-owned stale-draft recovery are closed by deterministic checks plus live gateway #168.
 
-## Immediate BRIDGE-M2 path
+## BRIDGE-M3 foundation now merged
 
-1. Harden adapter protocol diagnostics using evidence from the failed M1 probes.
-2. Keep strict parsing: only an exact `LOCAL_BRIDGE_REQUEST_V1` envelope is executable.
-3. When an assistant message contains bridge request markers but cannot be parsed, record a payload-free diagnostic reason such as invalid JSON / missing id / missing session / missing tool.
-4. Surface last protocol event/failure and pending/processed counts through `health()` so Diagnostics immediately explains failures instead of forcing long audit waits.
-5. Keep service-message hiding, current + legacy DOM selectors, 700 ms streaming stability gate, draft preservation, and no blind retry.
-6. Add a bounded deterministic check for parser diagnostics and one short live regression only if product behavior changes.
+1. Replace RAM-only request-id dedupe with an on-disk request ledger.
+2. Persist `reserved`, `executing`, and `completed` execution states.
+3. Track result delivery independently as `notReady`, `pending`, and `delivered`.
+4. Fail closed on conflicting reuse of the same session/request id with different tool/args.
+5. Persist only request fingerprint/state metadata; do not copy request arguments or local result contents into the ledger.
+6. Mark execution completed before attempting ChatGPT result delivery, so delivery failure cannot cause blind local re-execution.
+7. Deterministic restart/dedupe/conflict regression: PASS.
+8. Full PR CI and post-merge main CI: PASS.
+
+## Immediate M3 path
+
+1. Define bounded durable storage for a completed result that is still `pending` delivery.
+2. Define recovery binding so an old result is never injected into the wrong ChatGPT conversation/session.
+3. Implement recovery of `completed/pending` by replaying the stored result, never by rerunning the local tool.
+4. Add a capability registry so tool metadata, permission capability and bootstrap exposure have one authority.
+5. Enforce a transport-level bound for serialized result payloads.
+6. After this coherent M3 slice is complete, create one dev release, update the Owner PC once, and run one bounded live integration regression.
 
 ## Follow-on engineering
 
-After M2:
-1. BRIDGE-M3 explicit state machine and capability registry.
-2. Bound result size and establish durable request ledger + result-delivery recovery.
-3. Deterministic filesystem mutation primitives.
-4. Windows Job Object Emergency STOP.
-5. Shell/process, Git, Excel, browser/UI capability families.
+After M3:
+1. Deterministic filesystem mutation primitives.
+2. Windows Job Object Emergency STOP.
+3. Shell/process, Git, Excel, browser/UI capability families.
 
 ## Release/update policy
 
 - Give Owner one matching `Update-from-*.exe`, not ZIP archives.
 - Full Setup is first-install/fallback only.
 - Keep at most two installable dev releases and avoid ordinary Actions artifacts.
-- Do not create a new product release for test-script-only changes.
+- Do not create a new product release for test-script-only or every internal M3 sub-step.
