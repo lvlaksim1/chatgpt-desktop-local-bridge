@@ -104,7 +104,7 @@ window.__localBridge.scan();
 await sleep(220);
 
 let health = window.__localBridge.health();
-assert(health.version === 7, "Expected adapter v7.");
+assert(health.version === 8, "Expected adapter v8.");
 assert(health.lastProtocolDebug?.stage === "request-rejected", "Malformed request was not marked rejected.");
 assert(health.lastProtocolDebug?.reason === "request-json-invalid", "Malformed request reason was not request-json-invalid.");
 assert(!posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-bad"),
@@ -138,5 +138,25 @@ const readyPosted = posted.find(x => x?.type === "bridge.ready" && x?.session ==
 assert(Boolean(readyPosted), "READY marker was not dispatched.");
 assert(ready.style.display === "none", "READY service message was not hidden.");
 assert(health.lastProtocolDebug?.stage === "ready-dispatched", "READY dispatch was not recorded.");
+
+const deliveredResult = messageNode(
+  '[[LOCAL_BRIDGE_RESULT_V1]]\n' +
+  '{"session":"0123456789abcdef0123456789abcdef","request_id":"req-good","ok":true,"result":{"text":"ok"}}\n' +
+  '[[/LOCAL_BRIDGE_RESULT_V1]]'
+);
+userNodes.push(deliveredResult);
+window.__localBridge.scan();
+await sleep(220);
+
+assert(
+  window.__localBridge.hasResult("0123456789abcdef0123456789abcdef", "req-good") === true,
+  "Delivered bridge result was not detected in the current conversation.");
+assert(
+  window.__localBridge.hasResult("0123456789abcdef0123456789abcdef", "req-other") === false,
+  "Result detection matched the wrong request id.");
+assert(
+  window.__localBridge.hasResult("fedcba9876543210fedcba9876543210", "req-good") === false,
+  "Result detection matched the wrong session.");
+assert(deliveredResult.style.display === "none", "Bridge result service message was not hidden.");
 
 console.log("bridge-adapter protocol diagnostics test: PASS");

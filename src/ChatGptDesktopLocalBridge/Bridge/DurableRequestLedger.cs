@@ -47,7 +47,8 @@ public sealed record DurableRequestRecord(
     bool? Ok = null,
     string? ErrorCode = null,
     long? ElapsedMs = null,
-    string? ResultEnvelopeJson = null);
+    string? ResultEnvelopeJson = null,
+    string? ConversationUri = null);
 
 public sealed record DurableReservation(
     DurableReservationStatus Status,
@@ -74,12 +75,19 @@ public sealed class DurableRequestLedger
         _jsonOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     }
 
+    public Task<DurableReservation> ReserveAsync(
+        BridgeRequest request,
+        CancellationToken cancellationToken = default)
+        => ReserveAsync(request, conversationUri: null, cancellationToken);
+
     public async Task<DurableReservation> ReserveAsync(
         BridgeRequest request,
+        string? conversationUri,
         CancellationToken cancellationToken = default)
     {
         var path = GetRecordPath(request.Session, request.Id);
         var fingerprint = ComputeFingerprint(request);
+        var normalizedConversationUri = NormalizeConversationUri(conversationUri);
 
         await _gate.WaitAsync(cancellationToken);
         try
@@ -89,7 +97,8 @@ public sealed class DurableRequestLedger
                 return CompareExisting(
                     await ReadRecordAsync(path, cancellationToken),
                     request,
-                    fingerprint);
+                    fingerprint,
+                    normalizedConversationUri);
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -102,7 +111,8 @@ public sealed class DurableRequestLedger
                 DurableExecutionState.Reserved,
                 DurableDeliveryState.NotReady,
                 now,
-                now);
+                now,
+                ConversationUri: normalizedConversationUri);
 
             try
             {
@@ -114,7 +124,8 @@ public sealed class DurableRequestLedger
                 return CompareExisting(
                     await ReadRecordAsync(path, cancellationToken),
                     request,
-                    fingerprint);
+                    fingerprint,
+                    normalizedConversationUri);
             }
         }
         finally
@@ -242,9 +253,17 @@ public sealed class DurableRequestLedger
                 $"Unknown durable execution state for request {record.RequestId}: {record.ExecutionState}.")
         };
 
+    public Task<IReadOnlyList<DurableRequestRecord>> GetPendingDeliveriesAsync(
+        CancellationToken cancellationToken = default)
+        => GetPendingDeliveriesAsync(conversationUri: null, session: null, cancellationToken);
+
     public async Task<IReadOnlyList<DurableRequestRecord>> GetPendingDeliveriesAsync(
+        string? conversationUri,
+        string? session = null,
         CancellationToken cancellationToken = default)
     {
+        var normalizedConversationUri = NormalizeConversationUri(conversationUri);
+
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -255,13 +274,27 @@ public sealed class DurableRequestLedger
             {
                 var record = await ReadRecordAsync(path, cancellationToken);
 
-                if (string.Equals(record.Schema, Schema, StringComparison.Ordinal) &&
-                    record.ExecutionState == DurableExecutionState.Completed &&
-                    record.DeliveryState == DurableDeliveryState.Pending &&
-                    !string.IsNullOrWhiteSpace(record.ResultEnvelopeJson))
+                if (!string.Equals(record.Schema, Schema, StringComparison.Ordinal) ||
+                    record.ExecutionState != DurableExecutionState.Completed ||
+                    record.DeliveryState != DurableDeliveryState.Pending ||
+                    string.IsNullOrWhiteSpace(record.ResultEnvelopeJson))
                 {
-                    records.Add(record);
+                    continue;
                 }
+
+                if (normalizedConversationUri is not null &&
+                    !string.Equals(record.ConversationUri, normalizedConversationUri, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (session is not null &&
+                    !string.Equals(record.Session, session, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                records.Add(record);
             }
 
             return records
@@ -306,14 +339,21 @@ public sealed class DurableRequestLedger
     private DurableReservation CompareExisting(
         DurableRequestRecord existing,
         BridgeRequest request,
-        string fingerprint)
+        string fingerprint,
+        string? conversationUri)
     {
+        var conversationMatches =
+            existing.ConversationUri is null ||
+            conversationUri is null ||
+            string.Equals(existing.ConversationUri, conversationUri, StringComparison.Ordinal);
+
         var same =
             string.Equals(existing.Schema, Schema, StringComparison.Ordinal) &&
             string.Equals(existing.Session, request.Session, StringComparison.Ordinal) &&
             string.Equals(existing.RequestId, request.Id, StringComparison.Ordinal) &&
             string.Equals(existing.Tool, request.Tool, StringComparison.Ordinal) &&
-            string.Equals(existing.FingerprintSha256, fingerprint, StringComparison.Ordinal);
+            string.Equals(existing.FingerprintSha256, fingerprint, StringComparison.Ordinal) &&
+            conversationMatches;
 
         return new DurableReservation(
             same ? DurableReservationStatus.Duplicate : DurableReservationStatus.Conflict,
@@ -328,11 +368,38 @@ public sealed class DurableRequestLedger
             !string.Equals(expected.Session, actual.Session, StringComparison.Ordinal) ||
             !string.Equals(expected.RequestId, actual.RequestId, StringComparison.Ordinal) ||
             !string.Equals(expected.Tool, actual.Tool, StringComparison.Ordinal) ||
-            !string.Equals(expected.FingerprintSha256, actual.FingerprintSha256, StringComparison.Ordinal))
+            !string.Equals(expected.FingerprintSha256, actual.FingerprintSha256, StringComparison.Ordinal) ||
+            (expected.ConversationUri is not null &&
+             actual.ConversationUri is not null &&
+             !string.Equals(expected.ConversationUri, actual.ConversationUri, StringComparison.Ordinal)))
         {
             throw new InvalidOperationException(
                 $"Durable ledger identity changed for request {expected.RequestId}.");
         }
+    }
+
+    public static string? NormalizeConversationUri(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        var path = uri.AbsolutePath.TrimEnd('/');
+        if (string.IsNullOrEmpty(path))
+        {
+            path = "/";
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            Query = string.Empty,
+            Fragment = string.Empty,
+            Path = path
+        };
+
+        return builder.Uri.GetLeftPart(UriPartial.Path).TrimEnd('/');
     }
 
     private string GetRecordPath(string session, string requestId)
