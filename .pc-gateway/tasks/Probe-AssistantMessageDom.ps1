@@ -156,6 +156,12 @@ try {
     $socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
     $id = 1
 
+    # Force a clean new-chat surface so the probe is not coupled to whatever thread
+    # was visible when the previous runner test stopped.
+    [void](Send-CdpCommand -Socket $socket -Id $id -Method 'Page.navigate' -Params @{ url = 'https://chatgpt.com/' })
+    $id++
+    Start-Sleep -Seconds 3
+
     $marker = 'LOCAL-BRIDGE-ASSISTANT-DOM-PROBE-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
     $prompt = 'Reply with exactly this single line and no other text: ' + $marker
     $promptJson = $prompt | ConvertTo-Json -Compress
@@ -195,7 +201,15 @@ try {
         }
         Start-Sleep -Milliseconds 500
     }
-    if (-not $prepared) { throw 'Composer did not become ready.' }
+    if (-not $prepared) {
+        $diag=Send-CdpCommand -Socket $socket -Id $id -Method 'Runtime.evaluate' -Params @{
+            expression='({href:location.href,readyState:document.readyState,body:(document.body?.innerText||"").slice(0,1500)})'
+            returnByValue=$true
+        }
+        $id++
+        $diagValue=Get-CdpEvalValue -Response $diag -Stage 'composer-timeout-diagnostics'
+        throw ('Composer did not become ready: ' + ($diagValue | ConvertTo-Json -Compress))
+    }
 
     [void](Send-CdpCommand -Socket $socket -Id $id -Method 'Input.insertText' -Params @{text=$prompt})
     $id++
