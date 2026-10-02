@@ -394,26 +394,29 @@ public partial class MainWindow
                 return false;
             }
 
-            var submitRaw = await Browser.ExecuteScriptAsync(
-                "window.__localBridge?.submitNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
-
-            using var submitDocument = JsonDocument.Parse(submitRaw);
-            var submit = submitDocument.RootElement;
-            var submitAccepted =
-                submit.TryGetProperty("accepted", out var submitAcceptedElement) &&
-                submitAcceptedElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-                submitAcceptedElement.GetBoolean();
-
-            if (!submitAccepted)
+            var enterDownParameters = JsonSerializer.Serialize(new
             {
-                var reason = submit.TryGetProperty("reason", out var reasonElement) &&
-                             reasonElement.ValueKind == JsonValueKind.String
-                    ? reasonElement.GetString()
-                    : "native-submit-rejected";
+                type = "rawKeyDown",
+                key = "Enter",
+                code = "Enter",
+                windowsVirtualKeyCode = 13,
+                nativeVirtualKeyCode = 13
+            });
+            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "Input.dispatchKeyEvent",
+                enterDownParameters);
 
-                StatusText.Text = $"Chat send failed: {reason}";
-                return false;
-            }
+            var enterUpParameters = JsonSerializer.Serialize(new
+            {
+                type = "keyUp",
+                key = "Enter",
+                code = "Enter",
+                windowsVirtualKeyCode = 13,
+                nativeVirtualKeyCode = 13
+            });
+            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync(
+                "Input.dispatchKeyEvent",
+                enterUpParameters);
 
             var sendDeadline = DateTime.UtcNow.AddSeconds(8);
             while (DateTime.UtcNow < sendDeadline)
