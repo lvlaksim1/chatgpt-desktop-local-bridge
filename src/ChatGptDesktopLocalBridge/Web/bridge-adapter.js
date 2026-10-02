@@ -12,6 +12,7 @@
   const processed = new Set();
   const pending = new Map();
   const STABLE_MESSAGE_MS = 700;
+  let lastNativeSendDebug = null;
 
   function findComposer() {
     const selectors = [
@@ -76,11 +77,18 @@
   function prepareNativeSend() {
     const composer = findComposer();
     if (!composer) {
+      lastNativeSendDebug = { stage: "prepare", accepted: false, reason: "composer-not-found" };
       return { accepted: false, reason: "composer-not-found" };
     }
 
     const currentText = normalizedComposerText(composer).trim();
     if (currentText.length > 0) {
+      lastNativeSendDebug = {
+        stage: "prepare",
+        accepted: false,
+        reason: "composer-not-empty",
+        composerTextLength: currentText.length
+      };
       return {
         accepted: false,
         reason: "composer-not-empty",
@@ -90,6 +98,12 @@
 
     composer.focus();
     positionCaretForNativeInput(composer);
+
+    lastNativeSendDebug = {
+      stage: "prepare",
+      accepted: true,
+      formFound: Boolean(composer.closest("form"))
+    };
 
     return {
       accepted: true,
@@ -102,7 +116,7 @@
     const text = normalizedComposerText(composer);
     const meaningfulText = text.trim();
 
-    return {
+    const state = {
       composerFound: Boolean(composer),
       composerTextLength: text.length,
       composerMeaningfulLength: meaningfulText.length,
@@ -110,30 +124,47 @@
       textMatches: typeof expectedText === "string"
         ? canonicalizeBridgeText(text) === canonicalizeBridgeText(expectedText)
         : null,
+      expectedCanonicalLength: typeof expectedText === "string"
+        ? canonicalizeBridgeText(expectedText).length
+        : null,
+      actualCanonicalLength: canonicalizeBridgeText(text).length,
       formFound: Boolean(composer?.closest("form"))
     };
+
+    lastNativeSendDebug = { stage: "state", ...state };
+    return state;
   }
 
   function submitNativeSend() {
     const composer = findComposer();
     if (!composer) {
+      lastNativeSendDebug = { stage: "submit", accepted: false, reason: "composer-not-found" };
       return { accepted: false, reason: "composer-not-found" };
     }
 
     const form = composer.closest("form");
     if (!form) {
+      lastNativeSendDebug = { stage: "submit", accepted: false, reason: "composer-form-not-found" };
       return { accepted: false, reason: "composer-form-not-found" };
     }
 
     const currentText = normalizedComposerText(composer).trim();
     if (!currentText) {
+      lastNativeSendDebug = { stage: "submit", accepted: false, reason: "composer-empty" };
       return { accepted: false, reason: "composer-empty" };
     }
 
     try {
       form.requestSubmit();
+      lastNativeSendDebug = { stage: "submit", accepted: true, strategy: "requestSubmit" };
       return { accepted: true, strategy: "requestSubmit" };
     } catch (error) {
+      lastNativeSendDebug = {
+        stage: "submit",
+        accepted: false,
+        reason: "request-submit-failed",
+        detail: String(error)
+      };
       return {
         accepted: false,
         reason: "request-submit-failed",
@@ -247,7 +278,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 4,
+      version: 5,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -257,7 +288,8 @@
       composerFormFound: Boolean(composerForm),
       nativeInputReady: Boolean(composer && composerForm),
       assistantMessages: getAssistantMessageNodes().length,
-      userMessages: getUserMessageNodes().length
+      userMessages: getUserMessageNodes().length,
+      lastNativeSendDebug
     };
   }
 
@@ -279,7 +311,7 @@
     submitNativeSend,
     scan: scheduleScan,
     health,
-    version: 4
+    version: 5
   };
 
   const observer = new MutationObserver(scheduleScan);
