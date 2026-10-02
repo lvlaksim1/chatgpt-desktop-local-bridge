@@ -130,6 +130,20 @@
     }
   }
 
+  function getAssistantMessageNodes() {
+    return document.querySelectorAll(
+      "[data-message-author-role='assistant'], " +
+      "[data-markdown-text-style='assistant-message']"
+    );
+  }
+
+  function getUserMessageNodes() {
+    return document.querySelectorAll(
+      "[data-message-author-role='user'], " +
+      "[data-user-message-bubble='true']"
+    );
+  }
+
   function extractRequest(text) {
     const normalized = (text || "").trim();
     if (!normalized.startsWith(REQUEST_START) || !normalized.endsWith(REQUEST_END)) {
@@ -153,8 +167,7 @@
   }
 
   function hideServiceMessages() {
-    document
-      .querySelectorAll("[data-message-author-role='user']")
+    getUserMessageNodes()
       .forEach(node => {
         const text = node.innerText || "";
         if (text.includes(RESULT_START) || text.includes(BOOTSTRAP_START)) {
@@ -166,8 +179,7 @@
   function scanAssistantMessages() {
     const now = Date.now();
 
-    document
-      .querySelectorAll("[data-message-author-role='assistant']")
+    getAssistantMessageNodes()
       .forEach(node => {
         const text = (node.innerText || "").trim();
 
@@ -232,8 +244,8 @@
       composerContentEditable: composer?.getAttribute?.("contenteditable") || null,
       composerFormFound: Boolean(composerForm),
       nativeInputReady: Boolean(composer && composerForm),
-      assistantMessages: document.querySelectorAll("[data-message-author-role='assistant']").length,
-      userMessages: document.querySelectorAll("[data-message-author-role='user']").length
+      assistantMessages: getAssistantMessageNodes().length,
+      userMessages: getUserMessageNodes().length
     };
   }
 
