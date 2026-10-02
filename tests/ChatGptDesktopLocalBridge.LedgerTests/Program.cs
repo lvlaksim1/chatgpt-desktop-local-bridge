@@ -22,6 +22,9 @@ var root = Path.Combine(
 try
 {
     var session = "0123456789abcdef0123456789abcdef";
+    var conversationUri = "https://chatgpt.com/c/bridge-test?temporary=1#fragment";
+    var normalizedConversationUri = "https://chatgpt.com/c/bridge-test";
+
     var request = new BridgeRequest(
         session,
         "req-durable-001",
@@ -30,13 +33,15 @@ try
 
     var ledger = new DurableRequestLedger(root);
 
-    var first = await ledger.ReserveAsync(request);
+    var first = await ledger.ReserveAsync(request, conversationUri);
     Require(first.Status == DurableReservationStatus.Created, "First reservation was not created.");
     Require(first.Record.ExecutionState == DurableExecutionState.Reserved, "First reservation state is not reserved.");
     Require(first.Record.DeliveryState == DurableDeliveryState.NotReady, "Initial delivery state is not notReady.");
+    Require(first.Record.ConversationUri == normalizedConversationUri,
+        "Conversation URI was not normalized and persisted.");
 
     var reservedRestart = new DurableRequestLedger(root);
-    var replayWhileReserved = await reservedRestart.ReserveAsync(request);
+    var replayWhileReserved = await reservedRestart.ReserveAsync(request, conversationUri);
     Require(replayWhileReserved.Status == DurableReservationStatus.Duplicate,
         "Reserved request replay after restart was not detected.");
     Require(
@@ -47,7 +52,7 @@ try
     Require(executing.ExecutionState == DurableExecutionState.Executing, "Executing state was not persisted.");
 
     var afterRestart = new DurableRequestLedger(root);
-    var replayWhileExecuting = await afterRestart.ReserveAsync(request);
+    var replayWhileExecuting = await afterRestart.ReserveAsync(request, conversationUri);
     Require(replayWhileExecuting.Status == DurableReservationStatus.Duplicate, "Replay after restart was not detected.");
     Require(replayWhileExecuting.Record.ExecutionState == DurableExecutionState.Executing,
         "Replay did not recover the executing state.");
@@ -77,7 +82,7 @@ try
         Args("{\"max_chars\":4096,\"path\":\"C:/Windows/win.ini\"}"));
 
     var secondRestart = new DurableRequestLedger(root);
-    var replayPending = await secondRestart.ReserveAsync(equivalentRequest);
+    var replayPending = await secondRestart.ReserveAsync(equivalentRequest, conversationUri);
     Require(replayPending.Status == DurableReservationStatus.Duplicate,
         "Canonical equivalent request was not recognized as the same durable request.");
     Require(replayPending.Record.DeliveryState == DurableDeliveryState.Pending,
@@ -88,17 +93,22 @@ try
         DurableRequestLedger.GetReplayAction(replayPending.Record) == DurableReplayAction.RedeliverResult,
         "Completed pending replay was not classified for result re-delivery.");
 
-    var pendingDeliveries = await secondRestart.GetPendingDeliveriesAsync();
+    var pendingDeliveries = await secondRestart.GetPendingDeliveriesAsync(conversationUri);
     Require(pendingDeliveries.Count == 1, "Pending delivery enumeration did not return exactly one record.");
     Require(pendingDeliveries[0].RequestId == request.Id, "Pending delivery enumeration returned the wrong request.");
     Require(pendingDeliveries[0].ResultEnvelopeJson == resultEnvelopeJson,
         "Pending delivery enumeration lost the persisted result payload.");
 
+    var wrongConversationPending =
+        await secondRestart.GetPendingDeliveriesAsync("https://chatgpt.com/c/other");
+    Require(wrongConversationPending.Count == 0,
+        "Pending result leaked into a different conversation scope.");
+
     var delivered = await secondRestart.MarkDeliveredAsync(replayPending.Record);
     Require(delivered.DeliveryState == DurableDeliveryState.Delivered, "Delivered state was not persisted.");
 
     var thirdRestart = new DurableRequestLedger(root);
-    var replayDelivered = await thirdRestart.ReserveAsync(request);
+    var replayDelivered = await thirdRestart.ReserveAsync(request, conversationUri);
     Require(replayDelivered.Status == DurableReservationStatus.Duplicate,
         "Delivered request replay was not detected.");
     Require(replayDelivered.Record.DeliveryState == DurableDeliveryState.Delivered,
@@ -114,8 +124,13 @@ try
         DurableRequestLedger.GetReplayAction(completedWithoutPayload) == DurableReplayAction.BlockMissingResult,
         "Completed record without a durable result payload was not blocked.");
 
-    var noPendingDeliveries = await thirdRestart.GetPendingDeliveriesAsync();
+    var noPendingDeliveries = await thirdRestart.GetPendingDeliveriesAsync(conversationUri);
     Require(noPendingDeliveries.Count == 0, "Delivered result remained in the pending-delivery set.");
+
+    var conversationConflict =
+        await thirdRestart.ReserveAsync(request, "https://chatgpt.com/c/other");
+    Require(conversationConflict.Status == DurableReservationStatus.Conflict,
+        "The same durable request identity was accepted from a different conversation.");
 
     var conflictingRequest = new BridgeRequest(
         session,
@@ -123,7 +138,7 @@ try
         "fs.read_text",
         Args("{\"path\":\"C:/Windows/win.ini\",\"max_chars\":8192}"));
 
-    var conflict = await thirdRestart.ReserveAsync(conflictingRequest);
+    var conflict = await thirdRestart.ReserveAsync(conflictingRequest, conversationUri);
     Require(conflict.Status == DurableReservationStatus.Conflict,
         "Conflicting reuse of a durable request id was not rejected.");
 
