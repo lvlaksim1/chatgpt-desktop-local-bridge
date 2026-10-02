@@ -149,9 +149,38 @@ public partial class MainWindow
         try
         {
             var policy = PermissionPolicy.LoadOrCreate();
+            var conversationKey = GetCurrentConversationKey();
+            if (!string.IsNullOrWhiteSpace(conversationKey))
+            {
+                var recoverable = await BridgeHost.FindRecoverableAsync(conversationKey);
+                var pending = recoverable.FirstOrDefault();
+                if (pending is not null)
+                {
+                    _bridgeHost = new BridgeHost(
+                        policy,
+                        SendTextToChatAsync,
+                        GetCurrentConversationKey,
+                        message => Dispatcher.Invoke(() => StatusText.Text = message),
+                        pending.Session);
+
+                    var recovered = await _bridgeHost.RecoverPendingAsync(
+                        pending,
+                        IsBridgeResultAlreadyPresentAsync);
+
+                    if (recovered)
+                    {
+                        StatusText.Text =
+                            $"Bridge resumed. Session {_bridgeHost.SessionId[..8]}…";
+                    }
+
+                    return;
+                }
+            }
+
             _bridgeHost = new BridgeHost(
                 policy,
                 SendTextToChatAsync,
+                GetCurrentConversationKey,
                 message => Dispatcher.Invoke(() => StatusText.Text = message));
 
             readyCompletion = new TaskCompletionSource<bool>(
@@ -265,6 +294,26 @@ public partial class MainWindow
         {
             StatusText.Text = $"Diagnostics failed: {ex.Message}";
         }
+    }
+
+    private string? GetCurrentConversationKey()
+        => BridgeConversationIdentity.TryGetConversationKey(Browser.Source);
+
+    private async Task<bool> IsBridgeResultAlreadyPresentAsync(
+        string session,
+        string requestId)
+    {
+        if (Browser.CoreWebView2 is null)
+        {
+            return false;
+        }
+
+        var sessionArgument = JsonSerializer.Serialize(session);
+        var requestArgument = JsonSerializer.Serialize(requestId);
+        var raw = await Browser.ExecuteScriptAsync(
+            $"Boolean(window.__localBridge?.hasDeliveredResult?.({sessionArgument}, {requestArgument}))");
+
+        return string.Equals(raw?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> SendTextToChatAsync(string text)
