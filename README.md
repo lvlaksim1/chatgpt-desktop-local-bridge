@@ -139,8 +139,14 @@ Audit log:
 
 `%LOCALAPPDATA%\ChatGptDesktopLocalBridge\logs\bridge-YYYYMMDD.jsonl`
 
+Durable request state:
+
+`%LOCALAPPDATA%\ChatGptDesktopLocalBridge\state\requests`
+
+Пока result имеет состояние `Pending`, его bounded envelope хранится здесь для crash-recovery. После подтверждённой доставки payload удаляется из ledger; остаются только идентификаторы, fingerprint и техническое состояние выполнения/доставки.
+
 ## Статус
 
 - BRIDGE-M1 закрыт: READY и `fs.read_text` подтверждены на реальном Windows PC.
 - BRIDGE-M2 закрыт: Web adapter fail-closed, диагностирует protocol-кандидаты и защищает пользовательский draft.
-- BRIDGE-M3 активен: request ledger переживает restart, отделяет execution от delivery, блокирует небезопасный replay состояния `Executing`, хранит готовый result payload и восстанавливает Pending-result только в исходном ChatGPT conversation.
+- BRIDGE-M3 durable foundation завершён как единый проверяемый slice: request ledger переживает restart, отделяет execution от delivery, блокирует небезопасный replay состояния `Executing`, восстанавливает Pending-result только в исходном ChatGPT conversation, не повторяет уже `Delivered` result и удаляет его payload после подтверждённой доставки. Полный `LOCAL_BRIDGE_RESULT_V1` ограничен 256 KiB; превышение превращается в явный bounded error без повторного выполнения локального tool. Tool dispatch, permission capability и bootstrap exposure теперь используют единый capability registry.
