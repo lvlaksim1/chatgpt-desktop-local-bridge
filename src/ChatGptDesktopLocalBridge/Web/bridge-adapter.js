@@ -6,6 +6,7 @@
   const REQUEST_START = "[[LOCAL_BRIDGE_REQUEST_V1]]";
   const REQUEST_END = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
   const RESULT_START = "[[LOCAL_BRIDGE_RESULT_V1]]";
+  const RESULT_END = "[[/LOCAL_BRIDGE_RESULT_V1]]";
   const BOOTSTRAP_START = "[[LOCAL_BRIDGE_BOOTSTRAP_V1]]";
   const READY_PATTERN = /^\[\[LOCAL_BRIDGE_READY_V1:([a-fA-F0-9]{32})\]\]$/;
 
@@ -320,6 +321,41 @@
     };
   }
 
+  function hasResult(session, requestId) {
+    if (typeof session !== "string" || !session ||
+        typeof requestId !== "string" || !requestId) {
+      return false;
+    }
+
+    for (const node of getUserMessageNodes()) {
+      const normalized = normalizeBridgeText(
+        node.textContent || node.innerText || ""
+      ).trim();
+
+      if (!normalized.startsWith(RESULT_START) ||
+          !normalized.endsWith(RESULT_END)) {
+        continue;
+      }
+
+      const raw = normalized
+        .slice(RESULT_START.length, normalized.length - RESULT_END.length)
+        .trim();
+
+      try {
+        const result = JSON.parse(raw);
+        const resultRequestId = result?.request_id ?? result?.requestId;
+
+        if (result?.session === session && resultRequestId === requestId) {
+          return true;
+        }
+      } catch {
+        // A malformed user message must never be treated as a delivered bridge result.
+      }
+    }
+
+    return false;
+  }
+
   function hideServiceMessages() {
     getUserMessageNodes()
       .forEach(node => {
@@ -415,7 +451,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 7,
+      version: 8,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -449,9 +485,10 @@
     prepareNativeSend,
     nativeSendState,
     submitNativeSend,
+    hasResult,
     scan: scheduleScan,
     health,
-    version: 7
+    version: 8
   };
 
   const observer = new MutationObserver(scheduleScan);
