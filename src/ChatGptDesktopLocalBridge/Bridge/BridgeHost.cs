@@ -28,27 +28,82 @@ public sealed class BridgeHost
     public BridgeHost(
         PermissionPolicy policy,
         Func<string, Task<bool>> sendToChat,
-        Action<string> status)
+        Action<string> status,
+        string? sessionId = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
         _status = status;
-        SessionId = Guid.NewGuid().ToString("N");
 
-        var dataRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ChatGptDesktopLocalBridge");
+        if (sessionId is not null && !IsValidSessionId(sessionId))
+        {
+            throw new ArgumentException("Bridge session id must be exactly 32 hexadecimal characters.", nameof(sessionId));
+        }
 
+        SessionId = sessionId ?? Guid.NewGuid().ToString("N");
+
+        var dataRoot = GetDataRoot();
         _logDirectory = Path.Combine(dataRoot, "logs");
         Directory.CreateDirectory(_logDirectory);
 
-        _requestLedger = new DurableRequestLedger(
-            Path.Combine(dataRoot, "state", "requests"));
+        _requestLedger = new DurableRequestLedger(GetRequestLedgerPath());
     }
 
     public string SessionId { get; }
 
     public string ReadyMarker => $"[[LOCAL_BRIDGE_READY_V1:{SessionId}]]";
+
+    public static async Task<IReadOnlyList<DurableRequestRecord>> GetPendingDeliveriesForConversationAsync(
+        string? conversationUri,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = DurableRequestLedger.NormalizeConversationUri(conversationUri);
+        if (normalized is null)
+        {
+            return Array.Empty<DurableRequestRecord>();
+        }
+
+        var ledger = new DurableRequestLedger(GetRequestLedgerPath());
+        return await ledger.GetPendingDeliveriesAsync(normalized, session: null, cancellationToken);
+    }
+
+    public async Task RecoverPendingDeliveryAsync(
+        DurableRequestRecord record,
+        bool resultAlreadyVisible,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!string.Equals(record.Session, SessionId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Pending result session does not match the active bridge session.");
+            }
+
+            if (record.ExecutionState != DurableExecutionState.Completed ||
+                record.DeliveryState != DurableDeliveryState.Pending ||
+                string.IsNullOrWhiteSpace(record.ResultEnvelopeJson))
+            {
+                throw new InvalidOperationException("Durable record is not a recoverable pending result.");
+            }
+
+            if (!resultAlreadyVisible)
+            {
+                await SendSerializedResultAsync(record.ResultEnvelopeJson);
+            }
+
+            await _requestLedger.MarkDeliveredAsync(record);
+
+            _status(
+                resultAlreadyVisible
+                    ? $"Recovered delivery state for {record.RequestId}; result was already present in this conversation."
+                    : $"Recovered pending result delivery for {record.RequestId} without re-executing {record.Tool}.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public string CreateBootstrapMessage()
     {
@@ -97,7 +152,9 @@ public sealed class BridgeHost
             BootstrapEnd);
     }
 
-    public async Task HandleAsync(JsonElement requestElement)
+    public async Task HandleAsync(
+        JsonElement requestElement,
+        string? conversationUri = null)
     {
         await _gate.WaitAsync();
         try
@@ -128,7 +185,7 @@ public sealed class BridgeHost
                 return;
             }
 
-            var reservation = await _requestLedger.ReserveAsync(request);
+            var reservation = await _requestLedger.ReserveAsync(request, conversationUri);
 
             if (reservation.Status == DurableReservationStatus.Conflict)
             {
@@ -391,6 +448,17 @@ public sealed class BridgeHost
             throw new InvalidOperationException("Could not inject bridge result into the ChatGPT composer.");
         }
     }
+
+    private static string GetDataRoot()
+        => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ChatGptDesktopLocalBridge");
+
+    private static string GetRequestLedgerPath()
+        => Path.Combine(GetDataRoot(), "state", "requests");
+
+    private static bool IsValidSessionId(string value)
+        => value.Length == 32 && value.All(Uri.IsHexDigit);
 
     private async Task WriteAuditAsync(
         BridgeRequest request,
