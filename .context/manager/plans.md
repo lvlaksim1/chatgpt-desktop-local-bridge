@@ -1,34 +1,40 @@
 # Manager plans
 
-Manager generation: 8.
-Product authority: `main@4ed78c23fceddf628996be5a87a9847889c950e7`.
-Current release: `dev-4ed78c2`.
-Owner installed baseline: `dev-1d00606` unless Owner reports successful migration.
+Manager generation: 9.
+Product authority: `main`.
+Current verified release: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`.
+Owner installed release: `dev-ea074e0`.
 
-## Immediate BRIDGE-M1 path
+## BRIDGE-M1 closure evidence
 
-1. Do not retry any earlier ZIP updater or earlier broken single-EXE updater.
-2. Run `dev-4ed78c2 / ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`.
-3. The updater must validate legacy base `0.1.24.0` + stable fingerprints, use .NET SHA-256, back up touched files, apply the current target, verify hashes, create `release-info.json`, register the uninstall wrapper, and restart the application.
-4. Confirm ChatGPT authentication remains intact.
-5. Press Diagnostics before Initialize Bridge.
-6. If adapter v2 is reported, Initialize Bridge and require READY.
-7. Prove `fs.read_text` end-to-end.
+1. `Initialize Bridge -> READY`: PASS, pc-runner-gateway #160.
+2. `READY -> fs.read_text(C:/Windows/win.ini) -> successful local execution/audit`: PASS, #164.
+3. Product bootstrap corrected to require forward-slash Windows paths in bridge JSON.
+4. Updated Owner PC to `dev-ea074e0`.
+5. Final round-trip regression on `dev-ea074e0`: PASS, #166.
+6. BRIDGE-M1 is CLOSED. Do not repeat M1 probes unless a later product change regresses this boundary.
 
-## Update policy
+## Immediate BRIDGE-M2 path
 
-- Give Owner one matching `Update-from-*.exe`, not ZIP archives.
-- Full Setup remains first-install/fallback only.
-- Future deltas use exact release-info + PublishManifest authority.
-- Runtime updater must remain compatible with Windows PowerShell used by Inno; do not depend on optional cmdlets when a direct .NET API is available.
-- Every delta-capable release must preserve/update normal uninstall behavior through the shipped uninstall wrapper.
-- Keep at most two installable dev releases and no ordinary Actions artifacts.
+1. Harden adapter protocol diagnostics using evidence from the failed M1 probes.
+2. Keep strict parsing: only an exact `LOCAL_BRIDGE_REQUEST_V1` envelope is executable.
+3. When an assistant message contains bridge request markers but cannot be parsed, record a payload-free diagnostic reason such as invalid JSON / missing id / missing session / missing tool.
+4. Surface last protocol event/failure and pending/processed counts through `health()` so Diagnostics immediately explains failures instead of forcing long audit waits.
+5. Keep service-message hiding, current + legacy DOM selectors, 700 ms streaming stability gate, draft preservation, and no blind retry.
+6. Add a bounded deterministic check for parser diagnostics and one short live regression only if product behavior changes.
 
 ## Follow-on engineering
 
-After BRIDGE-M1 closes:
-1. BRIDGE-M2 adapter hardening.
-2. BRIDGE-M3 explicit state machine, capability registry, bounded results, durable request ledger and delivery recovery.
-3. deterministic mutation primitives.
+After M2:
+1. BRIDGE-M3 explicit state machine and capability registry.
+2. Bound result size and establish durable request ledger + result-delivery recovery.
+3. Deterministic filesystem mutation primitives.
 4. Windows Job Object Emergency STOP.
-5. shell/process, Git, Excel, browser/UI capability families.
+5. Shell/process, Git, Excel, browser/UI capability families.
+
+## Release/update policy
+
+- Give Owner one matching `Update-from-*.exe`, not ZIP archives.
+- Full Setup is first-install/fallback only.
+- Keep at most two installable dev releases and avoid ordinary Actions artifacts.
+- Do not create a new product release for test-script-only changes.
