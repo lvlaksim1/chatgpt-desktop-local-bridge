@@ -238,15 +238,15 @@ public partial class MainWindow
                 : "?";
             var composerFound = root.TryGetProperty("composerFound", out var composerElement) &&
                                 composerElement.ValueKind == JsonValueKind.True;
-            var sendButtonFound = root.TryGetProperty("sendButtonFound", out var sendElement) &&
-                                  sendElement.ValueKind == JsonValueKind.True;
+            var nativeInputReady = root.TryGetProperty("nativeInputReady", out var nativeInputElement) &&
+                                   nativeInputElement.ValueKind == JsonValueKind.True;
             var webViewAvailable = root.TryGetProperty("webViewAvailable", out var webViewElement) &&
                                    webViewElement.ValueKind == JsonValueKind.True;
 
             StatusText.Text =
                 $"Adapter v{version}: WebView {(webViewAvailable ? "OK" : "FAIL")}, " +
                 $"composer {(composerFound ? "OK" : "NOT FOUND")}, " +
-                $"send button {(sendButtonFound ? "FOUND" : "NOT FOUND")}.";
+                $"native input {(nativeInputReady ? "READY" : "NOT READY")}.";
 
             var details = JsonSerializer.Serialize(
                 root,
@@ -294,11 +294,6 @@ public partial class MainWindow
                 return false;
             }
 
-            var initialUserMessages = preflight.TryGetProperty("userMessages", out var countElement) &&
-                                      countElement.TryGetInt32(out var count)
-                ? count
-                : 0;
-
             var insertParameters = JsonSerializer.Serialize(new { text });
             await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync(
                 "Input.insertText",
@@ -335,13 +330,26 @@ public partial class MainWindow
                 return false;
             }
 
-            const string keyDown =
-                "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}";
-            const string keyUp =
-                "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}";
+            var submitRaw = await Browser.ExecuteScriptAsync(
+                "window.__localBridge?.submitNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
 
-            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", keyDown);
-            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", keyUp);
+            using var submitDocument = JsonDocument.Parse(submitRaw);
+            var submit = submitDocument.RootElement;
+            var submitAccepted =
+                submit.TryGetProperty("accepted", out var submitAcceptedElement) &&
+                submitAcceptedElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                submitAcceptedElement.GetBoolean();
+
+            if (!submitAccepted)
+            {
+                var reason = submit.TryGetProperty("reason", out var reasonElement) &&
+                             reasonElement.ValueKind == JsonValueKind.String
+                    ? reasonElement.GetString()
+                    : "native-submit-rejected";
+
+                StatusText.Text = $"Chat send failed: {reason}";
+                return false;
+            }
 
             var sendDeadline = DateTime.UtcNow.AddSeconds(8);
             while (DateTime.UtcNow < sendDeadline)
@@ -353,20 +361,11 @@ public partial class MainWindow
                 {
                     using var stateDocument = JsonDocument.Parse(stateRaw);
                     var state = stateDocument.RootElement;
+                    var composerEmpty =
+                        state.TryGetProperty("composerEmpty", out var emptyElement) &&
+                        emptyElement.ValueKind == JsonValueKind.True;
 
-                    var currentUserMessages =
-                        state.TryGetProperty("userMessages", out var userMessagesElement) &&
-                        userMessagesElement.TryGetInt32(out var currentCount)
-                            ? currentCount
-                            : initialUserMessages;
-
-                    var composerTextLength =
-                        state.TryGetProperty("composerTextLength", out var lengthElement) &&
-                        lengthElement.TryGetInt32(out var currentLength)
-                            ? currentLength
-                            : -1;
-
-                    if (currentUserMessages > initialUserMessages && composerTextLength == 0)
+                    if (composerEmpty)
                     {
                         return true;
                     }
