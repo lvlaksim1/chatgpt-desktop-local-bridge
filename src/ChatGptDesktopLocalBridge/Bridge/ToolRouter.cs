@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
@@ -15,6 +17,7 @@ public sealed class ToolRouter
             "fs.write_text" => await WriteTextAsync(args),
             "fs.append_text" => await AppendTextAsync(args),
             "fs.write_file" => await WriteFileAsync(args),
+            "process.run" => await RunProcessAsync(args),
             _ => throw new BridgeToolException("unknown_tool", $"Unknown local tool: {tool}")
         };
     }
@@ -27,6 +30,7 @@ public sealed class ToolRouter
         "fs.write_text" => "fs.write_text",
         "fs.append_text" => "fs.write_text",
         "fs.write_file" => "fs.write_text",
+        "process.run" => "process.start",
         _ => tool
     };
 
@@ -221,6 +225,204 @@ public sealed class ToolRouter
             maxBytes = MaxWriteFileBytes
         };
     }
+
+    private const int DefaultProcessTimeoutMs = 120_000;
+    private const int MaxProcessTimeoutMs = 900_000;
+    private const int DefaultProcessOutputChars = 200_000;
+    private const int MaxProcessOutputChars = 1_000_000;
+
+    private static async Task<object> RunProcessAsync(JsonElement args)
+    {
+        var file = RequiredString(args, "file");
+        var arguments = OptionalStringArray(args, "arguments");
+        var workingDirectoryRaw = OptionalString(args, "cwd", string.Empty);
+        var timeoutMs = Math.Clamp(
+            OptionalInt(args, "timeout_ms", DefaultProcessTimeoutMs),
+            1_000,
+            MaxProcessTimeoutMs);
+        var maxOutputChars = Math.Clamp(
+            OptionalInt(args, "max_output_chars", DefaultProcessOutputChars),
+            1_000,
+            MaxProcessOutputChars);
+
+        string? workingDirectory = null;
+        if (!string.IsNullOrWhiteSpace(workingDirectoryRaw))
+        {
+            workingDirectory = Path.GetFullPath(
+                Environment.ExpandEnvironmentVariables(workingDirectoryRaw));
+
+            if (!Directory.Exists(workingDirectory))
+            {
+                throw new BridgeToolException(
+                    "directory_not_found",
+                    $"Working directory does not exist: {workingDirectory}");
+            }
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.ExpandEnvironmentVariables(file),
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = false,
+            CreateNoWindow = true
+        };
+
+        if (workingDirectory is not null)
+        {
+            startInfo.WorkingDirectory = workingDirectory;
+        }
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = new Process { StartInfo = startInfo };
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            if (!process.Start())
+            {
+                throw new BridgeToolException(
+                    "process_start_failed",
+                    $"Could not start process: {file}");
+            }
+        }
+        catch (BridgeToolException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new BridgeToolException(
+                "process_start_failed",
+                $"Could not start process '{file}': {ex.Message}");
+        }
+
+        var stdoutTask = ReadCappedAsync(process.StandardOutput, maxOutputChars);
+        var stderrTask = ReadCappedAsync(process.StandardError, maxOutputChars);
+
+        var timedOut = false;
+        using (var timeout = new CancellationTokenSource(timeoutMs))
+        {
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                timedOut = true;
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Best effort. WaitForExitAsync below still gives the process a chance to report exit.
+                }
+
+                try
+                {
+                    await process.WaitForExitAsync();
+                }
+                catch
+                {
+                    // Preserve the timeout result even if the process cannot be observed after termination.
+                }
+            }
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        stopwatch.Stop();
+
+        int? exitCode = null;
+        if (process.HasExited)
+        {
+            exitCode = process.ExitCode;
+        }
+
+        return new
+        {
+            file,
+            arguments,
+            cwd = workingDirectory,
+            exitCode,
+            stdout = stdout.Text,
+            stderr = stderr.Text,
+            stdoutTruncated = stdout.Truncated,
+            stderrTruncated = stderr.Truncated,
+            timedOut,
+            elapsedMs = stopwatch.ElapsedMilliseconds,
+            timeoutMs,
+            maxOutputChars
+        };
+    }
+
+    private static async Task<CappedTextResult> ReadCappedAsync(StreamReader reader, int maxChars)
+    {
+        var builder = new StringBuilder(Math.Min(maxChars, 16_384));
+        var buffer = new char[8_192];
+        var truncated = false;
+
+        while (true)
+        {
+            var read = await reader.ReadAsync(buffer, 0, buffer.Length);
+            if (read <= 0)
+            {
+                break;
+            }
+
+            var remaining = maxChars - builder.Length;
+            if (remaining > 0)
+            {
+                builder.Append(buffer, 0, Math.Min(read, remaining));
+            }
+
+            if (read > remaining)
+            {
+                truncated = true;
+            }
+        }
+
+        return new CappedTextResult(builder.ToString(), truncated);
+    }
+
+    private static string[] OptionalStringArray(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object ||
+            !args.TryGetProperty(name, out var value))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeToolException(
+                "invalid_args",
+                $"Argument '{name}' must be an array of strings.");
+        }
+
+        var items = new List<string>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                throw new BridgeToolException(
+                    "invalid_args",
+                    $"Argument '{name}' must contain only strings.");
+            }
+
+            items.Add(item.GetString() ?? string.Empty);
+        }
+
+        return items.ToArray();
+    }
+
+    private sealed record CappedTextResult(string Text, bool Truncated);
 
     private static string ResolveWritePath(string path, bool createDirectories)
     {
