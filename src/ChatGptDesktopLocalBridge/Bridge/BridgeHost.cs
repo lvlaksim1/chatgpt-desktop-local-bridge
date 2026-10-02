@@ -5,15 +5,8 @@ namespace ChatGptDesktopLocalBridge.Bridge;
 
 public sealed class BridgeHost
 {
-    private static readonly JsonSerializerOptions ResultJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
-
     private const string RequestStart = "[[LOCAL_BRIDGE_REQUEST_V1]]";
     private const string RequestEnd = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
-    private const string ResultStart = "[[LOCAL_BRIDGE_RESULT_V1]]";
-    private const string ResultEnd = "[[/LOCAL_BRIDGE_RESULT_V1]]";
     private const string BootstrapStart = "[[LOCAL_BRIDGE_BOOTSTRAP_V1]]";
     private const string BootstrapEnd = "[[/LOCAL_BRIDGE_BOOTSTRAP_V1]]";
 
@@ -229,12 +222,7 @@ public sealed class BridgeHost
                         try
                         {
                             await SendSerializedResultAsync(ledgerRecord.ResultEnvelopeJson!);
-
-                            if (ledgerRecord.DeliveryState == DurableDeliveryState.Pending)
-                            {
-                                await _requestLedger.MarkDeliveredAsync(ledgerRecord);
-                            }
-
+                            await _requestLedger.MarkDeliveredAsync(ledgerRecord);
                             _status($"Re-delivered durable result for {request.Id} without re-executing {request.Tool}.");
                         }
                         catch (Exception ex)
@@ -242,6 +230,10 @@ public sealed class BridgeHost
                             _status($"Durable result delivery for {request.Id} is still pending: {ex.Message}");
                         }
 
+                        return;
+
+                    case DurableReplayAction.IgnoreDelivered:
+                        _status($"Ignored already delivered durable request {request.Id}.");
                         return;
 
                     default:
@@ -364,18 +356,18 @@ public sealed class BridgeHost
         long elapsedMs,
         string deliveredStatus)
     {
-        var resultJson = SerializeResult(result);
+        var prepared = BridgeResultTransport.Prepare(result, ok, errorCode);
 
         var completed = await _requestLedger.MarkCompletedAsync(
             ledgerRecord,
-            ok,
-            errorCode,
+            prepared.Ok,
+            prepared.ErrorCode,
             elapsedMs,
-            resultJson);
+            prepared.EnvelopeJson);
 
         try
         {
-            await WriteAuditAsync(request, ok, errorCode, elapsedMs);
+            await WriteAuditAsync(request, prepared.Ok, prepared.ErrorCode, elapsedMs);
         }
         catch (Exception ex)
         {
@@ -384,7 +376,7 @@ public sealed class BridgeHost
 
         try
         {
-            await SendSerializedResultAsync(resultJson);
+            await SendSerializedResultAsync(prepared.EnvelopeJson);
         }
         catch (Exception ex)
         {
@@ -404,7 +396,9 @@ public sealed class BridgeHost
             return;
         }
 
-        _status(deliveredStatus);
+        _status(prepared.ReplacedOversizeResult
+            ? $"{request.Tool} completed, but its result exceeded the {BridgeResultTransport.MaxMessageBytes} byte bridge transport limit."
+            : deliveredStatus);
     }
 
     private async Task TrySendProtocolErrorAsync(
@@ -429,18 +423,18 @@ public sealed class BridgeHost
     }
 
     private Task SendResultAsync(BridgeResult result)
-        => SendSerializedResultAsync(SerializeResult(result));
+    {
+        var prepared = BridgeResultTransport.Prepare(
+            result,
+            result.Ok,
+            result.Error?.Code);
 
-    private static string SerializeResult(BridgeResult result)
-        => JsonSerializer.Serialize(result, ResultJsonOptions);
+        return SendSerializedResultAsync(prepared.EnvelopeJson);
+    }
 
     private async Task SendSerializedResultAsync(string json)
     {
-        using (JsonDocument.Parse(json))
-        {
-        }
-
-        var message = $"{ResultStart}\n{json}\n{ResultEnd}";
+        var message = BridgeResultTransport.FormatMessage(json);
         var sent = await _sendToChat(message);
 
         if (!sent)
