@@ -1,18 +1,21 @@
 # Latest handoff
 
-Updated: 2026-10-02 01:46 MSK
+Updated: 2026-10-02 05:44 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 8.
-Product authority: `main@4ed78c23fceddf628996be5a87a9847889c950e7`.
-Current release: `dev-4ed78c2`.
+Manager generation: 9.
+Product authority: `main`.
+Current verified release and Owner-installed release: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`.
 
-Owner is assumed to remain on `dev-1d00606` because prior updater failure was fail-safe and no later successful Owner update has been reported.
+BRIDGE-M1 is CLOSED.
 
-Use only:
-`ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`
-SHA-256: `5f4add91bb5988f3489666406e7a70b8138086dd973fcc780265e6b03aee8d0e`.
+Live evidence:
+- pc-runner-gateway #160: Initialize Bridge -> nonce-bound READY PASS.
+- #164: READY -> `fs.read_text(C:/Windows/win.ini)` -> successful local execution/audit PASS.
+- #166: same round-trip regression PASS on `dev-ea074e0`.
 
-The Windows E2E now reproduces legacy installation and successful one-file migration. It also verifies that the delta registers the uninstall wrapper and that quiet uninstall removes the program while preserving user data.
+Root defect found during M1:
+Windows backslashes in bridge request examples can be altered by ChatGPT Markdown/JSON rendering. Product bootstrap now requires forward-slash Windows paths.
 
-After Owner update succeeds: confirm authentication and run Diagnostics before Initialize Bridge.
+Active milestone: BRIDGE-M2 Web adapter reliability hardening.
+Immediate task: make malformed bridge request candidates visible in Diagnostics with payload-free parse reasons while keeping exact-envelope execution fail-closed.
