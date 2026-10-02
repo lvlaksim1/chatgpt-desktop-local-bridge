@@ -23,6 +23,9 @@ jobs:
       - name: Validate Web adapter JavaScript
         run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
 
+      - name: Test Web adapter protocol diagnostics
+        run: node .\scripts\test-bridge-adapter-protocol.mjs
+
       - name: Validate update PowerShell syntax
         shell: pwsh
         run: |
