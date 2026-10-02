@@ -10,3 +10,5 @@ Updated: 2026-10-02 13:25 MSK
 3. Change product code only if that analysis identifies the exact defect.
 4. Run the existing single bounded M3 regression once after the fix.
 5. On PASS, persist # evidence and close the M3 durable-foundation slice.
+
+6. For current M3 live validation, use the identical retry already queued as gateway #179. Do not alter code or thresholds until that unchanged retry produces evidence.
