@@ -137,7 +137,20 @@ function Get-ComposerText($Socket,[ref]$Id){
 function Clear-KnownTestDraft($Socket,[ref]$Id){
   $text=Get-ComposerText $Socket $Id
   if([string]::IsNullOrWhiteSpace($text)){return}
-  if($text -notmatch 'LOCAL-BRIDGE-'){throw 'Refusing to clear a non-test composer draft.'}
+
+  $trimmed=$text.Trim()
+  $bridgeOwned=
+    $trimmed.StartsWith('[[LOCAL_BRIDGE_BOOTSTRAP_V1]]',[StringComparison]::Ordinal) -or
+    $trimmed.StartsWith('[[LOCAL_BRIDGE_RESULT_V1]]',[StringComparison]::Ordinal)
+
+  $knownProbe=
+    $trimmed.StartsWith('Use the current Local Bridge session. Respond with EXACTLY ONE LOCAL_BRIDGE_REQUEST_V1 request and no human prose.',[StringComparison]::Ordinal) -and
+    $trimmed.Contains('req-m3-live-final',[StringComparison]::Ordinal) -and
+    $trimmed.Contains('C:/Windows/win.ini',[StringComparison]::Ordinal)
+
+  if(-not $bridgeOwned -and -not $knownProbe){
+    throw 'Refusing to clear an unrecognized composer draft.'
+  }
   $selected=[bool](Eval $Socket $Id @'
 (() => {
   const selectors=["#prompt-textarea","textarea[data-testid='prompt-textarea']","div[contenteditable='true'][data-testid='prompt-textarea']","div[contenteditable='true'][role='textbox']"];
