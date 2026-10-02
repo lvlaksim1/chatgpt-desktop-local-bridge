@@ -140,42 +140,57 @@ public sealed class BridgeHost
                 return;
             }
 
+            var ledgerRecord = reservation.Record;
+
             if (reservation.Status == DurableReservationStatus.Duplicate)
             {
-                var existing = reservation.Record;
+                var replayAction = DurableRequestLedger.GetReplayAction(ledgerRecord);
 
-                if (existing.ExecutionState == DurableExecutionState.Completed &&
-                    existing.DeliveryState == DurableDeliveryState.Pending)
+                switch (replayAction)
                 {
-                    if (string.IsNullOrWhiteSpace(existing.ResultEnvelopeJson))
-                    {
-                        _status(
-                            $"Cannot recover pending result delivery for {request.Id}: " +
-                            "the durable record has no result payload.");
+                    case DurableReplayAction.ResumeReserved:
+                        _status($"Resuming reserved durable request {request.Id}.");
+                        break;
+
+                    case DurableReplayAction.BlockExecutionUncertain:
+                        _status($"Refusing automatic replay of executing request {request.Id}.");
+                        await TrySendProtocolErrorAsync(
+                            request,
+                            "request_execution_uncertain",
+                            "The previous local execution reached executing state before interruption. Automatic replay is blocked.");
                         return;
-                    }
 
-                    try
-                    {
-                        await SendSerializedResultAsync(existing.ResultEnvelopeJson);
-                        await _requestLedger.MarkDeliveredAsync(existing);
-                        _status($"Recovered pending result delivery for {request.Id} without re-executing {request.Tool}.");
-                    }
-                    catch (Exception ex)
-                    {
-                        _status($"Pending result delivery for {request.Id} is still awaiting recovery: {ex.Message}");
-                    }
+                    case DurableReplayAction.BlockMissingResult:
+                        _status($"Cannot recover completed request {request.Id}: durable result payload is missing.");
+                        await TrySendProtocolErrorAsync(
+                            request,
+                            "result_recovery_unavailable",
+                            "The request completed previously, but its durable result payload is unavailable.");
+                        return;
 
-                    return;
+                    case DurableReplayAction.RedeliverResult:
+                        try
+                        {
+                            await SendSerializedResultAsync(ledgerRecord.ResultEnvelopeJson!);
+
+                            if (ledgerRecord.DeliveryState == DurableDeliveryState.Pending)
+                            {
+                                await _requestLedger.MarkDeliveredAsync(ledgerRecord);
+                            }
+
+                            _status($"Re-delivered durable result for {request.Id} without re-executing {request.Tool}.");
+                        }
+                        catch (Exception ex)
+                        {
+                            _status($"Durable result delivery for {request.Id} is still pending: {ex.Message}");
+                        }
+
+                        return;
+
+                    default:
+                        throw new InvalidOperationException($"Unsupported durable replay action: {replayAction}.");
                 }
-
-                _status(
-                    $"Ignored durable duplicate request {request.Id}: " +
-                    $"execution={existing.ExecutionState}, delivery={existing.DeliveryState}.");
-                return;
             }
-
-            var ledgerRecord = reservation.Record;
             var capability = ToolRouter.GetCapability(request.Tool);
             var decision = _policy.GetDecision(capability);
 
