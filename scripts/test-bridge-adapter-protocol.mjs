@@ -54,6 +54,15 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function waitFor(predicate, timeoutMs = 3000, intervalMs = 25) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await sleep(intervalMs);
+  }
+  return Boolean(predicate());
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -101,11 +110,13 @@ const malformed = messageNode(
 );
 assistantNodes.push(malformed);
 window.__localBridge.scan();
-await sleep(220);
+assert(
+  await waitFor(() => window.__localBridge.health().lastProtocolDebug?.stage === "request-rejected"),
+  "Malformed request was not marked rejected."
+);
 
 let health = window.__localBridge.health();
 assert(health.version === 8, "Expected adapter v8.");
-assert(health.lastProtocolDebug?.stage === "request-rejected", "Malformed request was not marked rejected.");
 assert(health.lastProtocolDebug?.reason === "request-json-invalid", "Malformed request reason was not request-json-invalid.");
 assert(!posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-bad"),
   "Malformed request was dispatched.");
@@ -117,11 +128,13 @@ const valid = messageNode(
 );
 assistantNodes.push(valid);
 window.__localBridge.scan();
-await sleep(1100);
+assert(
+  await waitFor(() => posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-good")),
+  "Stable valid request was not dispatched."
+);
 
 health = window.__localBridge.health();
 const dispatched = posted.find(x => x?.type === "bridge.request" && x?.request?.id === "req-good");
-assert(Boolean(dispatched), "Stable valid request was not dispatched.");
 assert(dispatched.request.args.path === "C:/Windows/win.ini", "Valid request path changed.");
 assert(valid.style.display === "none", "Dispatched service request was not hidden.");
 assert(health.lastProtocolDebug?.stage === "request-dispatched", "Valid request dispatch was not recorded.");
@@ -131,11 +144,13 @@ const readySession = "fedcba9876543210fedcba9876543210";
 const ready = messageNode('[[LOCAL_BRIDGE_READY_V1:' + readySession + ']]');
 assistantNodes.push(ready);
 window.__localBridge.scan();
-await sleep(220);
+assert(
+  await waitFor(() => posted.some(x => x?.type === "bridge.ready" && x?.session === readySession)),
+  "READY marker was not dispatched."
+);
 
 health = window.__localBridge.health();
 const readyPosted = posted.find(x => x?.type === "bridge.ready" && x?.session === readySession);
-assert(Boolean(readyPosted), "READY marker was not dispatched.");
 assert(ready.style.display === "none", "READY service message was not hidden.");
 assert(health.lastProtocolDebug?.stage === "ready-dispatched", "READY dispatch was not recorded.");
 
@@ -146,7 +161,10 @@ const deliveredResult = messageNode(
 );
 userNodes.push(deliveredResult);
 window.__localBridge.scan();
-await sleep(220);
+assert(
+  await waitFor(() => deliveredResult.style.display === "none"),
+  "Bridge result service message was not hidden."
+);
 
 assert(
   window.__localBridge.hasResult("0123456789abcdef0123456789abcdef", "req-good") === true,
@@ -157,6 +175,4 @@ assert(
 assert(
   window.__localBridge.hasResult("fedcba9876543210fedcba9876543210", "req-good") === false,
   "Result detection matched the wrong session.");
-assert(deliveredResult.style.display === "none", "Bridge result service message was not hidden.");
-
 console.log("bridge-adapter protocol diagnostics test: PASS");
