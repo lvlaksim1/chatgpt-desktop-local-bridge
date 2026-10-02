@@ -334,6 +334,28 @@ jobs:
             Remove-Item -LiteralPath $legacyDelta -Recurse -Force -ErrorAction SilentlyContinue
           }
 
+          # Owner's currently installed pre-marker development build.
+          # It predates release-info.json, so migrate it by exact installer
+          # version plus stable-file fingerprint, just like dev-1d00606.
+          $legacyTag = "dev-450b884"
+          $legacyCommit = "450b884423696b70905db394c68ddc45b2ba03ec"
+          $legacyInstallerVersion = "0.1.28.0"
+          $legacyWorktree = Join-Path $PWD "legacy-dev-450b884"
+          $legacyPublish = Join-Path $PWD "publish-legacy-dev-450b884"
+          $legacyDelta = Join-Path $PWD "delta-dev-450b884"
+
+          git worktree add --detach $legacyWorktree $legacyCommit
+          try {
+            dotnet publish (Join-Path $legacyWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --output $legacyPublish
+            .\scripts\build-delta-update.ps1 -BasePublishDir $legacyPublish -LegacyInstallerVersion $legacyInstallerVersion -CurrentPublishDir .\publish\win-x64 -BaseTag $legacyTag -TargetTag $targetTag -TargetCommit $sha -OutputPath $legacyDelta
+            Build-UpdateExe $legacyTag $legacyDelta
+          }
+          finally {
+            git worktree remove --force $legacyWorktree
+            Remove-Item -LiteralPath $legacyPublish -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $legacyDelta -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Verify GitHub CLI
         run: gh --version
 
