@@ -234,6 +234,41 @@
     );
   }
 
+  function nativeSendReceipt(expectedText, baselineUserMessageCount = 0) {
+    const nodes = Array.from(getUserMessageNodes());
+    const baseline = Number.isFinite(Number(baselineUserMessageCount))
+      ? Math.max(0, Number(baselineUserMessageCount))
+      : 0;
+    const expectedCanonical = typeof expectedText === "string"
+      ? canonicalizeBridgeText(expectedText)
+      : "";
+
+    let exactNewUserMessage = false;
+    if (expectedCanonical) {
+      for (let index = baseline; index < nodes.length; index++) {
+        const nodeText = canonicalizeBridgeText(
+          nodes[index]?.innerText || nodes[index]?.textContent || ""
+        );
+        if (nodeText === expectedCanonical) {
+          exactNewUserMessage = true;
+          break;
+        }
+      }
+    }
+
+    const state = nativeSendState();
+    const receipt = {
+      composerEmpty: Boolean(state.composerEmpty),
+      userMessageCount: nodes.length,
+      baselineUserMessageCount: baseline,
+      exactNewUserMessage,
+      confirmed: Boolean(state.composerEmpty || exactNewUserMessage)
+    };
+
+    lastNativeSendDebug = { stage: "receipt", ...receipt };
+    return receipt;
+  }
+
   function inspectRequest(text) {
     const normalized = (text || "").trim();
     const hasStart = normalized.includes(REQUEST_START);
@@ -451,7 +486,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 8,
+      version: 9,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -462,6 +497,7 @@
       nativeInputReady: Boolean(composer && composerForm),
       assistantMessages: getAssistantMessageNodes().length,
       userMessages: getUserMessageNodes().length,
+      sendReceiptAvailable: true,
       protocolPendingCount: pending.size,
       protocolProcessedCount: processed.size,
       lastProtocolDebug,
@@ -484,11 +520,12 @@
   window.__localBridge = {
     prepareNativeSend,
     nativeSendState,
+    nativeSendReceipt,
     submitNativeSend,
     hasResult,
     scan: scheduleScan,
     health,
-    version: 8
+    version: 9
   };
 
   const observer = new MutationObserver(scheduleScan);

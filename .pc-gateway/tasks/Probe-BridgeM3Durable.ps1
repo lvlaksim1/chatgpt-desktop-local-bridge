@@ -137,7 +137,20 @@ function Get-ComposerText($Socket,[ref]$Id){
 function Clear-KnownTestDraft($Socket,[ref]$Id){
   $text=Get-ComposerText $Socket $Id
   if([string]::IsNullOrWhiteSpace($text)){return}
-  if($text -notmatch 'LOCAL-BRIDGE-'){throw 'Refusing to clear a non-test composer draft.'}
+
+  $trimmed=$text.Trim()
+  $bridgeOwned=
+    $trimmed.StartsWith('[[LOCAL_BRIDGE_BOOTSTRAP_V1]]',[StringComparison]::Ordinal) -or
+    $trimmed.StartsWith('[[LOCAL_BRIDGE_RESULT_V1]]',[StringComparison]::Ordinal)
+
+  $knownProbe=
+    $trimmed.StartsWith('Use the current Local Bridge session. Respond with EXACTLY ONE LOCAL_BRIDGE_REQUEST_V1 request and no human prose.',[StringComparison]::Ordinal) -and
+    $trimmed.Contains('req-m3-live-final',[StringComparison]::Ordinal) -and
+    $trimmed.Contains('C:/Windows/win.ini',[StringComparison]::Ordinal)
+
+  if(-not $bridgeOwned -and -not $knownProbe){
+    throw 'Refusing to clear an unrecognized composer draft.'
+  }
   $selected=[bool](Eval $Socket $Id @'
 (() => {
   const selectors=["#prompt-textarea","textarea[data-testid='prompt-textarea']","div[contenteditable='true'][data-testid='prompt-textarea']","div[contenteditable='true'][role='textbox']"];
@@ -158,6 +171,7 @@ function Clear-KnownTestDraft($Socket,[ref]$Id){
   throw 'Known test draft did not clear.'
 }
 function Send-ChatText($Socket,[ref]$Id,[string]$Text){
+  $baseline=[int](Eval $Socket $Id 'document.querySelectorAll("[data-message-author-role=''user''],[data-user-message-bubble=''true'']").length')
   $prepare=Eval $Socket $Id 'window.__localBridge?.prepareNativeSend?.() ?? {accepted:false,reason:"adapter-not-ready"}'
   if($null-eq$prepare -or -not [bool]$prepare.accepted){throw ('Chat preflight rejected: '+($prepare|ConvertTo-Json -Compress))}
   [void](Send-Cdp $Socket $Id.Value 'Input.insertText' @{text=$Text});$Id.Value++
@@ -172,13 +186,25 @@ function Send-ChatText($Socket,[ref]$Id,[string]$Text){
   if($null-eq$state -or -not [bool]$state.textMatches){throw 'Prompt insert was not verified.'}
   [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='rawKeyDown';key='Enter';code='Enter';windowsVirtualKeyCode=13;nativeVirtualKeyCode=13});$Id.Value++
   [void](Send-Cdp $Socket $Id.Value 'Input.dispatchKeyEvent' @{type='keyUp';key='Enter';code='Enter';windowsVirtualKeyCode=13;nativeVirtualKeyCode=13});$Id.Value++
-  $deadline=[DateTime]::UtcNow.AddSeconds(10)
+  $deadline=[DateTime]::UtcNow.AddSeconds(30)
   while([DateTime]::UtcNow -lt $deadline){
     $state=Eval $Socket $Id 'window.__localBridge?.nativeSendState?.() ?? null'
     if($null-ne$state -and [bool]$state.composerEmpty){return}
+    $receipt=Eval $Socket $Id @"
+(() => {
+  const canonical = value => (value || "").replace(/\u200B/g, "").replace(/\r\n?/g, "\n").replace(/\s+/g, " ").trim();
+  const expected = canonical($expected);
+  const nodes = Array.from(document.querySelectorAll("[data-message-author-role='user'],[data-user-message-bubble='true']"));
+  for (let i = $baseline; i < nodes.length; i++) {
+    if (canonical(nodes[i].innerText || nodes[i].textContent || "") === expected) return true;
+  }
+  return false;
+})()
+"@
+    if([bool]$receipt){return}
     Start-Sleep -Milliseconds 100
   }
-  throw 'Prompt submit was not confirmed.'
+  throw 'Prompt submit was not confirmed by composer state or exact new user message.'
 }
 function Find-Audit([DateTimeOffset]$StartedAfter){
   if(-not(Test-Path -LiteralPath $LogRoot -PathType Container)){return $null}
@@ -235,7 +261,16 @@ try{
   $target=Wait-Target $port 30
   if($null-eq$target){throw 'CDP target unavailable.'}
   $Socket=New-Object Net.WebSockets.ClientWebSocket
-  $Socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+  $connectCts=New-Object Threading.CancellationTokenSource
+  $connectCts.CancelAfter(10000)
+  try{
+    try{
+      $Socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,$connectCts.Token).GetAwaiter().GetResult()
+    }catch{
+      if($connectCts.IsCancellationRequested){throw 'CDP websocket connect timed out after 10 seconds.'}
+      throw
+    }
+  }finally{$connectCts.Dispose()}
   $id=1
 
   $Stage='prepare-clean-chat'
@@ -245,7 +280,7 @@ try{
 
   $Stage='initialize-bridge'
   Invoke-Button $root 'Initialize Bridge'
-  $deadline=[DateTime]::UtcNow.AddSeconds(70)
+  $deadline=[DateTime]::UtcNow.AddSeconds(320)
   while([DateTime]::UtcNow -lt $deadline){
     $texts=@(Get-UiTexts $root)
     $ok=@($texts|Where-Object{$_ -like 'Bridge ready. Session*'}|Select-Object -First 1)
@@ -254,7 +289,7 @@ try{
     if($fail.Count -gt 0){throw ([string]$fail[0])}
     Start-Sleep -Milliseconds 250
   }
-  if([string]::IsNullOrWhiteSpace($BridgeStatus)){throw 'Bridge READY timeout.'}
+  if([string]::IsNullOrWhiteSpace($BridgeStatus)){throw 'Bridge READY timeout after 5 minutes.'}
 
   $ConversationUri=[string](Eval $Socket ([ref]$id) 'location.href')
   $normalized=Normalize-Conversation $ConversationUri
@@ -266,9 +301,9 @@ try{
 
   $Stage='wait-local-execution'
   $audit=$null
-  $deadline=[DateTime]::UtcNow.AddSeconds(75)
+  $deadline=[DateTime]::UtcNow.AddSeconds(300)
   while([DateTime]::UtcNow -lt $deadline){$audit=Find-Audit $TestStarted;if($null-ne$audit){break};Start-Sleep -Milliseconds 250}
-  if($null-eq$audit){throw 'No fs.read_text audit record appeared.'}
+  if($null-eq$audit){throw 'No fs.read_text audit record appeared within 5 minutes.'}
   if(-not [bool]$audit.ok){throw ('fs.read_text audit failed: '+($audit|ConvertTo-Json -Compress))}
 
   $Stage='verify-ledger'
