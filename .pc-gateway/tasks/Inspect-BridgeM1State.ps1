@@ -19,7 +19,8 @@ function Write-Result {
 $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\ChatGPT Desktop Local Bridge'
 $releaseInfoPath = Join-Path $installRoot 'release-info.json'
 $appExe = Join-Path $installRoot 'ChatGptDesktopLocalBridge.exe'
-$updateLog = Join-Path $env:LOCALAPPDATA 'ChatGptDesktopLocalBridge\logs\update-last.log'
+$logRoot = Join-Path $env:LOCALAPPDATA 'ChatGptDesktopLocalBridge\logs'
+$updateLog = Join-Path $logRoot 'update-last.log'
 
 $release = $null
 if (Test-Path -LiteralPath $releaseInfoPath -PathType Leaf) {
@@ -44,6 +45,18 @@ if (Test-Path -LiteralPath $updateLog -PathType Leaf) {
     $tail = (@(Get-Content -LiteralPath $updateLog -Tail 30 -ErrorAction SilentlyContinue) -join [Environment]::NewLine)
 }
 
+$bridgeLog = $null
+$bridgeLogTail = @()
+if (Test-Path -LiteralPath $logRoot -PathType Container) {
+    $candidate = @(Get-ChildItem -LiteralPath $logRoot -Filter 'bridge-*.jsonl' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1)
+    if ($candidate.Count -gt 0) {
+        $bridgeLog = $candidate[0].FullName
+        $bridgeLogTail = @(Get-Content -LiteralPath $bridgeLog -Tail 80 -ErrorAction SilentlyContinue)
+    }
+}
+
 $details = @{
     app_exists = (Test-Path -LiteralPath $appExe -PathType Leaf)
     release_tag = if ($null -ne $release) { [string]$release.tag } else { $null }
@@ -51,6 +64,8 @@ $details = @{
     app_version = if ($null -ne $release) { [string]$release.appVersion } else { $null }
     processes = $apps
     update_log_tail = $tail
+    bridge_log = $bridgeLog
+    bridge_log_tail = $bridgeLogTail
 }
 
 Write-Result @{
@@ -62,4 +77,6 @@ Write-Result @{
     app_version = $details.app_version
     processes = $details.processes
     update_log_tail = $details.update_log_tail
+    bridge_log = $details.bridge_log
+    bridge_log_tail = $details.bridge_log_tail
 } 31
