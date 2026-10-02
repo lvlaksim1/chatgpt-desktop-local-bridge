@@ -31,6 +31,7 @@ public enum DurableReplayAction
     ResumeReserved,
     BlockExecutionUncertain,
     RedeliverResult,
+    IgnoreDelivered,
     BlockMissingResult
 }
 
@@ -236,6 +237,7 @@ public sealed class DurableRequestLedger
                 return current with
                 {
                     DeliveryState = DurableDeliveryState.Delivered,
+                    ResultEnvelopeJson = null,
                     UpdatedUtc = DateTimeOffset.UtcNow
                 };
             },
@@ -246,6 +248,8 @@ public sealed class DurableRequestLedger
         {
             DurableExecutionState.Reserved => DurableReplayAction.ResumeReserved,
             DurableExecutionState.Executing => DurableReplayAction.BlockExecutionUncertain,
+            DurableExecutionState.Completed when record.DeliveryState == DurableDeliveryState.Delivered
+                => DurableReplayAction.IgnoreDelivered,
             DurableExecutionState.Completed when string.IsNullOrWhiteSpace(record.ResultEnvelopeJson)
                 => DurableReplayAction.BlockMissingResult,
             DurableExecutionState.Completed => DurableReplayAction.RedeliverResult,
