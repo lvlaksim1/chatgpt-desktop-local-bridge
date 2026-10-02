@@ -16,7 +16,7 @@ public sealed class BridgeHost
     private readonly Func<string, Task<bool>> _sendToChat;
     private readonly Action<string> _status;
     private readonly ToolRouter _router = new();
-    private readonly HashSet<string> _executedRequestIds = new(StringComparer.Ordinal);
+    private readonly DurableRequestLedger _requestLedger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _logDirectory;
 
@@ -30,11 +30,15 @@ public sealed class BridgeHost
         _status = status;
         SessionId = Guid.NewGuid().ToString("N");
 
-        _logDirectory = Path.Combine(
+        var dataRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ChatGptDesktopLocalBridge",
-            "logs");
+            "ChatGptDesktopLocalBridge");
+
+        _logDirectory = Path.Combine(dataRoot, "logs");
         Directory.CreateDirectory(_logDirectory);
+
+        _requestLedger = new DurableRequestLedger(
+            Path.Combine(dataRoot, "state", "requests"));
     }
 
     public string SessionId { get; }
@@ -119,58 +123,128 @@ public sealed class BridgeHost
                 return;
             }
 
-            if (!_executedRequestIds.Add(request.Id))
+            var reservation = await _requestLedger.ReserveAsync(request);
+
+            if (reservation.Status == DurableReservationStatus.Conflict)
             {
-                _status($"Ignored duplicate request {request.Id}.");
+                _status($"Rejected conflicting reuse of request id {request.Id}.");
+                await TrySendProtocolErrorAsync(
+                    request,
+                    "request_id_conflict",
+                    "The same session/request id was already reserved with a different tool or argument payload.");
                 return;
             }
 
+            if (reservation.Status == DurableReservationStatus.Duplicate)
+            {
+                var existing = reservation.Record;
+                _status(
+                    $"Ignored durable duplicate request {request.Id}: " +
+                    $"execution={existing.ExecutionState}, delivery={existing.DeliveryState}.");
+                return;
+            }
+
+            var ledgerRecord = reservation.Record;
             var capability = ToolRouter.GetCapability(request.Tool);
             var decision = _policy.GetDecision(capability);
 
             if (decision == PermissionDecision.Deny)
             {
-                await SendErrorAsync(request, "permission_denied", $"Capability {capability} is denied.");
-                await WriteAuditAsync(request, false, "permission_denied", 0);
+                var envelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(
+                        "permission_denied",
+                        $"Capability {capability} is denied."));
+
+                await CompleteAndDeliverAsync(
+                    request,
+                    ledgerRecord,
+                    envelope,
+                    false,
+                    "permission_denied",
+                    0,
+                    $"{request.Tool} denied by permission policy.");
                 return;
             }
 
             if (decision == PermissionDecision.Ask)
             {
-                await SendErrorAsync(
+                var envelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(
+                        "permission_requires_confirmation",
+                        $"Capability {capability} is configured as ASK. Interactive confirmation UI is the next implementation stage."));
+
+                await CompleteAndDeliverAsync(
                     request,
+                    ledgerRecord,
+                    envelope,
+                    false,
                     "permission_requires_confirmation",
-                    $"Capability {capability} is configured as ASK. Interactive confirmation UI is the next implementation stage.");
-                await WriteAuditAsync(request, false, "permission_requires_confirmation", 0);
+                    0,
+                    $"{request.Tool} requires interactive confirmation.");
                 return;
             }
 
+            ledgerRecord = await _requestLedger.MarkExecutingAsync(ledgerRecord);
+
             var stopwatch = Stopwatch.StartNew();
+            BridgeResult resultEnvelope;
+            bool ok;
+            string? errorCode;
+            string deliveredStatus;
+
             try
             {
                 _status($"Running {request.Tool} ({request.Id})…");
                 var result = await _router.ExecuteAsync(request.Tool, request.Args);
                 stopwatch.Stop();
 
-                var envelope = new BridgeResult(SessionId, request.Id, true, result);
-                await SendResultAsync(envelope);
-                await WriteAuditAsync(request, true, null, stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} completed in {stopwatch.ElapsedMilliseconds} ms.");
+                ok = true;
+                errorCode = null;
+                resultEnvelope = new BridgeResult(SessionId, request.Id, true, result);
+                deliveredStatus =
+                    $"{request.Tool} completed in {stopwatch.ElapsedMilliseconds} ms.";
             }
             catch (BridgeToolException ex)
             {
                 stopwatch.Stop();
-                await SendErrorAsync(request, ex.Code, ex.Message);
-                await WriteAuditAsync(request, false, ex.Code, stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} failed: {ex.Message}");
+
+                ok = false;
+                errorCode = ex.Code;
+                resultEnvelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(ex.Code, ex.Message));
+                deliveredStatus = $"{request.Tool} failed: {ex.Message}";
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                await SendErrorAsync(request, "tool_error", ex.Message);
-                await WriteAuditAsync(request, false, "tool_error", stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} failed: {ex.Message}");
+
+                ok = false;
+                errorCode = "tool_error";
+                resultEnvelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError("tool_error", ex.Message));
+                deliveredStatus = $"{request.Tool} failed: {ex.Message}";
             }
+
+            await CompleteAndDeliverAsync(
+                request,
+                ledgerRecord,
+                resultEnvelope,
+                ok,
+                errorCode,
+                stopwatch.ElapsedMilliseconds,
+                deliveredStatus);
         }
         finally
         {
@@ -178,15 +252,74 @@ public sealed class BridgeHost
         }
     }
 
-    private async Task SendErrorAsync(BridgeRequest request, string code, string message)
+    private async Task CompleteAndDeliverAsync(
+        BridgeRequest request,
+        DurableRequestRecord ledgerRecord,
+        BridgeResult result,
+        bool ok,
+        string? errorCode,
+        long elapsedMs,
+        string deliveredStatus)
     {
-        var envelope = new BridgeResult(
-            SessionId,
-            request.Id,
-            false,
-            Error: new BridgeError(code, message));
+        var completed = await _requestLedger.MarkCompletedAsync(
+            ledgerRecord,
+            ok,
+            errorCode,
+            elapsedMs);
 
-        await SendResultAsync(envelope);
+        try
+        {
+            await WriteAuditAsync(request, ok, errorCode, elapsedMs);
+        }
+        catch (Exception ex)
+        {
+            _status($"Audit write failed for {request.Id}: {ex.Message}");
+        }
+
+        try
+        {
+            await SendResultAsync(result);
+        }
+        catch (Exception ex)
+        {
+            _status(
+                $"{request.Tool} completed locally, but result delivery is pending recovery: {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            await _requestLedger.MarkDeliveredAsync(completed);
+        }
+        catch (Exception ex)
+        {
+            _status(
+                $"{request.Tool} result was delivered, but durable delivery state could not be committed: {ex.Message}");
+            return;
+        }
+
+        _status(deliveredStatus);
+    }
+
+    private async Task TrySendProtocolErrorAsync(
+        BridgeRequest request,
+        string code,
+        string message)
+    {
+        try
+        {
+            var envelope = new BridgeResult(
+                SessionId,
+                request.Id,
+                false,
+                Error: new BridgeError(code, message));
+
+            await SendResultAsync(envelope);
+        }
+        catch (Exception ex)
+        {
+            _status($"Could not deliver protocol error for {request.Id}: {ex.Message}");
+        }
     }
 
     private async Task SendResultAsync(BridgeResult result)
