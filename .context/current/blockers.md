@@ -26,3 +26,6 @@ Do not write another broad E2E until that distinction is resolved.
 
 ## BRIDGE-M4 process safety
 Windows Job Object Emergency STOP remains required before broad shell/process capability expansion.
+
+## Environmental instability
+Owner reports unstable Internet and intermittent ChatGPT delays/additional review. Current live evidence must distinguish deterministic bridge defects from service/network latency. A single send/READY timeout is not sufficient by itself to prove a product regression.
