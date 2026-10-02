@@ -1,33 +1,37 @@
 # Latest handoff
 
-Updated: 2026-10-02 06:36 MSK
+Updated: 2026-10-02 13:20 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 10.
+Manager generation: 11.
 Product authority: `main`.
-Current product head: `64152b68205a59e7df59d842c2acf972f717de33`.
-Current verified and Owner-installed release: `dev-aea8ad2@aea8ad2971dd7e138434b60d5dfd90c63a0f4a34`.
+Current product head: `9461fffbacceceeb6f1404bebf76d521e4578c01`.
+Latest published release: `dev-31e823e@31e823ef7854a18bb2ad10e94ec71c51814628eb`.
+Owner-installed release: `dev-85c714c@85c714c9b46df2c8ea5329b2d265953d9735ee3f`.
 
 BRIDGE-M1 and BRIDGE-M2 are CLOSED.
 
-Live evidence:
-- #160: Initialize Bridge -> nonce-bound READY PASS.
-- #164 / #166: `fs.read_text(C:/Windows/win.ini)` round trip PASS.
-- #168: adapter v7 reliability regression PASS, including bridge-owned stale-draft recovery and a successful local read.
+BRIDGE-M3 implementation now includes:
+- durable request execution state;
+- persisted pending result envelope;
+- replay-safe request classification;
+- conversation-safe crash recovery;
+- suppression of already delivered replay;
+- delivered payload retirement;
+- 256 KiB result transport bound;
+- centralized capability registry.
 
-BRIDGE-M3 is ACTIVE.
+Final M3 live closure is still open.
 
-Foundation merged to `main@64152b6`:
-- RAM-only duplicate protection replaced by durable request ledger;
-- execution: `reserved -> executing -> completed`;
-- delivery tracked separately: `notReady -> pending -> delivered`;
-- conflicting request-id reuse is fail-closed;
-- ledger persists fingerprints/state only, not local request/result payloads;
-- execution is durably completed before ChatGPT result delivery is attempted;
-- deterministic restart/dedupe/conflict regression PASS;
-- full PR CI and post-merge main CI PASS.
+Gateway history:
+- #169 owner update to `dev-85c714c`: PASS.
+- #170 crash-recovery probe: FAIL, chat submit not confirmed.
+- #171: FAIL, wrong installed-base expectation.
+- #172: FAIL, non-empty composer.
+- #173: FAIL in the validation harness.
 
-Immediate next work:
-design bounded pending-result persistence and conversation/session-safe delivery recovery. A `completed/pending` request must be replayed from durable result state, never re-executed.
+Current main contains:
+- `dd26c48`: exact bounded updater `dev-85c714c -> dev-31e823e`;
+- `9461fff`: one bounded final M3 live regression.
 
-Do not publish another Owner update for each internal M3 sub-step; bundle the next coherent M3 slice and then perform one update + one bounded live regression.
+At this checkpoint both corresponding repository CI runs are in progress. Next action is to wait for those two results only, then perform one update and one live regression.
