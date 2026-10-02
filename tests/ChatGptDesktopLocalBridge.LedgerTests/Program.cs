@@ -169,6 +169,36 @@ try
         System.Text.Encoding.UTF8.GetByteCount(hugePrepared.Message) <= BridgeResultTransport.MaxMessageBytes,
         "Oversized-result error envelope exceeded the transport bound.");
 
+    var definitions = ToolRouter.Definitions;
+    Require(definitions.Count == 3, "Unexpected number of registered bridge tools.");
+    Require(
+        definitions.Select(definition => definition.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Count,
+        "Bridge tool registry contains duplicate names.");
+
+    foreach (var definition in definitions)
+    {
+        Require(
+            ToolRouter.GetCapability(definition.Name) == definition.Capability,
+            $"Capability mapping drifted for {definition.Name}.");
+    }
+
+    var bootstrapToolLines = ToolRouter.GetBootstrapToolLines();
+    foreach (var definition in definitions)
+    {
+        Require(
+            bootstrapToolLines.Contains(
+                $"   args: {definition.ArgsExample}",
+                StringComparer.Ordinal),
+            $"Bootstrap args example drifted for {definition.Name}.");
+        Require(
+            bootstrapToolLines.Any(line => line.EndsWith(". " + definition.Name, StringComparison.Ordinal)),
+            $"Bootstrap no longer exposes registered tool {definition.Name}.");
+    }
+
+    Require(
+        ToolRouter.GetCapability("unknown.tool") == "unknown.tool",
+        "Unknown tool capability fallback changed.");
+
     Console.WriteLine("durable request ledger regression: PASS");
 }
 finally

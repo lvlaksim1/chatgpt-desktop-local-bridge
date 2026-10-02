@@ -100,8 +100,8 @@ public sealed class BridgeHost
 
     public string CreateBootstrapMessage()
     {
-        return string.Join(
-            Environment.NewLine,
+        var lines = new List<string>
+        {
             BootstrapStart,
             "You are running inside a custom Windows ChatGPT client with Local Bridge v1.",
             string.Empty,
@@ -119,16 +119,13 @@ public sealed class BridgeHost
             "}",
             RequestEnd,
             string.Empty,
-            "Available tools:",
-            "1. system.info",
-            "   args: {}",
-            string.Empty,
-            "2. fs.list",
-            "   args: { \"path\": \"C:/some/directory\" }",
-            string.Empty,
-            "3. fs.read_text",
-            "   args: { \"path\": \"C:/some/file.txt\", \"max_chars\": 200000 }",
-            string.Empty,
+            "Available tools:"
+        };
+
+        lines.AddRange(ToolRouter.GetBootstrapToolLines());
+
+        lines.AddRange(
+        [
             "Handshake:",
             "- Immediately after receiving this bootstrap, reply with EXACTLY this single line and no other text:",
             ReadyMarker,
@@ -142,7 +139,10 @@ public sealed class BridgeHost
             "- After a result, continue normally in the user's language.",
             "- Do not wrap a bridge request in Markdown fences.",
             "- The session value must exactly match the session above.",
-            BootstrapEnd);
+            BootstrapEnd
+        ]);
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     public async Task HandleAsync(
