@@ -17,3 +17,6 @@
 13. A redundant update request #176 was created while reconciling parallel state and has been closed as duplicate; do not repeat the update.
 14. Immediate work is to analyze `native-submit-not-confirmed` using existing evidence and the current send implementation before writing any new live probe.
 15. BRIDGE-M4 remains controlled mutating/process capabilities after M3 closure.
+
+16. Owner reports an unstable Internet connection and intermittent ChatGPT service behavior, including delayed additional review of some requests. Therefore a single live failure at a ChatGPT/network boundary (queueing, send confirmation, READY/assistant-response timeout) is ambiguous evidence and must not be promoted directly to a product defect.
+17. For safe/idempotent live validation, retry the exact same bounded scenario once before changing product code when the first failure is plausibly transport/service-related. Repeated identical failure at the same boundary is stronger product evidence. This rule does not authorize blind retry of mutating or execution-uncertain local operations.
