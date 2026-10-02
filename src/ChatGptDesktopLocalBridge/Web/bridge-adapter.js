@@ -13,6 +13,7 @@
   const pending = new Map();
   const STABLE_MESSAGE_MS = 700;
   let lastNativeSendDebug = null;
+  let lastProtocolDebug = null;
 
   function findComposer() {
     const selectors = [
@@ -187,26 +188,91 @@
     );
   }
 
-  function extractRequest(text) {
+  function inspectRequest(text) {
     const normalized = (text || "").trim();
+    const hasStart = normalized.includes(REQUEST_START);
+    const hasEnd = normalized.includes(REQUEST_END);
+
+    if (!hasStart && !hasEnd) {
+      return { candidate: false, complete: false, request: null, reason: null };
+    }
+
+    if (!hasStart || !hasEnd) {
+      return {
+        candidate: true,
+        complete: false,
+        request: null,
+        reason: hasStart ? "request-end-marker-missing" : "request-start-marker-missing"
+      };
+    }
+
     if (!normalized.startsWith(REQUEST_START) || !normalized.endsWith(REQUEST_END)) {
-      return null;
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-envelope-not-exact"
+      };
     }
 
     const raw = normalized
       .slice(REQUEST_START.length, normalized.length - REQUEST_END.length)
       .trim();
 
+    let request;
     try {
-      const request = JSON.parse(raw);
-      if (!request || typeof request !== "object") return null;
-      if (typeof request.id !== "string" || !request.id) return null;
-      if (typeof request.session !== "string" || !request.session) return null;
-      if (typeof request.tool !== "string" || !request.tool) return null;
-      return request;
+      request = JSON.parse(raw);
     } catch {
-      return null;
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-json-invalid"
+      };
     }
+
+    if (!request || typeof request !== "object" || Array.isArray(request)) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-json-not-object"
+      };
+    }
+
+    if (typeof request.id !== "string" || !request.id) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-id-missing"
+      };
+    }
+
+    if (typeof request.session !== "string" || !request.session) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-session-missing"
+      };
+    }
+
+    if (typeof request.tool !== "string" || !request.tool) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-tool-missing"
+      };
+    }
+
+    return {
+      candidate: true,
+      complete: true,
+      request,
+      reason: null
+    };
   }
 
   function hideServiceMessages() {
@@ -234,6 +300,10 @@
 
           if (!processed.has(readyKey) && window.chrome?.webview) {
             processed.add(readyKey);
+            lastProtocolDebug = {
+              stage: "ready-dispatched",
+              sessionPrefix: session.slice(0, 8)
+            };
             window.chrome.webview.postMessage({
               type: "bridge.ready",
               session
@@ -242,15 +312,31 @@
           return;
         }
 
-        const request = extractRequest(text);
-        if (!request) return;
+        const inspection = inspectRequest(text);
+        if (!inspection.candidate) return;
 
+        if (!inspection.complete || !inspection.request) {
+          lastProtocolDebug = {
+            stage: inspection.complete ? "request-rejected" : "request-partial",
+            reason: inspection.reason,
+            textLength: text.length
+          };
+          return;
+        }
+
+        const request = inspection.request;
         const key = request.session + ":" + request.id;
         if (processed.has(key)) return;
 
         const candidate = pending.get(key);
         if (!candidate || candidate.text !== text) {
           pending.set(key, { text, stableSince: now });
+          lastProtocolDebug = {
+            stage: "request-pending",
+            requestId: request.id,
+            sessionPrefix: request.session.slice(0, 8),
+            tool: request.tool
+          };
           setTimeout(scheduleScan, STABLE_MESSAGE_MS + 50);
           return;
         }
@@ -265,6 +351,12 @@
         node.style.display = "none";
 
         if (window.chrome?.webview) {
+          lastProtocolDebug = {
+            stage: "request-dispatched",
+            requestId: request.id,
+            sessionPrefix: request.session.slice(0, 8),
+            tool: request.tool
+          };
           window.chrome.webview.postMessage({
             type: "bridge.request",
             request
@@ -278,7 +370,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 5,
+      version: 6,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -289,6 +381,9 @@
       nativeInputReady: Boolean(composer && composerForm),
       assistantMessages: getAssistantMessageNodes().length,
       userMessages: getUserMessageNodes().length,
+      protocolPendingCount: pending.size,
+      protocolProcessedCount: processed.size,
+      lastProtocolDebug,
       lastNativeSendDebug
     };
   }
@@ -311,7 +406,7 @@
     submitNativeSend,
     scan: scheduleScan,
     health,
-    version: 5
+    version: 6
   };
 
   const observer = new MutationObserver(scheduleScan);
