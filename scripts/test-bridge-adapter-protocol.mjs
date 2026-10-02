@@ -4,18 +4,35 @@ import vm from "node:vm";
 const assistantNodes = [];
 const userNodes = [];
 const posted = [];
+let composer = null;
+let selectedNode = null;
 
 globalThis.window = globalThis;
 globalThis.location = { href: "https://chatgpt.com/" };
+globalThis.HTMLTextAreaElement = class {};
+globalThis.HTMLInputElement = class {};
+
 globalThis.document = {
   readyState: "complete",
-  querySelector() { return null; },
+  querySelector() { return composer; },
   querySelectorAll(selector) {
     if (selector.includes("assistant")) return assistantNodes;
     if (selector.includes("user")) return userNodes;
     return [];
+  },
+  createRange() {
+    return {
+      selectNodeContents(node) { selectedNode = node; },
+      collapse() {}
+    };
   }
 };
+
+window.getSelection = () => ({
+  removeAllRanges() {},
+  addRange() {}
+});
+
 globalThis.MutationObserver = class {
   constructor(callback) { this.callback = callback; }
   observe() {}
@@ -45,7 +62,37 @@ function messageNode(text) {
   return { innerText: text, textContent: text, style: {} };
 }
 
+function composerNode(text) {
+  return {
+    innerText: text,
+    textContent: text,
+    style: {},
+    focus() {},
+    querySelector() { return null; },
+    closest(selector) { return selector === "form" ? {} : null; },
+    getAttribute(name) { return name === "contenteditable" ? "true" : null; }
+  };
+}
+
 await sleep(180);
+
+composer = composerNode("my unsent user draft");
+let prepare = window.__localBridge.prepareNativeSend();
+assert(prepare.accepted === false, "User draft must block bridge insertion.");
+assert(prepare.reason === "composer-not-empty", "User draft rejection reason changed.");
+assert(prepare.bridgeOwnedDraft === false, "User draft was misclassified as bridge-owned.");
+
+composer = composerNode(
+  "[[LOCAL_BRIDGE_BOOTSTRAP_V1]]\n" +
+  "stale bridge-owned service draft"
+);
+selectedNode = null;
+prepare = window.__localBridge.prepareNativeSend();
+assert(prepare.accepted === true, "Bridge-owned stale draft should be replaceable.");
+assert(prepare.replacingBridgeDraft === true, "Bridge-owned stale draft replacement was not reported.");
+assert(selectedNode === composer, "Bridge-owned stale draft contents were not selected for replacement.");
+
+composer = null;
 
 const malformed = messageNode(
   '[[LOCAL_BRIDGE_REQUEST_V1]]\n' +
@@ -57,7 +104,7 @@ window.__localBridge.scan();
 await sleep(220);
 
 let health = window.__localBridge.health();
-assert(health.version === 6, "Expected adapter v6.");
+assert(health.version === 7, "Expected adapter v7.");
 assert(health.lastProtocolDebug?.stage === "request-rejected", "Malformed request was not marked rejected.");
 assert(health.lastProtocolDebug?.reason === "request-json-invalid", "Malformed request reason was not request-json-invalid.");
 assert(!posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-bad"),
