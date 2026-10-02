@@ -237,7 +237,7 @@ try{
     if($bridgeStatus -notmatch 'Session\s+([0-9a-fA-F]{8})'){throw ('Could not parse session from: '+$bridgeStatus)}
     $sessionPrefix=$Matches[1].ToLowerInvariant()
 
-    $prompt='Use the Local Bridge now. Call fs.read_text for C:\Windows\win.ini with max_chars 4096. Do not answer from memory; issue the bridge request and wait for LOCAL_BRIDGE_RESULT_V1.'
+    $prompt='Use the current Local Bridge session. Respond with EXACTLY ONE LOCAL_BRIDGE_REQUEST_V1 request and no human prose. Use tool fs.read_text with args.path C:\Windows\win.ini and args.max_chars 4096. Wait for LOCAL_BRIDGE_RESULT_V1 before any further response.'
     Send-ChatText $socket ([ref]$id) $prompt
 
     $audit=$null
@@ -247,7 +247,18 @@ try{
         if($null-ne$audit){break}
         Start-Sleep -Milliseconds 500
     }
-    if($null-eq$audit){throw 'No fs.read_text audit record appeared within 75 seconds.'}
+    if($null-eq$audit){
+        $assistantDiag=Eval $socket ([ref]$id) @'
+(() => {
+  const nodes=Array.from(document.querySelectorAll("[data-markdown-text-style='assistant-message'], [data-message-author-role='assistant']"));
+  return nodes.slice(-6).map(n => (n.innerText || n.textContent || "").trim().slice(0,2400));
+})()
+'@
+        $uiDiag=@(Get-UiTexts $root|Select-Object -Last 12)
+        throw ('No fs.read_text audit record appeared within 75 seconds. ASSISTANT='+
+            ($assistantDiag|ConvertTo-Json -Depth 6 -Compress)+' UI='+
+            ($uiDiag|ConvertTo-Json -Depth 6 -Compress))
+    }
     if(-not [bool]$audit.ok){throw ('fs.read_text audit failed: '+($audit|ConvertTo-Json -Compress))}
 
     Write-Result 'pass' 0 '' @{
