@@ -1,54 +1,42 @@
 # Manager plans
 
-Manager generation: 11.
+Manager generation: 12.
 Product authority: `main`.
 Current product head: `9461fffbacceceeb6f1404bebf76d521e4578c01`.
-Latest published release: `dev-31e823e@31e823ef7854a18bb2ad10e94ec71c51814628eb`.
-Owner-installed release: `dev-85c714c@85c714c9b46df2c8ea5329b2d265953d9735ee3f`.
+Current published and Owner-installed release: `dev-31e823e@31e823ef7854a18bb2ad10e94ec71c51814628eb`.
 
 ## Closed milestones
+- BRIDGE-M1: CLOSED.
+- BRIDGE-M2: CLOSED.
 
-1. BRIDGE-M1 — CLOSED.
-2. BRIDGE-M2 — CLOSED.
+## BRIDGE-M3 product foundation
+Implemented:
+1. durable request execution states;
+2. separate durable result-delivery states;
+3. persisted bounded pending result payload;
+4. replay classification that blocks uncertain execution;
+5. originating-conversation recovery;
+6. suppression of already delivered replay and payload retirement;
+7. 256 KiB result transport bound;
+8. single capability registry;
+9. deterministic CI coverage.
 
-## BRIDGE-M3 implemented foundation
-
-1. Durable request reservation and execution state.
-2. Separate durable delivery state.
-3. Persisted bounded pending result envelope.
-4. Explicit replay classification; uncertain execution never reruns blindly.
-5. Conversation-bound pending-result recovery.
-6. Already-delivered result suppression and payload retirement.
-7. Central 256 KiB serialized-result transport bound.
-8. Central capability registry for dispatch, permissions, metadata and bootstrap.
-9. Deterministic regression coverage in CI.
-
-## Current validation state
-
-- Owner machine successfully updated to `dev-85c714c` via gateway #169.
-- Crash-recovery/live probes #170-#173 did not produce final M3 proof; failures were in send/test-harness paths.
-- Latest published coherent target is `dev-31e823e`.
-- `main@dd26c48` contains the exact owner update task `dev-85c714c -> dev-31e823e`.
-- `main@9461fff` contains the bounded final live regression.
-- Both corresponding CI runs are currently in progress.
+## Current live evidence
+- #174: `dev-85c714c -> dev-31e823e` update PASS.
+- #175: bounded final M3 live regression FAIL.
+- Failure: `Chat send failed: native-submit-not-confirmed` during Initialize Bridge.
+- The regression did not reach the durable read/ledger PASS criteria.
+- Exact update/regression CI is green.
+- #176 is closed as duplicate and must not be treated as additional evidence.
 
 ## Immediate plan
-
-1. Do not add another probe while the two current CI runs are unresolved.
-2. After both are green, issue one gateway update to `dev-31e823e`.
-3. Immediately follow with one gateway run of the bounded M3 live regression.
-4. PASS criteria:
-   - bridge READY;
-   - real `fs.read_text(C:/Windows/win.ini)` succeeds;
-   - durable record is `executionState=completed`;
-   - durable record is `deliveryState=delivered`;
-   - conversation binding matches the active ChatGPT conversation;
-   - `resultEnvelopeJson` is retired after delivery.
-5. If PASS, close this M3 slice and proceed toward BRIDGE-M4 preparation.
-6. If FAIL, diagnose only that failure before changing product or tests.
+1. Inspect the send path around `submitNativeSend()` and `SendTextToChatAsync()`.
+2. Reconcile what `form.requestSubmit()` guarantees versus the current confirmation heuristic `composerEmpty`.
+3. Determine from existing DOM/status evidence whether submit happened but confirmation missed it, or submit itself was not accepted.
+4. Make one targeted fix if warranted.
+5. Re-run only `.pc-gateway/tasks/Probe-BridgeM3Durable.ps1`.
+6. Close M3 durable foundation only after real `fs.read_text` and ledger `completed/delivered` PASS.
 
 ## Release discipline
-
-- One coherent owner update, not a release per internal step.
-- No ZIP deltas.
-- No unnecessary Actions artifacts.
+- No repeat update while `dev-31e823e` is installed.
+- No new broad probes.
