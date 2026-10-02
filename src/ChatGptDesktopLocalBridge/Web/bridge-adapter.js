@@ -104,6 +104,21 @@
       return { accepted: false, reason: "composer-not-found" };
     }
 
+    const uiState = getComposerUiState(composer);
+    if (!uiState.formFound || !uiState.formInteractive) {
+      lastNativeSendDebug = {
+        stage: "prepare",
+        accepted: false,
+        reason: "composer-ui-not-interactive",
+        ...uiState
+      };
+      return {
+        accepted: false,
+        reason: "composer-ui-not-interactive",
+        ...uiState
+      };
+    }
+
     const currentText = normalizedComposerText(composer).trim();
     if (currentText.length > 0) {
       if (!isBridgeOwnedDraft(currentText)) {
@@ -163,6 +178,8 @@
     const text = normalizedComposerText(composer);
     const meaningfulText = text.trim();
 
+    const uiState = getComposerUiState(composer);
+
     const state = {
       composerFound: Boolean(composer),
       composerTextLength: text.length,
@@ -175,7 +192,7 @@
         ? canonicalizeBridgeText(expectedText).length
         : null,
       actualCanonicalLength: canonicalizeBridgeText(text).length,
-      formFound: Boolean(composer?.closest("form"))
+      ...uiState
     };
 
     lastNativeSendDebug = { stage: "state", ...state };
@@ -232,6 +249,56 @@
       "[data-message-author-role='user'], " +
       "[data-user-message-bubble='true']"
     );
+  }
+
+  function isVisibleControl(element) {
+    if (!element || element.hidden) return false;
+
+    if (typeof element.getBoundingClientRect !== "function") {
+      return true;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+
+    if (typeof window.getComputedStyle !== "function") {
+      return true;
+    }
+
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+
+  function getComposerUiState(composer = findComposer()) {
+    const form = composer?.closest("form") || null;
+    const buttons = form && typeof form.querySelectorAll === "function"
+      ? Array.from(form.querySelectorAll("button"))
+      : [];
+
+    let submit = null;
+    if (form && typeof form.querySelector === "function") {
+      submit =
+        form.querySelector("button[data-testid='send-button']") ||
+        form.querySelector("#composer-submit-button") ||
+        form.querySelector("button[type='submit']");
+    }
+
+    const formInteractive = buttons.some(
+      button => isVisibleControl(button) && !Boolean(button.disabled)
+    );
+
+    const submitFound = Boolean(submit);
+    const submitVisible = isVisibleControl(submit);
+    const submitDisabled = submitFound ? Boolean(submit.disabled) : null;
+
+    return {
+      formFound: Boolean(form),
+      formInteractive,
+      submitFound,
+      submitVisible,
+      submitDisabled,
+      submitReady: Boolean(submitFound && submitVisible && !submitDisabled)
+    };
   }
 
   function nativeSendReceipt(expectedText, baselineUserMessageCount = 0) {
@@ -483,18 +550,21 @@
 
   function health() {
     const composer = findComposer();
-    const composerForm = composer?.closest("form") || null;
+    const uiState = getComposerUiState(composer);
 
     return {
-      version: 9,
+      version: 10,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
       composerFound: Boolean(composer),
       composerTag: composer?.tagName || null,
       composerContentEditable: composer?.getAttribute?.("contenteditable") || null,
-      composerFormFound: Boolean(composerForm),
-      nativeInputReady: Boolean(composer && composerForm),
+      composerFormFound: uiState.formFound,
+      composerFormInteractive: uiState.formInteractive,
+      submitFound: uiState.submitFound,
+      submitReady: uiState.submitReady,
+      nativeInputReady: Boolean(composer && uiState.formFound && uiState.formInteractive),
       assistantMessages: getAssistantMessageNodes().length,
       userMessages: getUserMessageNodes().length,
       sendReceiptAvailable: true,
@@ -525,7 +595,7 @@
     hasResult,
     scan: scheduleScan,
     health,
-    version: 9
+    version: 10
   };
 
   const observer = new MutationObserver(scheduleScan);
