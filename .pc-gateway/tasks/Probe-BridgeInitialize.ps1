@@ -129,7 +129,7 @@ try{
     $deadline=[DateTime]::UtcNow.AddSeconds(35)
     while([DateTime]::UtcNow -lt $deadline){
         $lastDiagnostics=Get-Diagnostics $root
-        if($lastDiagnostics -match '"version"\s*:\s*3' -and
+        if($lastDiagnostics -match '"version"\s*:\s*5' -and
            $lastDiagnostics -match '"composerFound"\s*:\s*true' -and
            $lastDiagnostics -match '"nativeInputReady"\s*:\s*true'){
             $ready=$true
