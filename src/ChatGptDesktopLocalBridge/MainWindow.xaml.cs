@@ -162,8 +162,11 @@ public partial class MainWindow
             var sent = await SendTextToChatAsync(bootstrap);
             if (!sent)
             {
-                StatusText.Text =
-                    "Could not send bridge bootstrap. Open a conversation and run Diagnostics.";
+                if (!StatusText.Text.StartsWith("Chat send failed:", StringComparison.Ordinal))
+                {
+                    StatusText.Text =
+                        "Could not send bridge bootstrap. Open a conversation and run Diagnostics.";
+                }
                 return;
             }
 
