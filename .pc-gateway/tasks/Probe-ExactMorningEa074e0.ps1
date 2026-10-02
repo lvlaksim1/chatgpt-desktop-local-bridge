@@ -220,13 +220,19 @@ function Find-FinalAnswer($Socket,[ref]$Id){
 
 $port=Get-Random -Minimum 9400 -Maximum 9999
 try{
-  $Stage='build-exact-morning'
+  $Stage='download-exact-morning'
   if(Test-Path -LiteralPath $PublishRoot){Remove-Item -LiteralPath $PublishRoot -Recurse -Force}
   New-Item -ItemType Directory -Force -Path $PublishRoot|Out-Null
-  $project=Join-Path $RepoRoot 'src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj'
-  & dotnet publish $project --configuration Release --runtime win-x64 --self-contained true --output $PublishRoot
-  if($LASTEXITCODE -ne 0){throw "dotnet publish failed with exit code $LASTEXITCODE."}
-  if(-not(Test-Path -LiteralPath $AppExe -PathType Leaf)){throw 'Morning portable executable was not produced.'}
+  $zip=Join-Path $env:TEMP ('bridge-ea074e0-'+[Guid]::NewGuid().ToString('N')+'.zip')
+  try{
+    $url='https://github.com/lvlaksim1/chatgpt-desktop-local-bridge/releases/download/benchmark-ea074e0/ChatGptDesktopLocalBridge-ea074e0-portable.zip'
+    $wc=New-Object Net.WebClient
+    try{$wc.DownloadFile($url,$zip)}finally{$wc.Dispose()}
+    Expand-Archive -LiteralPath $zip -DestinationPath $PublishRoot -Force
+  }finally{
+    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+  }
+  if(-not(Test-Path -LiteralPath $AppExe -PathType Leaf)){throw 'Morning portable executable was not downloaded/extracted.'}
 
   $Stage='launch-exact-morning'
   Stop-BridgeProcesses
