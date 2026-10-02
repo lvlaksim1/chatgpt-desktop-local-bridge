@@ -12,32 +12,35 @@
 - completed
 
 ### BRIDGE-M0D — Single-file incremental updater
-- status: completed
-- product evidence: `main@4ed78c23fceddf628996be5a87a9847889c950e7`
-- release evidence: `dev-4ed78c2`
-- root-cause remediation: replaced `Get-FileHash` with direct .NET SHA-256 hashing for Windows PowerShell compatibility
-- verification: real legacy install -> Update.exe -> release marker E2E PASS
+- completed
+- real Windows legacy/update E2E evidence exists
 
 ### BRIDGE-M0E — Delta-safe uninstall behavior
+- completed
+- normal uninstall asks whether to delete settings/working data
+- quiet uninstall preserves user data
+- automated preservation E2E exists
+
+### BRIDGE-M1 — Live end-to-end bridge proof
 - status: completed
-- product evidence: `main@4ed78c23fceddf628996be5a87a9847889c950e7`
-- behavior: normal uninstall asks whether to delete settings/working data; No preserves them; Yes deletes them after program uninstall; quiet uninstall preserves them
-- verification: legacy delta installed the wrapper; quiet uninstall removed program files and preserved a sentinel user-data file
+- product release: `dev-ea074e0@ea074e06bd4e959106f49f57cad1ac731597dac3`
+- live READY proof: pc-runner-gateway issue #160
+- live local read round trip proof: issue #164
+- final product-release regression: issue #166
+- proven chain: Initialize -> nonce-bound READY -> LOCAL_BRIDGE_REQUEST_V1 -> fs.read_text -> LOCAL_BRIDGE_RESULT_V1/local audit
+- path-format defect found during proof and fixed by requiring forward-slash Windows paths in bridge JSON
 
 ## Active
 
-### BRIDGE-M1 — Live end-to-end bridge proof
-- current gate: Owner applies `dev-4ed78c2 / ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`
-- then confirm application restart and ChatGPT authentication continuity
-- then Diagnostics must report adapter v2
-- then Initialize must reach nonce-bound READY
-- then prove one local `fs.read_text` round trip
-
 ### BRIDGE-M2 — Web adapter reliability hardening
-- accepted/active
+- active
+- first task: make malformed bridge-request candidates diagnosable immediately without weakening the strict request envelope
+- retain fail-closed DOM behavior, current+legacy selectors, streaming stability gate, draft preservation, and no blind retries
+- require bounded focused tests, not broad repeated E2E runs
 
 ### BRIDGE-M3 — Durable execution foundation
-- accepted/active
+- accepted; follows M2
+- explicit state machine, capability registry, bounded results, durable request ledger, delivery recovery
 
 ### BRIDGE-M4 — Controlled mutating/process capabilities
-- accepted/active
+- accepted; follows reliability foundations
