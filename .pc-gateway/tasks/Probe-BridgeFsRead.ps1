@@ -237,7 +237,7 @@ try{
     if($bridgeStatus -notmatch 'Session\s+([0-9a-fA-F]{8})'){throw ('Could not parse session from: '+$bridgeStatus)}
     $sessionPrefix=$Matches[1].ToLowerInvariant()
 
-    $prompt='Use the current Local Bridge session. Respond with EXACTLY ONE LOCAL_BRIDGE_REQUEST_V1 request and no human prose. Use tool fs.read_text with args.path C:\Windows\win.ini and args.max_chars 4096. Wait for LOCAL_BRIDGE_RESULT_V1 before any further response.'
+    $prompt='Use the current Local Bridge session. Respond with EXACTLY ONE LOCAL_BRIDGE_REQUEST_V1 request and no human prose. Use tool fs.read_text with args.path C:/Windows/win.ini and args.max_chars 4096. In the JSON request, keep that path exactly with forward slashes. Wait for LOCAL_BRIDGE_RESULT_V1 before any further response.'
     Send-ChatText $socket ([ref]$id) $prompt
 
     $audit=$null
