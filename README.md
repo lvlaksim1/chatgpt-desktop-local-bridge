@@ -112,7 +112,7 @@ dotnet run --project .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.c
 ### Надёжность Web adapter
 
 Текущий adapter:
-- вводит служебные сообщения через native Chromium/WebView2 input (`Input.insertText` + native `Enter`), а не прямой DOM mutation или JavaScript `form.requestSubmit()`;
+- вводит служебные сообщения через native Chromium/WebView2 `Input.insertText`, затем отправляет их через проверенный рабочий submit текущей composer-form (`form.requestSubmit()`); этот транспорт соответствует утреннему live-эталону `fs.read_text`;
 - подтверждает локальную отправку либо очисткой composer, либо появлением точного нового user-message после зафиксированного baseline; старое одинаковое сообщение не считается новым подтверждением;
 - не ждёт завершения ответа модели для подтверждения submit, поэтому медленная сеть или дополнительная проверка ChatGPT не смешиваются с локальным фактом отправки;
 - для READY-handshake после первой минуты показывает delayed-status и продолжает bounded ожидание до 5 минут;
