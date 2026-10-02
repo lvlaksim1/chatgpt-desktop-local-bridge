@@ -1,12 +1,13 @@
 # Next actions
 
-Updated: 2026-10-02 01:46 MSK
+Updated: 2026-10-02 05:44 MSK
 
-1. Owner runs `dev-4ed78c2 / ChatGptDesktopLocalBridge-Update-from-dev-1d00606.exe`.
-2. Confirm updater completes and application restarts.
-3. Confirm ChatGPT authentication remains intact.
-4. Press Diagnostics.
-5. If adapter v2 is present, press Initialize Bridge and prove READY.
-6. Prove one known-file `fs.read_text` round trip.
-7. Persist BRIDGE-M1 live evidence.
-8. Continue BRIDGE-M2/M3.
+1. Do not rerun BRIDGE-M1 unless a later product change touches the proven boundary.
+2. Implement BRIDGE-M2 adapter protocol diagnostics:
+   - detect bridge-request marker candidates;
+   - retain strict exact-envelope execution;
+   - record payload-free rejection reason;
+   - expose last protocol event/failure via `health()`.
+3. Add a bounded deterministic parser/diagnostics check.
+4. Run one short live regression only if the adapter product code changes.
+5. Seal M2 evidence, then start BRIDGE-M3 durable execution foundation.
