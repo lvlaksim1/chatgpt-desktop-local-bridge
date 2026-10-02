@@ -177,13 +177,14 @@ assert(
   "Result detection matched the wrong session.");
 
 
+composer = composerNode("still pending");
 const priorPrompt = messageNode("same service prompt");
 userNodes.push(priorPrompt);
 let receipt = window.__localBridge.nativeSendReceipt("same service prompt", userNodes.length);
 assert(receipt.exactNewUserMessage === false,
   "Send receipt matched a user message that existed before the send baseline.");
 assert(receipt.confirmed === false,
-  "Send receipt was confirmed by an old user message.");
+  "Send receipt was confirmed without composer clearing or a new exact user message.");
 
 const sentPrompt = messageNode("same service prompt");
 userNodes.push(sentPrompt);
@@ -194,4 +195,5 @@ assert(receipt.confirmed === true,
   "Exact new user message did not confirm the send receipt.");
 assert(receipt.userMessageCount === userNodes.length,
   "Send receipt reported the wrong user-message count.");
+composer = null;
 console.log("bridge-adapter protocol diagnostics test: PASS");
