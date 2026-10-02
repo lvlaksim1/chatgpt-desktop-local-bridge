@@ -337,6 +337,23 @@ public partial class MainWindow
 
         try
         {
+            var baselineRaw = await Browser.ExecuteScriptAsync(
+                "window.__localBridge?.nativeSendReceipt?.(null, 0)?.userMessageCount ?? null");
+
+            if (string.IsNullOrWhiteSpace(baselineRaw) || baselineRaw == "null")
+            {
+                StatusText.Text = "Chat send failed: send-receipt-unavailable";
+                return false;
+            }
+
+            using var baselineDocument = JsonDocument.Parse(baselineRaw);
+            if (baselineDocument.RootElement.ValueKind != JsonValueKind.Number ||
+                !baselineDocument.RootElement.TryGetInt32(out var baselineUserMessageCount))
+            {
+                StatusText.Text = "Chat send failed: send-receipt-invalid";
+                return false;
+            }
+
             var preflightRaw = await Browser.ExecuteScriptAsync(
                 "window.__localBridge?.prepareNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
 
@@ -418,21 +435,21 @@ public partial class MainWindow
                 "Input.dispatchKeyEvent",
                 enterUpParameters);
 
-            var sendDeadline = DateTime.UtcNow.AddSeconds(8);
+            var sendDeadline = DateTime.UtcNow.AddSeconds(30);
             while (DateTime.UtcNow < sendDeadline)
             {
-                var stateRaw = await Browser.ExecuteScriptAsync(
-                    "window.__localBridge?.nativeSendState?.() ?? null");
+                var receiptRaw = await Browser.ExecuteScriptAsync(
+                    $"window.__localBridge?.nativeSendReceipt?.({expectedArgument}, {baselineUserMessageCount}) ?? null");
 
-                if (!string.IsNullOrWhiteSpace(stateRaw) && stateRaw != "null")
+                if (!string.IsNullOrWhiteSpace(receiptRaw) && receiptRaw != "null")
                 {
-                    using var stateDocument = JsonDocument.Parse(stateRaw);
-                    var state = stateDocument.RootElement;
-                    var composerEmpty =
-                        state.TryGetProperty("composerEmpty", out var emptyElement) &&
-                        emptyElement.ValueKind == JsonValueKind.True;
+                    using var receiptDocument = JsonDocument.Parse(receiptRaw);
+                    var receipt = receiptDocument.RootElement;
+                    var confirmed =
+                        receipt.TryGetProperty("confirmed", out var confirmedElement) &&
+                        confirmedElement.ValueKind == JsonValueKind.True;
 
-                    if (composerEmpty)
+                    if (confirmed)
                     {
                         return true;
                     }
