@@ -1,27 +1,43 @@
 # Latest handoff
 
-Updated: 2026-10-02 16:20 MSK
+Updated: 2026-10-02 17:35 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 14.
+Manager generation: 15.
 Product authority: `main`.
-Current known product head: `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
+Manager-state authority: `manager-state`.
+Canonical transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
 
-## Critical new canonical evidence
-The Owner manually installed the exact-morning benchmark application based on source commit `ea074e06bd4e959106f49f57cad1ac731597dac3` and repeated the morning Local Bridge test successfully.
+## Critical transport baseline
+The Owner manually proved the exact-morning `ea074e0` application still completes the full `fs.read_text(C:/Windows/win.ini)` Local Bridge round trip in the current environment. Later transport behavior must preserve this invariant.
 
-Observed full PASS:
-- prompt requested `fs.read_text` for `C:/Windows/win.ini`;
-- Local Bridge executed the read and application UI reported `fs.read_text completed in 2 ms.`;
-- `LOCAL_BRIDGE_RESULT_V1` was delivered into the same conversation;
-- ChatGPT then produced a normal answer with the actual file contents, including `[Mail]` and `MAPI=1`.
+## New M4 capability proof
+An `ea074e0`-derived development lineage now has live-proven mutation and process execution.
 
-This is now the canonical transport acceptance benchmark.
+Write tools:
+- branch `m4-write-tools-ea074e0`
+- prerelease `dev-ea074e0-write-tools`
+- `fs.write_text`, `fs.append_text`, `fs.write_file`
+- live append to `D:/test/file.txt`: PASS
 
-## Diagnosis
-The same mechanism still works in the current ChatGPT/service environment when running the exact morning application. Therefore the live failure in later builds is a post-`ea074e0` application regression.
+Process tool:
+- branch `m4-process-run-write-tools`
+- prerelease `dev-process-run`
+- `process.run` with structured args/cwd/timeout/output capture
+- `git --version`: PASS
+- `gh --version`: PASS
+- `gh auth status`: PASS for `lvlaksim1`
+- `gh repo view lvlaksim1/chatgpt-desktop-local-bridge`: PASS
 
-A narrow restoration of `form.requestSubmit()` on current code was insufficient, so the investigation must cover the complete transport/bootstrap/adapter delta rather than the submit call alone.
+Full installer:
+- `ChatGptDesktopLocalBridge-process-run-Setup.exe`
+- SHA-256 `ceec3c9c0204624979ee344b7a26a59821247618bc43645c9493f4dfbcf35d60`
+
+## Owner directive
+Future GitHub manipulation should normally be performed through Local Bridge using the user's local `git`, `gh`, and PowerShell environment. Do not default back to the ChatGPT GitHub connector when the bridge is available. Connector use is an explicit exception.
+
+## Known weakness
+The `gh --version` result was once staged successfully but not auto-submitted; the Owner manually sent it. Later process results auto-delivered. Treat this as an intermittent result transport issue.
 
 ## Next task
-Preserve the complete `ea074e0` transport behavior and reintroduce later M2/M3 changes incrementally, requiring the unchanged `win.ini` benchmark to remain visibly PASS. Resume final M3 durable validation only after that invariant is restored on current code.
+Reconcile the proven M4 development lineage with later M3/`main` functionality without losing the `ea074e0` transport invariant or M3 durability. Then harden result auto-submit and process containment.

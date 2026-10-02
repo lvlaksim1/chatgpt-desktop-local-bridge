@@ -1,27 +1,24 @@
 # Current blockers and open risks
 
-Updated: 2026-10-02 16:20 MSK
+Updated: 2026-10-02 17:35 MSK
 
 ## BRIDGE-M1
 No blocker. CLOSED.
 
 ## BRIDGE-M2
-No blocker as a milestone. Its post-M1 adapter changes must nevertheless be checked against the newly pinned `ea074e0` transport invariant.
+No blocker as a milestone. Any later adapter hardening must preserve the `ea074e0` transport invariant.
 
-## BRIDGE-M3 live transport regression
-The blocker is no longer ambiguous.
+## BRIDGE-M3 reconciliation
+The exact `ea074e0` transport path is live-proven, while later `main` contains substantial M3 durability work. These lineages are not yet reconciled. Do not overwrite M3 durability wholesale and do not reintroduce the post-`ea074e0` transport regression.
 
-Exact same-day manual evidence proves that application source `ea074e0` still completes the full bridge flow:
-`ChatGPT prompt -> LOCAL_BRIDGE_REQUEST_V1 -> fs.read_text -> LOCAL_BRIDGE_RESULT_V1 -> final ChatGPT answer`.
+## Result auto-submit intermittency
+At least one process-run result (`gh --version`) was fully inserted into the ChatGPT composer but automatic submission failed, requiring manual send. Later results delivered automatically. This is a transport/confirmation weakness, not a local process execution failure.
 
-The Owner observed `fs.read_text completed in 2 ms.` and the final answer contained the actual `win.ini` contents.
+## BRIDGE-M4 process containment
+`process.run` is intentionally live and authorized via the existing process capability, giving the bridge broad execution power under the current user account. It uses bounded timeout/output and kills the process tree on timeout, but does not yet use a Windows Job Object with kill-on-close. Before broad unattended shell/process expansion, stronger bridge-owned process containment remains required.
 
-Current/post-`ea074e0` code fails before READY in the same benchmark. Restoring only `form.requestSubmit()` did not restore behavior. Therefore the regression is in the broader post-`ea074e0` transport/bootstrap/adapter delta.
+## Permission semantics
+Because `process.run` can directly invoke ordinary executables such as PowerShell, process-execution permission is the effective gate for such use. Keep this explicit in future permission UX/design.
 
-Do not diagnose this primarily through send-button disabled state, composer-empty state, or generic network timeout. Those are secondary diagnostics only.
-
-## Environmental instability
-Owner Internet and ChatGPT service are intermittently unstable and may add review latency. Account for this in timeouts, but do not use it to explain away a deterministic contrast between current code and the same-day working `ea074e0` baseline.
-
-## BRIDGE-M4 process safety
-Windows Job Object Emergency STOP remains required before broad shell/process capability expansion.
+## Interactive latency
+Local commands complete quickly; multiple ChatGPT request/result turns dominate wall-clock latency. Batch logically related noninteractive commands inside one bounded process stage where safe.

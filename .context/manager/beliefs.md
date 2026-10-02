@@ -3,21 +3,29 @@
 ## Active verified beliefs
 
 1. Product repository: `lvlaksim1/chatgpt-desktop-local-bridge`.
-2. Product authority: `main`; current known head is `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
+2. Product authority remains `main`; current known authoritative product head: `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
 3. Manager-state authority: `manager-state`.
-4. BRIDGE-M1 and BRIDGE-M2 remain CLOSED as milestones, but the proven M1 transport path must now be treated as a compatibility baseline for all later work.
-5. BRIDGE-M3 durable execution/delivery foundation remains implemented on `main`, but final live validation is blocked by a regression in the ChatGPT send/handshake path.
-6. The Owner manually installed the exact-morning benchmark build whose application source is the proven `ea074e06bd4e959106f49f57cad1ac731597dac3` state.
-7. On 2026-10-02 at approximately 16:18 MSK the Owner manually repeated the morning `fs.read_text` scenario and visually confirmed a full real round trip:
-   - prompt sent in ChatGPT;
-   - Local Bridge request produced;
-   - `C:/Windows/win.ini` read locally;
-   - `LOCAL_BRIDGE_RESULT_V1` delivered into the same conversation;
-   - ChatGPT produced a normal human-readable answer containing the file contents, including `[Mail]` and `MAPI=1`;
-   - application status showed `fs.read_text completed in 2 ms.`.
-8. This manual revalidation is the canonical live transport PASS. It is stronger evidence than composer/button/DOM heuristics.
-9. Because the exact morning application still works now with the same service/profile environment, the current failure is a regression introduced after `ea074e0`, not evidence that ChatGPT stopped supporting the mechanism and not adequately explained by network instability.
-10. Restoring only `form.requestSubmit()` on current code was insufficient: current release `dev-265d63b` still failed to obtain `LOCAL_BRIDGE_READY_V1`. Therefore the regression is somewhere in the broader post-`ea074e0` send/bootstrap/adapter changes, not necessarily the submit call alone.
-11. Future transport work must proceed from the complete proven `ea074e0` behavior, preserving it while later M2/M3 changes are reintroduced incrementally.
-12. Owner reports unstable Internet and intermittent ChatGPT additional-review delays. These remain relevant to timeout interpretation, but they do not override the exact same-day `ea074e0` PASS.
-13. BRIDGE-M4 remains controlled mutating/process capabilities after M3 live closure.
+4. BRIDGE-M1 and BRIDGE-M2 remain CLOSED. Canonical live transport baseline is source `ea074e06bd4e959106f49f57cad1ac731597dac3`.
+5. BRIDGE-M3 durability work is substantially implemented on `main`, but reconciliation with the proven `ea074e0` transport behavior remains incomplete.
+6. Same-day Owner testing proved exact `ea074e0` still completes the full `fs.read_text(C:/Windows/win.ini)` round trip in the current ChatGPT environment. Later transport failure is therefore a post-`ea074e0` application regression.
+7. BRIDGE-M4 has started on an `ea074e0`-derived development lineage.
+8. Filesystem mutation is live-proven:
+   - branch `m4-write-tools-ea074e0`;
+   - commits `c13781814ade651ee6b7d51f37a4b37ad997491b`, `826674c158df8ad868ec85823adbc2b38bb1653d`;
+   - release workflow commit `38c2aca554268a07343b8e1a6c805e787b3971f9`;
+   - prerelease `dev-ea074e0-write-tools`;
+   - tools `fs.write_text`, `fs.append_text`, `fs.write_file`.
+9. Owner-side live proof: `fs.append_text` appended `тестовый ответ` to `D:/test/file.txt` and returned `ok:true`.
+10. Local process execution is live-proven:
+   - branch `m4-process-run-write-tools`;
+   - commits `a2c00c7619506c5aa0e98a523fc4b14ad255d141`, `ef2ac99a73cdc3c9a8fba8965d3a6ee9714e2753`;
+   - release workflow commit `cdb78c9d5f1a230d012f26fca1e391be5c5c23f9`;
+   - prerelease `dev-process-run`;
+   - tool `process.run`.
+11. `process.run` uses structured executable/arguments, optional cwd, bounded timeout/output, redirected stdout/stderr, no stdin, and kills the process tree on timeout. It reuses `process.start`.
+12. Live CLI proof through Local Bridge succeeded: Git `2.55.0.windows.5`; GitHub CLI `2.98.0`; `gh auth status` exit 0 for active account `lvlaksim1`; `gh repo view lvlaksim1/chatgpt-desktop-local-bridge` exit 0 and reports default branch `main`.
+13. Owner directive: future GitHub manipulation should normally use Local Bridge + local `git`/`gh`/PowerShell. ChatGPT GitHub connector use is exceptional and explicit.
+14. Result transport still has an intermittent auto-submit weakness: the `gh --version` result was fully staged but required manual Send; later results auto-delivered.
+15. One bridge machine request currently consumes one assistant turn. For multi-command work, prefer one bounded noninteractive process stage when safe.
+16. Full current proven installer: `ChatGptDesktopLocalBridge-process-run-Setup.exe`, prerelease `dev-process-run`, SHA-256 `ceec3c9c0204624979ee344b7a26a59821247618bc43645c9493f4dfbcf35d60`.
+17. Incremental updater from write-tools: `ChatGptDesktopLocalBridge-Update-from-dev-ea074e0-write-tools.exe`, SHA-256 `03fde14068ca7159ed8be3c7f3b9d6b8d861f9cff58b5ae20bca82cf35d61fd6`.

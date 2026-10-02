@@ -7,35 +7,33 @@
 
 ### BRIDGE-M1
 - CLOSED
-- canonical live transport baseline is now explicitly pinned to application source `ea074e0`
+- canonical live transport baseline: `ea074e0`
 
 ### BRIDGE-M2
 - CLOSED as a feature milestone
-- any M2 adapter hardening must be rechecked against the `ea074e0` transport invariant
+- later adapter hardening must preserve the `ea074e0` transport invariant
 
 ## Active
 
 ### BRIDGE-M3 — Durable execution and delivery
-Implemented product foundation:
-- durable request lifecycle;
-- persisted pending result envelope;
-- replay-safe state classification;
-- conversation-bound recovery;
-- delivered-payload retirement;
-- 256 KiB serialized-result bound;
-- centralized capability registry.
+Durable request lifecycle, pending-result persistence, replay-safe classification, conversation-bound recovery, delivered-payload retirement, bounded result transport, and centralized capability registration are substantially implemented on the product lineage.
 
-Current live blocker:
-- post-`ea074e0` transport regression prevents reliable bootstrap/READY on current code.
+Reconciliation with the proven `ea074e0` transport behavior remains incomplete.
 
-Canonical proof:
-- Owner manually revalidated exact-morning `ea074e0` with the `C:/Windows/win.ini` scenario;
-- full request -> local read -> result -> final ChatGPT answer succeeded visibly;
-- app reported `fs.read_text completed in 2 ms.`.
+### BRIDGE-M4 — Controlled mutation and process execution
+An `ea074e0`-derived development lineage now exposes live-proven:
+- `fs.write_text`
+- `fs.append_text`
+- `fs.write_file`
+- `process.run`
 
-Immediate commitment:
-1. Treat the complete `ea074e0` send/bootstrap behavior as immutable reference behavior.
-2. Stop inventing alternative send transports while this baseline exists.
-3. Diff post-`ea074e0` changes affecting MainWindow send logic, bridge adapter, bootstrap/READY handling, message hiding and conversation handling.
-4. Reintroduce later M2/M3 changes in small groups while preserving the exact `win.ini` benchmark after each transport-relevant group.
-5. Only after the benchmark remains PASS on current M3 code, resume final durable-ledger live validation.
+Owner-side validation passed for file append, Git CLI, GitHub CLI authentication, and remote repository access.
+
+Immediate commitments:
+1. Use Local Bridge local CLI as the default GitHub execution path when available.
+2. Keep process commands noninteractive and bounded; never expose or persist authentication tokens.
+3. Prefer one complete bounded work stage per bridge request.
+4. Reconcile proven M4 changes with product authority `main` while preserving the `ea074e0` transport invariant and later M3 durability.
+5. Harden intermittent result auto-submit.
+6. Add stronger bridge-owned process containment before broad shell/process expansion; Windows Job Object kill-on-close remains the preferred target.
+7. Persist significant state updates to `manager-state`; once available, prefer doing so through Local Bridge CLI rather than the connector.
