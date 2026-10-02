@@ -1,15 +1,18 @@
 # Current blockers and open risks
 
-Updated: 2026-10-02 01:46 MSK
+Updated: 2026-10-02 05:44 MSK
 
 ## BRIDGE-M1
-Only Owner-side live application of the latest E2E-validated updater and subsequent ChatGPT bridge validation remain.
+No blocker. CLOSED with live READY and fs.read_text evidence on the Owner PC.
 
-## Obsolete update packages
-Do not use prior ZIP deltas or earlier single-EXE updater builds. The current supported legacy migration is only the `dev-4ed78c2` update from `dev-1d00606`.
+## BRIDGE-M2 reliability debt
+Malformed bridge-request candidates are currently ignored silently by the adapter. When ChatGPT emits a bridge-looking response that is not valid protocol JSON, Diagnostics does not expose the parse reason. This can turn a simple protocol-format problem into a long timeout.
 
-## Uninstall interaction
-Quiet uninstall preservation has automated E2E evidence. The interactive Yes/No UI path is implemented in the same wrapper but requires normal user interaction on Windows; Yes deletes user data, No preserves it.
+## DOM drift
+ChatGPT DOM is not a stable public API. Current and legacy selectors are isolated in the adapter and must continue to fail closed. Live DOM success does not remove the need for explicit diagnostics.
 
-## Reliability debt
-Durable request ledger and Windows Job Object STOP remain future BRIDGE-M3/BRIDGE-M4 work.
+## BRIDGE-M3 durability debt
+Request dedupe is still RAM-only. Exactly-once local execution and exactly-once result delivery are separate problems. Durable request ledger and delivery recovery remain open.
+
+## BRIDGE-M4 process safety debt
+Mutating/process capabilities are not yet opened broadly. Windows Job Object Emergency STOP remains required before general shell/process expansion.
