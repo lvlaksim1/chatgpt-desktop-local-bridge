@@ -334,7 +334,7 @@ try {
         throw 'Assistant marker did not become visible within timeout.'
     }
 
-    Write-ProjectResult -Status 'pass' -ExitCode 0 -Extra @{
+    $summary = [ordered]@{
         marker=$marker
         target_url=[string]$target.url
         legacy_assistant_count=[int]$final.legacyAssistantCount
@@ -342,6 +342,9 @@ try {
         candidate_nodes=$final.candidateNodes
         direct_marker_nodes=$final.directMarkerNodes
     }
+    # Deliberately surface the diagnostic payload through the gateway error channel.
+    # This probe is evidence collection, not a product pass/fail gate.
+    Write-ProjectResult -Status 'diagnostic' -ExitCode 42 -ErrorText ($summary | ConvertTo-Json -Depth 20 -Compress)
 }
 catch {
     Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText $_.Exception.Message
