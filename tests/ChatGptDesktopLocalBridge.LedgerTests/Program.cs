@@ -35,7 +35,15 @@ try
     Require(first.Record.ExecutionState == DurableExecutionState.Reserved, "First reservation state is not reserved.");
     Require(first.Record.DeliveryState == DurableDeliveryState.NotReady, "Initial delivery state is not notReady.");
 
-    var executing = await ledger.MarkExecutingAsync(first.Record);
+    var reservedRestart = new DurableRequestLedger(root);
+    var replayWhileReserved = await reservedRestart.ReserveAsync(request);
+    Require(replayWhileReserved.Status == DurableReservationStatus.Duplicate,
+        "Reserved request replay after restart was not detected.");
+    Require(
+        DurableRequestLedger.GetReplayAction(replayWhileReserved.Record) == DurableReplayAction.ResumeReserved,
+        "Reserved replay was not classified as safe to resume.");
+
+    var executing = await reservedRestart.MarkExecutingAsync(replayWhileReserved.Record);
     Require(executing.ExecutionState == DurableExecutionState.Executing, "Executing state was not persisted.");
 
     var afterRestart = new DurableRequestLedger(root);
@@ -43,6 +51,10 @@ try
     Require(replayWhileExecuting.Status == DurableReservationStatus.Duplicate, "Replay after restart was not detected.");
     Require(replayWhileExecuting.Record.ExecutionState == DurableExecutionState.Executing,
         "Replay did not recover the executing state.");
+    Require(
+        DurableRequestLedger.GetReplayAction(replayWhileExecuting.Record) ==
+        DurableReplayAction.BlockExecutionUncertain,
+        "Executing replay was not classified as uncertain.");
 
     var resultEnvelopeJson =
         "{\"session\":\"0123456789abcdef0123456789abcdef\",\"request_id\":\"req-durable-001\",\"ok\":true,\"result\":{\"text\":\"ok\"}}";
@@ -72,6 +84,9 @@ try
         "Pending delivery state did not survive restart.");
     Require(replayPending.Record.ResultEnvelopeJson == resultEnvelopeJson,
         "Pending result payload did not survive restart.");
+    Require(
+        DurableRequestLedger.GetReplayAction(replayPending.Record) == DurableReplayAction.RedeliverResult,
+        "Completed pending replay was not classified for result re-delivery.");
 
     var pendingDeliveries = await secondRestart.GetPendingDeliveriesAsync();
     Require(pendingDeliveries.Count == 1, "Pending delivery enumeration did not return exactly one record.");
@@ -90,6 +105,14 @@ try
         "Delivered state did not survive restart.");
     Require(replayDelivered.Record.ResultEnvelopeJson == resultEnvelopeJson,
         "Delivered record lost the persisted result payload.");
+    Require(
+        DurableRequestLedger.GetReplayAction(replayDelivered.Record) == DurableReplayAction.RedeliverResult,
+        "Completed delivered replay was not classified for safe result re-delivery.");
+
+    var completedWithoutPayload = replayDelivered.Record with { ResultEnvelopeJson = null };
+    Require(
+        DurableRequestLedger.GetReplayAction(completedWithoutPayload) == DurableReplayAction.BlockMissingResult,
+        "Completed record without a durable result payload was not blocked.");
 
     var noPendingDeliveries = await thirdRestart.GetPendingDeliveriesAsync();
     Require(noPendingDeliveries.Count == 0, "Delivered result remained in the pending-delivery set.");
