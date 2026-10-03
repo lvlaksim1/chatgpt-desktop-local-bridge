@@ -7,8 +7,14 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
-$requestId = 'ui-shell-r1-4c92f81-e2e-01'
-$issueNumber = 192
+$request = Get-Content -LiteralPath $GatewayRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($null -eq $request.args) { throw 'args are required' }
+
+$requestId = [string]$request.args.evidence_request_id
+$issueNumber = [int]$request.args.issue_number
+
+if ([string]::IsNullOrWhiteSpace($requestId)) { throw 'args.evidence_request_id is required' }
+if ($issueNumber -le 0) { throw 'args.issue_number must be positive' }
 $ledger = Join-Path $env:LOCALAPPDATA ('GitHubRunner\pc-runner-gateway\request-ledger\evidence\' + $requestId)
 $names = @(
     'result.json',
