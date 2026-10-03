@@ -89,6 +89,23 @@ public sealed class ToolRouter : IDisposable
                 "Run one bounded verification command from the repository root.",
                 "{ \"path\": \"C:/repo\", \"file\": \"dotnet.exe\", \"arguments\": [\"test\"], \"timeout_ms\": 300000, \"max_output_chars\": 200000 }",
                 IsMutating: true,
+                IsLongRunning: true),
+            new(
+                "mcp.list_servers",
+                "mcp.read",
+                "List locally configured MCP servers without exposing environment variable values.",
+                "{}"),
+            new(
+                "mcp.list_tools",
+                "mcp.read",
+                "List allowed tools exposed by one configured MCP server.",
+                "{ \"server\": \"server-id\", \"force_refresh\": false }"),
+            new(
+                "mcp.call",
+                "mcp.call",
+                "Call one tool on a preconfigured MCP server. Server commands cannot be supplied by the model.",
+                "{ \"server\": \"server-id\", \"tool\": \"tool-name\", \"arguments\": {}, \"timeout_ms\": 120000 }",
+                IsMutating: true,
                 IsLongRunning: true)
         };
 
@@ -99,6 +116,7 @@ public sealed class ToolRouter : IDisposable
 
     private readonly ProcessExecutionManager _processes = new();
     private readonly RepoTools _repoTools;
+    private readonly McpManager _mcp = new();
 
     public ToolRouter()
     {
@@ -160,6 +178,20 @@ public sealed class ToolRouter : IDisposable
                     1_000,
                     MaxProcessOutputChars),
                 cancellationToken),
+            "mcp.list_servers" => await _mcp.ListServersAsync(cancellationToken),
+            "mcp.list_tools" => await _mcp.ListToolsAsync(
+                RequiredString(args, "server"),
+                OptionalBool(args, "force_refresh", false),
+                cancellationToken),
+            "mcp.call" => await _mcp.CallAsync(
+                RequiredString(args, "server"),
+                RequiredString(args, "tool"),
+                OptionalObject(args, "arguments"),
+                Math.Clamp(
+                    OptionalInt(args, "timeout_ms", DefaultProcessTimeoutMs),
+                    1_000,
+                    MaxProcessTimeoutMs),
+                cancellationToken),
             _ => throw new BridgeToolException("unknown_tool", $"Unknown local tool: {tool}")
         };
     }
@@ -206,6 +238,8 @@ public sealed class ToolRouter : IDisposable
                     => $"repo.checkpoint: {RequiredString(args, "path")}",
                 "repo.verify"
                     => $"repo.verify: {RequiredString(args, "file")} {string.Join(" ", OptionalStringArray(args, "arguments"))} in {RequiredString(args, "path")}",
+                "mcp.call"
+                    => $"mcp.call: {RequiredString(args, "server")}/{RequiredString(args, "tool")}",
                 _ => tool
             };
         }
@@ -556,6 +590,25 @@ public sealed class ToolRouter : IDisposable
         return items.ToArray();
     }
 
+    private static JsonElement OptionalObject(JsonElement args, string name)
+    {
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty(name, out var value))
+        {
+            if (value.ValueKind is not JsonValueKind.Object and not JsonValueKind.Null)
+            {
+                throw new BridgeToolException(
+                    "invalid_args",
+                    $"Argument '{name}' must be a JSON object.");
+            }
+
+            return value.Clone();
+        }
+
+        using var empty = JsonDocument.Parse("{}");
+        return empty.RootElement.Clone();
+    }
+
     private static string RequiredStringAllowEmpty(JsonElement args, string name)
     {
         if (args.ValueKind != JsonValueKind.Object ||
@@ -617,7 +670,11 @@ public sealed class ToolRouter : IDisposable
         return defaultValue;
     }
 
-    public void Dispose() => _processes.Dispose();
+    public void Dispose()
+    {
+        _mcp.Dispose();
+        _processes.Dispose();
+    }
 }
 
 public sealed class BridgeToolException(string code, string message) : Exception(message)
