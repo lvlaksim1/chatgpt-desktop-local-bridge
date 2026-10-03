@@ -1,0 +1,166 @@
+name: UI Shell Build
+
+on:
+  push:
+    branches:
+      - dev/ui-shell-v5
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ui-shell-v5
+  cancel-in-progress: true
+
+env:
+  BASE_COMMIT: cdb78c9d5f1a230d012f26fca1e391be5c5c23f9
+  BASE_TAG: dev-process-run
+  BASE_VERSION: 0.1.40.0
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate bridge adapter
+        run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
+
+      - name: Restore and build
+        shell: pwsh
+        run: |
+          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
+          dotnet build .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --no-restore
+
+      - name: Set release identity
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $tag = "ui-shell-$short"
+          $version = "0.2.${{ github.run_number }}.0"
+          "TARGET_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish target
+        shell: pwsh
+        run: |
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output .\publish\win-x64
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = $env:TARGET_TAG
+            commit = "${{ github.sha }}"
+            appVersion = $env:APP_VERSION
+          } | ConvertTo-Json | Set-Content .\publish\win-x64\release-info.json -Encoding UTF8
+
+      - name: Install Inno Setup
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build full setup
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        run: |
+          $sourceDir = (Resolve-Path ".\publish\win-x64").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DMyAppVersion=$env:APP_VERSION" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" ".\installer\ChatGptDesktopLocalBridge.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Setup.exe")) { throw "Full setup was not produced." }
+          Move-Item ".\ChatGptDesktopLocalBridge-Setup.exe" ".\ChatGptDesktopLocalBridge-ui-shell-Setup.exe" -Force
+
+      - name: Create target publish manifest
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        run: |
+          .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag $env:TARGET_TAG -Commit "${{ github.sha }}" -OutputPath .\ChatGptDesktopLocalBridge-PublishManifest.json
+
+      - name: Reconstruct process-run base
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        run: |
+          $baseWorktree = Join-Path $PWD "base-process-run"
+          $basePublish = Join-Path $PWD "publish-base-process-run"
+          git worktree add --detach $baseWorktree $env:BASE_COMMIT
+          try {
+            dotnet restore (Join-Path $baseWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --runtime win-x64
+            dotnet publish (Join-Path $baseWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --no-restore --output $basePublish
+            [ordered]@{
+              schema = "chatgpt-desktop-local-bridge-release-v1"
+              tag = $env:BASE_TAG
+              commit = $env:BASE_COMMIT
+              appVersion = $env:BASE_VERSION
+            } | ConvertTo-Json | Set-Content (Join-Path $basePublish "release-info.json") -Encoding UTF8
+          }
+          finally {
+            git worktree remove --force $baseWorktree
+          }
+
+      - name: Build update from process-run
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        run: |
+          $basePublish = (Resolve-Path ".\publish-base-process-run").Path
+          $currentPublish = (Resolve-Path ".\publish\win-x64").Path
+          $deltaDir = Join-Path $PWD "delta-process-run"
+          .\scripts\build-delta-update.ps1 -BasePublishDir $basePublish -CurrentPublishDir $currentPublish -BaseTag $env:BASE_TAG -TargetTag $env:TARGET_TAG -TargetCommit "${{ github.sha }}" -OutputPath $deltaDir
+          $resolvedDelta = (Resolve-Path $deltaDir).Path
+          ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$PWD" "/DBaseTag=$env:BASE_TAG" "/DTargetTag=$env:TARGET_TAG" "/DUpdateVersion=$env:APP_VERSION" ".\installer\DeltaUpdate.iss"
+          $expected = ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe"
+          if (-not (Test-Path $expected)) { throw "Base updater was not produced." }
+
+      - name: Build update from previous UI stage
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $rows = @(gh release list --limit 50 --json tagName,isPrerelease,publishedAt | ConvertFrom-Json) |
+            Where-Object { $_.isPrerelease -and $_.tagName -like "ui-shell-*" } |
+            Sort-Object { [DateTimeOffset]$_.publishedAt } -Descending
+          $previous = $rows | Select-Object -First 1
+          if ($null -eq $previous) {
+            Write-Host "No previous UI stage release; skipping previous-stage updater."
+            exit 0
+          }
+
+          $view = gh release view $previous.tagName --json assets | ConvertFrom-Json
+          $hasManifest = @($view.assets | Where-Object { $_.name -eq "ChatGptDesktopLocalBridge-PublishManifest.json" }).Count -gt 0
+          if (-not $hasManifest) {
+            Write-Host "Previous UI release has no publish manifest; skipping."
+            exit 0
+          }
+
+          $manifestDir = Join-Path $PWD "previous-ui-manifest"
+          $deltaDir = Join-Path $PWD "delta-previous-ui"
+          New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
+          gh release download $previous.tagName --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir $manifestDir --clobber
+          $baseManifest = Join-Path $manifestDir "ChatGptDesktopLocalBridge-PublishManifest.json"
+
+          .\scripts\build-delta-update.ps1 -BaseManifestPath $baseManifest -CurrentPublishDir .\publish\win-x64 -BaseTag $previous.tagName -TargetTag $env:TARGET_TAG -TargetCommit "${{ github.sha }}" -OutputPath $deltaDir
+          $resolvedDelta = (Resolve-Path $deltaDir).Path
+          ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$PWD" "/DBaseTag=$($previous.tagName)" "/DTargetTag=$env:TARGET_TAG" "/DUpdateVersion=$env:APP_VERSION" ".\installer\DeltaUpdate.iss"
+
+          $expected = ".\ChatGptDesktopLocalBridge-Update-from-$($previous.tagName).exe"
+          if (-not (Test-Path $expected)) { throw "Previous-stage updater was not produced." }
+
+      - name: Publish UI stage prerelease
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[ui-release]')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(
+            ".\ChatGptDesktopLocalBridge-ui-shell-Setup.exe",
+            ".\ChatGptDesktopLocalBridge-PublishManifest.json",
+            ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe"
+          )
+          $assets += @(Get-ChildItem ".\ChatGptDesktopLocalBridge-Update-from-ui-shell-*.exe" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+
+          gh release create $env:TARGET_TAG @assets --target "${{ github.sha }}" --prerelease --title "UI Shell $env:TARGET_TAG" --notes "Development UI stage. Includes a full Setup and matching incremental updater(s)."
