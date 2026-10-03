@@ -369,6 +369,15 @@ public partial class MainWindow
 
             switch (typeElement.GetString())
             {
+                case "context.target":
+                    tab.ContextNavigationTarget =
+                        root.TryGetProperty("url", out var urlElement) &&
+                        urlElement.ValueKind == JsonValueKind.String
+                            ? urlElement.GetString()
+                            : null;
+                    tab.ContextNavigationAt = DateTimeOffset.Now;
+                    return;
+
                 case "bridge.ready":
                     if (tab.BridgeHost is null ||
                         !root.TryGetProperty("session", out var sessionElement) ||

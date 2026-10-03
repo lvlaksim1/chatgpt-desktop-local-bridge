@@ -171,21 +171,11 @@ public partial class MainWindow
                 (_, _) => Dispatcher.BeginInvoke(
                     new Action(() => UpdateTabHeader(tab)));
 
-            tab.Browser.CoreWebView2.NewWindowRequested += (_, e) =>
-            {
-                var target = e.Uri;
-                e.Handled = true;
-
-                Dispatcher.BeginInvoke(
-                    new Action(() =>
-                        _ = AddChatTabAsync(
-                            target,
-                            select: true,
-                            allowDuplicate: false)));
-            };
-
+            // Leave NewWindowRequested untouched so ordinary clicks, target=_blank
+            // navigation and downloads keep native WebView2/site behavior.
+            // Opening in our own tab strip is an explicit context-menu action only.
             tab.Browser.CoreWebView2.ContextMenuRequested +=
-                async (_, e) => await AddOpenInTabContextMenuAsync(tab, e);
+                (_, e) => AddOpenInTabContextMenu(tab, e);
 
             tab.Browser.NavigationStarting += (_, _) =>
             {
@@ -275,59 +265,54 @@ public partial class MainWindow
         }
     }
 
-    private async Task AddOpenInTabContextMenuAsync(
+    private void AddOpenInTabContextMenu(
         ChatTab tab,
         CoreWebView2ContextMenuRequestedEventArgs e)
     {
-        var deferral = e.GetDeferral();
-
         try
         {
-            var target = e.ContextMenuTarget.LinkUri;
+            string? target = null;
 
-            if (string.IsNullOrWhiteSpace(target))
+            if (DateTimeOffset.Now - tab.ContextNavigationAt < TimeSpan.FromSeconds(2) &&
+                AppSettings.IsChatUrl(tab.ContextNavigationTarget))
             {
-                try
-                {
-                    var raw = await tab.Browser.ExecuteScriptAsync(
-                        "window.__localBridge?.contextNavigationTarget?.() ?? null");
-
-                    if (!string.IsNullOrWhiteSpace(raw) && raw != "null")
-                    {
-                        target = JsonSerializer.Deserialize<string>(raw);
-                    }
-                }
-                catch
-                {
-                }
+                target = tab.ContextNavigationTarget;
             }
 
-            if (!AppSettings.IsChatUrl(target))
+            if (!AppSettings.IsChatUrl(target) ||
+                _webEnvironment is null)
             {
                 return;
             }
 
-            var resolved = target!;
-            var openInTab = _webEnvironment!.CreateContextMenuItem(
+            var resolved = AppSettings.CanonicalizeUrl(target!);
+            var openInTab = _webEnvironment.CreateContextMenuItem(
                 "Открыть в новой вкладке",
                 null,
                 CoreWebView2ContextMenuItemKind.Command);
 
             openInTab.CustomItemSelected += (_, _) =>
             {
-                Dispatcher.BeginInvoke(
-                    new Action(() =>
-                        _ = AddChatTabAsync(
-                            resolved,
-                            select: false,
-                            allowDuplicate: false)));
+                try
+                {
+                    Dispatcher.BeginInvoke(
+                        new Action(() =>
+                            _ = AddChatTabAsync(
+                                resolved,
+                                select: false,
+                                allowDuplicate: false)));
+                }
+                catch
+                {
+                    // Context-menu enhancement is optional.
+                }
             };
 
             e.MenuItems.Insert(0, openInTab);
         }
-        finally
+        catch
         {
-            deferral.Complete();
+            // Never let optional context-menu integration terminate the app.
         }
     }
 

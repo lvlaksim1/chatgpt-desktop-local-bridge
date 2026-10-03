@@ -237,9 +237,27 @@
     return lastContextNavigationTarget;
   }
 
-  document.addEventListener("contextmenu", event => {
-    lastContextNavigationTarget = resolveNavigationTarget(event.target);
+  function publishContextNavigationTarget(node) {
+    lastContextNavigationTarget = resolveNavigationTarget(node);
     lastContextNavigationAt = Date.now();
+
+    if (window.chrome?.webview) {
+      window.chrome.webview.postMessage({
+        type: "context.target",
+        url: lastContextNavigationTarget,
+        at: lastContextNavigationAt
+      });
+    }
+  }
+
+  document.addEventListener("pointerdown", event => {
+    if (event.button === 2) {
+      publishContextNavigationTarget(event.target);
+    }
+  }, true);
+
+  document.addEventListener("contextmenu", event => {
+    publishContextNavigationTarget(event.target);
   }, true);
 
   function getAssistantMessageNodes() {
@@ -347,7 +365,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 6,
+      version: 7,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -383,7 +401,7 @@
     scan: scheduleScan,
     health,
     contextNavigationTarget,
-    version: 6
+    version: 7
   };
 
   const observer = new MutationObserver(scheduleScan);

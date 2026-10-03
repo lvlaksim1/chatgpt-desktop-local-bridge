@@ -38,6 +38,8 @@ public partial class MainWindow
         public bool PageReady { get; set; }
         public int BridgeRetryCount { get; set; }
         public string? LastBootstrappedUrl { get; set; }
+        public string? ContextNavigationTarget { get; set; }
+        public DateTimeOffset ContextNavigationAt { get; set; }
     }
 
     public MainWindow()
