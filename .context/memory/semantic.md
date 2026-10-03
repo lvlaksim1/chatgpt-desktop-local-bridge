@@ -51,3 +51,26 @@ Provenance: public `gptme/gptme` master and official `gptme.org` documentation r
 - The subscription provider is therefore a potentially important alternative transport/reference for the project's no-Platform-API goal, but it is not equivalent to preserving ordinary `chatgpt.com` conversations/UI. Adoption would be a product-architecture decision and remains Owner-gated; do not silently replace the accepted WebView2 + native Local Bridge path.
 - gptme's own documentation advises keeping humans at irreversible/public boundaries and reducing unattended-agent blast radius with isolated environments, scoped credentials and version-controlled work. This is compatible with the Local Bridge policy direction toward configurable permissions and stronger process containment.
 
+## Witsy and Aider architectural references admitted 2026-10-04
+
+Provenance: public `Kochava-Studios/witsy` main, `Aider-AI/aider` main, and their project documentation reviewed 2026-10-04. External projects are reference evidence only, not project authority.
+
+### Witsy
+- Witsy is an Electron/TypeScript desktop AI assistant and universal MCP client. It separates Electron main-process capabilities from renderer UI through an explicit preload/IPC API. This reinforces the Local Bridge design principle that privileged local capabilities should stay behind a narrow native boundary rather than be exposed directly to web/UI code.
+- Its MCP layer is a useful reference for future Local Tool Runtime extensibility: persistent MCP clients, stdio/SSE/streamable-HTTP transports, per-server tool selection, cached tool discovery, deterministic name-collision mappings, per-tool timeouts, cancellation through AbortController, OAuth support, and conversion of MCP schemas into model-facing tool metadata.
+- Tool selection semantics are explicit: null means all tools, [] means no tools, and a list means an allowlist. This is a useful configuration model, but Local Bridge should retain its stronger AUTO/ASK/DENY permission direction rather than copy this literally.
+- Witsy agents are saved multi-step workflows. Each run has a durable run id/status/messages; steps can consume prior outputs as `output.N`, select model/tools/agents/doc repositories independently, support structured output, persist progress between steps, and propagate cancellation. This is a useful reference for bounded workflow execution, not a replacement for Project Manager BDI.
+- Witsy's long-term memory is vector retrieval over stored facts. This is useful as a retrieval technique but is weaker than Context Capsule for authoritative/project state; vector memory must not become authority.
+- Witsy uses localhost HTTP as a secondary integration surface for CLI/webhooks/OAuth callbacks. Our accepted in-process WebView2 IPC remains preferred for the core bridge; localhost remains optional, not foundational.
+- Witsy is AGPL-3.0. Architectural ideas may be studied, but code must not be copied into this project unless AGPL obligations are deliberately accepted and Owner-approved.
+
+### Aider
+- Aider's strongest reusable concept is the repo map: it parses source with tree-sitter, extracts definitions/references, builds a repository symbol graph, ranks context (including PageRank-style relevance), and renders only high-value code structure within an explicit token budget. This is a strong candidate for a future repo-aware Local Bridge tool/context service.
+- Aider distinguishes editable chat files, read-only files, and the broader repository map. This is preferable to dumping an entire repository into model context and suggests an explicit scoped-context layer for future coding workflows.
+- Git is used as a safety and provenance layer: pre-existing dirty changes can be checkpointed/committed separately before model edits, model edits are then committed separately, and undo/diff/history remain ordinary Git operations. The transferable principle is to isolate user state from agent state before mutation; automatic commits themselves should remain policy/configurable in our project.
+- Aider validates edits by running lint/test loops and can feed failures back into another repair iteration. This is a useful generic pattern for Local Bridge: mutate -> verify -> optionally repair, with explicit evidence before completion.
+- Aider's architect/editor split separates reasoning about the solution from deterministic production of file edits. This maps well to a future Manager -> bounded Editor/Executor delegation model and can reduce malformed edits.
+- Aider selects edit protocols per model (whole file, search/replace diff, fenced diff, simplified unified diff). The broader lesson is that transport/edit format should be adaptable independently of the reasoning layer.
+- Aider supports web-chat workflows without an LLM API: it packages selected files + read-only files + repo map into browser-pastable context and can apply a copied web-model response locally. This is directly relevant to our no-Platform-API architecture: Local Bridge can remain connected to ordinary ChatGPT UI while a repo-aware local subsystem prepares context and safely applies edits.
+- Aider is Apache-2.0 licensed, so compatible code reuse is possible with required notices if later justified; prefer learning the architecture before copying implementation.
+
