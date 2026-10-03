@@ -170,7 +170,7 @@ try
         "Oversized-result error envelope exceeded the transport bound.");
 
     var definitions = ToolRouter.Definitions;
-    Require(definitions.Count == 3, "Unexpected number of registered bridge tools.");
+    Require(definitions.Count == 12, "Unexpected number of registered bridge tools.");
     Require(
         definitions.Select(definition => definition.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Count,
         "Bridge tool registry contains duplicate names.");
@@ -199,7 +199,46 @@ try
         ToolRouter.GetCapability("unknown.tool") == "unknown.tool",
         "Unknown tool capability fallback changed.");
 
-    Console.WriteLine("durable request ledger regression: PASS");
+    Require(
+        ToolRouter.GetDefinition("process.run")?.IsLongRunning == true,
+        "process.run is no longer marked as a long-running tool.");
+    Require(
+        ToolRouter.GetDefinition("fs.write_text")?.IsMutating == true,
+        "fs.write_text is no longer marked as mutating.");
+    Require(
+        ToolRouter.GetCapability("fs.append_text") == "fs.write_text",
+        "Append capability no longer shares the write permission.");
+    Require(
+        ToolRouter.GetCapability("repo.map") == "repo.read",
+        "Repo map is no longer governed by the repo.read capability.");
+
+    using (var router = new ToolRouter())
+    {
+        var processResult = await router.ExecuteAsync(
+            "process.run",
+            Args("{\"file\":\"cmd.exe\",\"arguments\":[\"/d\",\"/c\",\"echo bridge-process-ok\"],\"timeout_ms\":10000,\"max_output_chars\":4096}"));
+        var processJson = JsonSerializer.SerializeToElement(processResult);
+        Require(
+            processJson.GetProperty("exitCode").GetInt32() == 0,
+            "Contained process smoke test did not exit successfully.");
+        Require(
+            processJson.GetProperty("stdout").GetString()?.Contains(
+                "bridge-process-ok",
+                StringComparison.OrdinalIgnoreCase) == true,
+            "Contained process smoke test lost stdout.");
+
+        var longRunTask = router.ExecuteAsync(
+            "process.run",
+            Args("{\"file\":\"cmd.exe\",\"arguments\":[\"/d\",\"/c\",\"ping 127.0.0.1 -n 30 >nul\"],\"timeout_ms\":60000,\"max_output_chars\":4096}"));
+        await Task.Delay(500);
+        Require(router.StopActiveProcesses() >= 1, "STOP did not find the active process execution.");
+        var stoppedResult = JsonSerializer.SerializeToElement(await longRunTask);
+        Require(
+            stoppedResult.GetProperty("stopped").GetBoolean(),
+            "STOP did not propagate to the process result.");
+    }
+
+    Console.WriteLine("durable request ledger + runtime foundation regression: PASS");
 }
 finally
 {
