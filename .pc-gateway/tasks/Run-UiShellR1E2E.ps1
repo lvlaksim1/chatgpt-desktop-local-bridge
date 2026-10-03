@@ -31,6 +31,20 @@ $ProcessName = 'ChatGptDesktopLocalBridge'
 $TestStarted = [DateTimeOffset]::UtcNow
 $OldBrowserArgs = [Environment]::GetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', 'Process')
 $OldSkipRestart = [Environment]::GetEnvironmentVariable('CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART', 'Process')
+
+function Decode-Utf8Base64([string]$Value) {
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
+
+$UiBridgeReadyPattern = Decode-Utf8Base64 '0JzQvtGB0YIg0LPQvtGC0L7QsiDCtyo='
+$UiBridgeButton = Decode-Utf8Base64 '0JzQvtGB0YI='
+$UiNewChat = Decode-Utf8Base64 'KyDQp9Cw0YI='
+$UiSettings = Decode-Utf8Base64 '0J3QsNGB0YLRgNC+0LnQutC4'
+$UiOpenInNewTab = Decode-Utf8Base64 '0J7RgtC60YDRi9GC0Ywg0LIg0L3QvtCy0L7QuSDQstC60LvQsNC00LrQtQ=='
+$UiResetTheme = Decode-Utf8Base64 '0KHQsdGA0L7RgdC40YLRjCDRgtC10LzRgw=='
+$UiFullSetup = Decode-Utf8Base64 '0KHQutCw0YfQsNGC0Ywg0Lgg0LfQsNC/0YPRgdGC0LjRgtGMINC/0L7Qu9C90YvQuSBTZXR1cA=='
+$UiFullSetupShort = Decode-Utf8Base64 '0J/QvtC70L3Ri9C5IFNldHVw'
+$UiSave = Decode-Utf8Base64 '0KHQvtGF0YDQsNC90LjRgtGM'
 $Socket = $null
 $RollbackNeeded = $false
 $SettingsHadFile = $false
@@ -253,7 +267,7 @@ function Wait-BridgeReady($Root,[int]$TimeoutSeconds=90) {
     $last=@()
     while([DateTime]::UtcNow -lt $deadline) {
         $last=@(Get-UiTexts $Root)
-        $hit=@($last | Where-Object { $_ -like 'Мост готов ·*' } | Select-Object -First 1)
+        $hit=@($last | Where-Object { $_ -like $UiBridgeReadyPattern } | Select-Object -First 1)
         if($hit.Count -gt 0){return [string]$hit[0]}
         Start-Sleep -Milliseconds 500
     }
@@ -411,7 +425,7 @@ try {
     $buttons=@(Get-UiButtons $root)
     $texts=@(Get-UiTexts $root)
     $Result.main_buttons=$buttons
-    Set-Check 'main-shell-buttons' (($buttons -contains 'Мост') -and ($buttons -contains '+ Чат') -and ($buttons -contains 'Настройки')) $buttons
+    Set-Check 'main-shell-buttons' (($buttons -contains $UiBridgeButton) -and ($buttons -contains $UiNewChat) -and ($buttons -contains $UiSettings)) $buttons
 
     $targets=Wait-CdpTargets $port 1 75
     $targetOk=$targets.Count -ge 1
@@ -436,8 +450,8 @@ try {
     $bridgeReady=Wait-BridgeReady $root 90
     Set-Check 'bridge-auto-restore' (-not [string]::IsNullOrWhiteSpace($bridgeReady)) $bridgeReady
 
-    $newChat=Find-UiElementByName $root '+ Чат' 5
-    if($null -eq $newChat){throw '+ Чат button not found.'}
+    $newChat=Find-UiElementByName $root $UiNewChat 5
+    if($null -eq $newChat){throw 'New-chat button not found.'}
     Invoke-UiElement $newChat
     $targets2=Wait-CdpTargets $port 2 75
     $preloadOk=$targets2.Count -ge 2
@@ -494,7 +508,7 @@ try {
         [UiR1Native]::mouse_event([UiR1Native]::RIGHTUP,0,0,0,[UIntPtr]::Zero)
         Start-Sleep -Milliseconds 800
         $desktop=[System.Windows.Automation.AutomationElement]::RootElement
-        $menuItem=Find-UiElementByName $desktop 'Открыть в новой вкладке' 5
+        $menuItem=Find-UiElementByName $desktop $UiOpenInNewTab 5
         $contextResult.menu_item_found=$null -ne $menuItem
         $contextResult.click_x=$sx;$contextResult.click_y=$sy;$contextResult.webview_class=$rect.class
         if($null -ne $menuItem) {
@@ -511,19 +525,19 @@ try {
     Set-Check 'context-menu-no-crash' $aliveAfterContext $null
     if(-not $aliveAfterContext){throw 'Application exited during context-menu test.'}
 
-    $settingsButton=Find-UiElementByName $root 'Настройки' 5
-    if($null -eq $settingsButton){throw 'Настройки button not found.'}
+    $settingsButton=Find-UiElementByName $root $UiSettings 5
+    if($null -eq $settingsButton){throw 'Settings button not found.'}
     Invoke-UiElement $settingsButton
-    $settingsWin=Get-ProcessWindow $app.Id 'Настройки' 8
+    $settingsWin=Get-ProcessWindow $app.Id $UiSettings 8
     $settingsOk=$null -ne $settingsWin
     $settingsDetails=[ordered]@{}
     if($settingsOk) {
-        $reset=Find-UiElementByName $settingsWin 'Сбросить тему' 3
-        $full=Find-UiElementByName $settingsWin 'Скачать и запустить полный Setup' 3
+        $reset=Find-UiElementByName $settingsWin $UiResetTheme 3
+        $full=Find-UiElementByName $settingsWin $UiFullSetup 3
         $settingsDetails.reset_found=$null -ne $reset
         $settingsDetails.full_setup_found=$null -ne $full
         if($null -ne $reset){Invoke-UiElement $reset}
-        $save=Find-UiElementByName $settingsWin 'Сохранить' 3
+        $save=Find-UiElementByName $settingsWin $UiSave 3
         if($null -ne $save){Invoke-UiElement $save;Start-Sleep -Seconds 1}
         $saved=$null
         if(Test-Path $SettingsPath){try{$saved=Get-Content $SettingsPath -Raw -Encoding UTF8|ConvertFrom-Json}catch{}}
@@ -532,7 +546,7 @@ try {
     }
     Set-Check 'theme-reset-and-full-setup-placement' $settingsOk $settingsDetails
     $topButtons=@(Get-UiButtons $root)
-    $noFullTop=-not($topButtons -contains 'Полный Setup') -and -not($topButtons -contains 'Скачать и запустить полный Setup')
+    $noFullTop=-not($topButtons -contains $UiFullSetupShort) -and -not($topButtons -contains $UiFullSetup)
     Set-Check 'top-updater-not-full-setup' $noFullTop $topButtons
 
     $crashes=@(Get-CrashEvents $TestStarted)
