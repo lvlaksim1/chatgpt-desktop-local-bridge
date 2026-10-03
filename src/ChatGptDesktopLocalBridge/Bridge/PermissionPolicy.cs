@@ -10,10 +10,16 @@ public enum PermissionDecision
     Deny
 }
 
+public sealed record BridgePermissionPrompt(
+    string Tool,
+    string Capability,
+    string Summary);
+
 public sealed class PermissionPolicy
 {
     public string Profile { get; set; } = "safe-default";
-    public Dictionary<string, string> Capabilities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> Capabilities { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 
     [JsonIgnore]
     public string SourcePath { get; private set; } = string.Empty;
@@ -47,21 +53,50 @@ public sealed class PermissionPolicy
         var directory = Path.GetDirectoryName(userPath)!;
         Directory.CreateDirectory(directory);
 
+        var defaultPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "Config",
+            "permissions.default.json");
+
         if (!File.Exists(userPath))
         {
-            var defaultPath = Path.Combine(
-                AppContext.BaseDirectory,
-                "Config",
-                "permissions.default.json");
-
             File.Copy(defaultPath, userPath);
         }
 
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = true
+        };
+
         var json = File.ReadAllText(userPath);
-        var policy = JsonSerializer.Deserialize<PermissionPolicy>(
-                         json,
-                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        var policy = JsonSerializer.Deserialize<PermissionPolicy>(json, options)
                      ?? throw new InvalidOperationException("permissions.json is invalid.");
+
+        if (File.Exists(defaultPath))
+        {
+            var defaults = JsonSerializer.Deserialize<PermissionPolicy>(
+                File.ReadAllText(defaultPath),
+                options);
+
+            var changed = false;
+            if (defaults is not null)
+            {
+                foreach (var pair in defaults.Capabilities)
+                {
+                    if (!policy.Capabilities.ContainsKey(pair.Key))
+                    {
+                        policy.Capabilities[pair.Key] = pair.Value;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                File.WriteAllText(userPath, JsonSerializer.Serialize(policy, options));
+            }
+        }
 
         policy.SourcePath = userPath;
         return policy;
