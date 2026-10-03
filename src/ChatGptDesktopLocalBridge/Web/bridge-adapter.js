@@ -6,6 +6,7 @@
   const REQUEST_START = "[[LOCAL_BRIDGE_REQUEST_V1]]";
   const REQUEST_END = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
   const RESULT_START = "[[LOCAL_BRIDGE_RESULT_V1]]";
+  const RESULT_END = "[[/LOCAL_BRIDGE_RESULT_V1]]";
   const BOOTSTRAP_START = "[[LOCAL_BRIDGE_BOOTSTRAP_V1]]";
   const READY_PATTERN = /^\[\[LOCAL_BRIDGE_READY_V1:([a-fA-F0-9]{32})\]\]$/;
 
@@ -13,6 +14,7 @@
   const pending = new Map();
   const STABLE_MESSAGE_MS = 700;
   let lastNativeSendDebug = null;
+  let lastProtocolDebug = null;
   let lastContextNavigationTarget = null;
   let lastContextNavigationAt = 0;
 
@@ -76,6 +78,27 @@
     return normalizeBridgeText(getComposerText(composer));
   }
 
+  function isBridgeOwnedDraft(text) {
+    const normalized = normalizeBridgeText(text).trim();
+    return normalized.startsWith(BOOTSTRAP_START) ||
+      normalized.startsWith(RESULT_START);
+  }
+
+  function selectComposerContents(composer) {
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+      composer.select();
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    const range = document.createRange();
+    range.selectNodeContents(composer);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
   function prepareNativeSend() {
     const composer = findComposer();
     if (!composer) {
@@ -85,16 +108,38 @@
 
     const currentText = normalizedComposerText(composer).trim();
     if (currentText.length > 0) {
+      if (!isBridgeOwnedDraft(currentText)) {
+        lastNativeSendDebug = {
+          stage: "prepare",
+          accepted: false,
+          reason: "composer-not-empty",
+          composerTextLength: currentText.length,
+          bridgeOwnedDraft: false
+        };
+        return {
+          accepted: false,
+          reason: "composer-not-empty",
+          composerTextLength: currentText.length,
+          bridgeOwnedDraft: false
+        };
+      }
+
+      composer.focus();
+      selectComposerContents(composer);
+
       lastNativeSendDebug = {
         stage: "prepare",
-        accepted: false,
-        reason: "composer-not-empty",
-        composerTextLength: currentText.length
+        accepted: true,
+        replacingBridgeDraft: true,
+        composerTextLength: currentText.length,
+        formFound: Boolean(composer.closest("form"))
       };
+
       return {
-        accepted: false,
-        reason: "composer-not-empty",
-        composerTextLength: currentText.length
+        accepted: true,
+        replacingBridgeDraft: true,
+        composerTextLength: currentText.length,
+        formFound: Boolean(composer.closest("form"))
       };
     }
 
@@ -104,11 +149,13 @@
     lastNativeSendDebug = {
       stage: "prepare",
       accepted: true,
+      replacingBridgeDraft: false,
       formFound: Boolean(composer.closest("form"))
     };
 
     return {
       accepted: true,
+      replacingBridgeDraft: false,
       formFound: Boolean(composer.closest("form"))
     };
   }
@@ -256,26 +303,161 @@
     );
   }
 
-  function extractRequest(text) {
+  function nativeSendReceipt(expectedText, baselineUserMessageCount = 0) {
+    const nodes = Array.from(getUserMessageNodes());
+    const baseline = Number.isFinite(Number(baselineUserMessageCount))
+      ? Math.max(0, Number(baselineUserMessageCount))
+      : 0;
+    const expectedCanonical = typeof expectedText === "string"
+      ? canonicalizeBridgeText(expectedText)
+      : "";
+
+    let exactNewUserMessage = false;
+    if (expectedCanonical) {
+      for (let index = baseline; index < nodes.length; index++) {
+        const nodeText = canonicalizeBridgeText(
+          nodes[index]?.innerText || nodes[index]?.textContent || ""
+        );
+        if (nodeText === expectedCanonical) {
+          exactNewUserMessage = true;
+          break;
+        }
+      }
+    }
+
+    const state = nativeSendState();
+    const receipt = {
+      composerEmpty: Boolean(state.composerEmpty),
+      userMessageCount: nodes.length,
+      baselineUserMessageCount: baseline,
+      exactNewUserMessage,
+      confirmed: Boolean(state.composerEmpty || exactNewUserMessage)
+    };
+
+    lastNativeSendDebug = { stage: "receipt", ...receipt };
+    return receipt;
+  }
+
+  function inspectRequest(text) {
     const normalized = (text || "").trim();
+    const hasStart = normalized.includes(REQUEST_START);
+    const hasEnd = normalized.includes(REQUEST_END);
+
+    if (!hasStart && !hasEnd) {
+      return { candidate: false, complete: false, request: null, reason: null };
+    }
+
+    if (!hasStart || !hasEnd) {
+      return {
+        candidate: true,
+        complete: false,
+        request: null,
+        reason: hasStart ? "request-end-marker-missing" : "request-start-marker-missing"
+      };
+    }
+
     if (!normalized.startsWith(REQUEST_START) || !normalized.endsWith(REQUEST_END)) {
-      return null;
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-envelope-not-exact"
+      };
     }
 
     const raw = normalized
       .slice(REQUEST_START.length, normalized.length - REQUEST_END.length)
       .trim();
 
+    let request;
     try {
-      const request = JSON.parse(raw);
-      if (!request || typeof request !== "object") return null;
-      if (typeof request.id !== "string" || !request.id) return null;
-      if (typeof request.session !== "string" || !request.session) return null;
-      if (typeof request.tool !== "string" || !request.tool) return null;
-      return request;
+      request = JSON.parse(raw);
     } catch {
-      return null;
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-json-invalid"
+      };
     }
+
+    if (!request || typeof request !== "object" || Array.isArray(request)) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-json-not-object"
+      };
+    }
+
+    if (typeof request.id !== "string" || !request.id) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-id-missing"
+      };
+    }
+
+    if (typeof request.session !== "string" || !request.session) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-session-missing"
+      };
+    }
+
+    if (typeof request.tool !== "string" || !request.tool) {
+      return {
+        candidate: true,
+        complete: true,
+        request: null,
+        reason: "request-tool-missing"
+      };
+    }
+
+    return {
+      candidate: true,
+      complete: true,
+      request,
+      reason: null
+    };
+  }
+
+  function hasResult(session, requestId) {
+    if (typeof session !== "string" || !session ||
+        typeof requestId !== "string" || !requestId) {
+      return false;
+    }
+
+    for (const node of getUserMessageNodes()) {
+      const normalized = normalizeBridgeText(
+        node.textContent || node.innerText || ""
+      ).trim();
+
+      if (!normalized.startsWith(RESULT_START) ||
+          !normalized.endsWith(RESULT_END)) {
+        continue;
+      }
+
+      const raw = normalized
+        .slice(RESULT_START.length, normalized.length - RESULT_END.length)
+        .trim();
+
+      try {
+        const result = JSON.parse(raw);
+        const resultRequestId = result?.request_id ?? result?.requestId;
+
+        if (result?.session === session && resultRequestId === requestId) {
+          return true;
+        }
+      } catch {
+        // A malformed user message must never be treated as a delivered bridge result.
+      }
+    }
+
+    return false;
   }
 
   function hideServiceMessages() {
@@ -303,6 +485,10 @@
 
           if (!processed.has(readyKey) && window.chrome?.webview) {
             processed.add(readyKey);
+            lastProtocolDebug = {
+              stage: "ready-dispatched",
+              sessionPrefix: session.slice(0, 8)
+            };
             window.chrome.webview.postMessage({
               type: "bridge.ready",
               session
@@ -311,15 +497,31 @@
           return;
         }
 
-        const request = extractRequest(text);
-        if (!request) return;
+        const inspection = inspectRequest(text);
+        if (!inspection.candidate) return;
 
+        if (!inspection.complete || !inspection.request) {
+          lastProtocolDebug = {
+            stage: inspection.complete ? "request-rejected" : "request-partial",
+            reason: inspection.reason,
+            textLength: text.length
+          };
+          return;
+        }
+
+        const request = inspection.request;
         const key = request.session + ":" + request.id;
         if (processed.has(key)) return;
 
         const candidate = pending.get(key);
         if (!candidate || candidate.text !== text) {
           pending.set(key, { text, stableSince: now });
+          lastProtocolDebug = {
+            stage: "request-pending",
+            requestId: request.id,
+            sessionPrefix: request.session.slice(0, 8),
+            tool: request.tool
+          };
           setTimeout(scheduleScan, STABLE_MESSAGE_MS + 50);
           return;
         }
@@ -334,6 +536,12 @@
         node.style.display = "none";
 
         if (window.chrome?.webview) {
+          lastProtocolDebug = {
+            stage: "request-dispatched",
+            requestId: request.id,
+            sessionPrefix: request.session.slice(0, 8),
+            tool: request.tool
+          };
           window.chrome.webview.postMessage({
             type: "bridge.request",
             request
@@ -347,7 +555,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 6,
+      version: 10,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -358,8 +566,11 @@
       nativeInputReady: Boolean(composer && composerForm),
       assistantMessages: getAssistantMessageNodes().length,
       userMessages: getUserMessageNodes().length,
-      composerEmpty: nativeSendState().composerEmpty,
+      sendReceiptAvailable: true,
+      protocolPendingCount: pending.size,
+      protocolProcessedCount: processed.size,
       lastContextNavigationTarget: contextNavigationTarget(),
+      lastProtocolDebug,
       lastNativeSendDebug
     };
   }
@@ -379,11 +590,13 @@
   window.__localBridge = {
     prepareNativeSend,
     nativeSendState,
+    nativeSendReceipt,
     submitNativeSend,
+    hasResult,
     scan: scheduleScan,
     health,
     contextNavigationTarget,
-    version: 6
+    version: 10
   };
 
   const observer = new MutationObserver(scheduleScan);
