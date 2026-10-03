@@ -38,3 +38,16 @@
 - Keeping initialized WebViews warm while switching only their parent containers is the current tab-preload strategy. Hidden ready tabs are armed with an internal switch shield before their next reveal.
 - Native link/download semantics and custom app-tab navigation are intentionally separated: normal WebView behavior is left unintercepted, while explicit app-tab opening depends on a pre-captured DOM target.
 - The recovery stage was committed in isolated slices before the release commit so runtime failures can be mapped back to a narrow change set.
+
+## gptme architectural reference admitted 2026-10-04
+
+Provenance: public `gptme/gptme` master and official `gptme.org` documentation reviewed 2026-10-04. External project is reference evidence only, not project authority.
+
+- `gptme` v0.34.0 is an MIT-licensed local-first agent runtime with a provider-independent chat loop, persistent conversation logs, extensible ToolSpec/plugin/hooks layers, shell/Python/file/web/computer tools, checkpoints, context compression, autonomous-agent scaffolding, MCP/ACP integration, and a Tauri desktop wrapper.
+- Its durable-agent model is strongly aligned with Context Capsule's separation principle: the persistent agent is a version-controlled workspace containing identity, tasks, journal, knowledge, lessons and history; the harness/runtime and model/provider are replaceable execution layers.
+- Useful patterns for Local Bridge are architectural rather than a wholesale runtime replacement: capability metadata/allowlists, hook-based lifecycle controls, explicit conversation/workspace recovery, bounded output handling, prompt-injection hygiene, sandbox/blast-radius separation, contextual lessons, and deterministic persistence barriers.
+- gptme's Windows desktop packaging is not equivalent to the current Local Bridge design: its desktop app starts/reuses a localhost `gptme-server`, while our accepted architecture intentionally keeps the bridge in-process through WebView2 IPC.
+- gptme currently documents a distinct `openai-subscription` provider for personal development use with ChatGPT Plus/Pro. Its implementation uses OAuth 2.0 + PKCE, local refresh-token persistence, and posts Responses-format requests to `https://chatgpt.com/backend-api/codex/responses` with a ChatGPT account header. This is not the OpenAI Platform API and does not depend on the embedded ChatGPT DOM.
+- The subscription provider is therefore a potentially important alternative transport/reference for the project's no-Platform-API goal, but it is not equivalent to preserving ordinary `chatgpt.com` conversations/UI. Adoption would be a product-architecture decision and remains Owner-gated; do not silently replace the accepted WebView2 + native Local Bridge path.
+- gptme's own documentation advises keeping humans at irreversible/public boundaries and reducing unattended-agent blast radius with isolated environments, scoped credentials and version-controlled work. This is compatible with the Local Bridge policy direction toward configurable permissions and stronger process containment.
+
