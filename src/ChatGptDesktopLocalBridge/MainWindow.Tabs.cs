@@ -186,6 +186,7 @@ public partial class MainWindow
                 tab.NavigationReady = false;
                 tab.PageReady = false;
                 tab.BridgeReady = false;
+                tab.BridgeHost?.Dispose();
                 tab.BridgeHost = null;
                 tab.ReadyCompletion = null;
                 tab.LastBootstrappedUrl = null;
@@ -324,6 +325,8 @@ public partial class MainWindow
         }
 
         tab.BridgeRetryCts?.Cancel();
+        tab.BridgeHost?.Dispose();
+        tab.BridgeHost = null;
         _tabs.RemoveAt(index);
         ChatTabs.Items.Remove(tab.Item);
         BrowserHost.Children.Remove(tab.Container);
