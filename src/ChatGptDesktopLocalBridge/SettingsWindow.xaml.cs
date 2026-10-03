@@ -13,24 +13,17 @@ public partial class SettingsWindow
     {
         InitializeComponent();
 
-        ThemeCombo.SelectedIndex = settings.ShellTheme switch
-        {
-            "Light" => 1,
-            "System" => 2,
-            _ => 0
-        };
-
         AutoBridgeCheckBox.IsChecked = settings.AutoInitializeBridge;
-        SetColor(string.IsNullOrWhiteSpace(settings.ChatBackground)
-            ? "#212121"
-            : settings.ChatBackground);
+        SetColor(ThemePalette.IsValidHex(settings.ThemeColor)
+            ? settings.ThemeColor
+            : "#202124");
 
+        UpdateHistoryText.Text = UpdateService.GetRecentHistoryText();
         _ready = true;
         UpdatePreview();
     }
 
-    public string SelectedShellTheme { get; private set; } = "Dark";
-    public string SelectedChatBackground { get; private set; } = "#212121";
+    public string SelectedThemeColor { get; private set; } = "#202124";
     public bool SelectedAutoInitializeBridge { get; private set; } = true;
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -77,41 +70,19 @@ public partial class SettingsWindow
 
     private void SetColor(string value)
     {
-        try
-        {
-            var normalized = value.Trim().TrimStart('#');
-            if (normalized.Length != 6)
-            {
-                normalized = "212121";
-            }
-
-            RedSlider.Value = Convert.ToByte(normalized[0..2], 16);
-            GreenSlider.Value = Convert.ToByte(normalized[2..4], 16);
-            BlueSlider.Value = Convert.ToByte(normalized[4..6], 16);
-        }
-        catch
-        {
-            RedSlider.Value = 0x21;
-            GreenSlider.Value = 0x21;
-            BlueSlider.Value = 0x21;
-        }
+        var color = ThemePalette.Parse(value);
+        RedSlider.Value = color.R;
+        GreenSlider.Value = color.G;
+        BlueSlider.Value = color.B;
     }
 
     private void SaveButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (ThemeCombo.SelectedItem is ComboBoxItem item &&
-            item.Tag is string theme)
-        {
-            SelectedShellTheme = theme;
-        }
-
-        SelectedChatBackground = ColorHexText.Text;
+        SelectedThemeColor = ColorHexText.Text;
         SelectedAutoInitializeBridge = AutoBridgeCheckBox.IsChecked == true;
         DialogResult = true;
     }
 
     private void CancelButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-    }
+        => DialogResult = false;
 }

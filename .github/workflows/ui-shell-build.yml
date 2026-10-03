@@ -33,6 +33,12 @@ jobs:
       - name: Validate bridge adapter
         run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
 
+      - name: Validate updater script
+        shell: pwsh
+        run: |
+          $text = Get-Content .\scripts\update\Apply-Update.ps1 -Raw
+          [void][scriptblock]::Create($text)
+
       - name: Restore and build
         shell: pwsh
         run: |

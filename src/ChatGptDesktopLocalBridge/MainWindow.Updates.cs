@@ -1,53 +1,92 @@
 using System.Windows;
+using System.Windows.Threading;
 
 namespace ChatGptDesktopLocalBridge;
 
 public partial class MainWindow
 {
-    private async Task CheckForUpdatesAsync()
+    private void StartUpdatePolling()
+    {
+        _updateTimer?.Stop();
+
+        _updateTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(
+                Math.Clamp(_settings.UpdateCheckIntervalMinutes, 5, 1440))
+        };
+
+        _updateTimer.Tick += async (_, _) =>
+            await CheckForUpdatesAsync(quiet: true);
+
+        _updateTimer.Start();
+    }
+
+    private async Task CheckForUpdatesAsync(bool quiet)
     {
         try
         {
             var candidate = await UpdateService.CheckAsync();
-            if (candidate is null)
-            {
-                return;
-            }
 
             _availableUpdate = candidate;
 
             await Dispatcher.InvokeAsync(() =>
             {
-                UpdateButton.Content = "Обновить";
+                if (candidate is null)
+                {
+                    UpdateButton.Visibility = Visibility.Collapsed;
+
+                    if (!quiet)
+                    {
+                        SetStatus("Установлена актуальная версия.");
+                    }
+
+                    return;
+                }
+
+                UpdateButton.Content =
+                    candidate.PackageKind == UpdatePackageKind.Delta
+                        ? "Обновить"
+                        : "Полный Setup";
+
                 UpdateButton.ToolTip =
-                    $"Доступно обновление {candidate.CurrentTag} → {candidate.TargetTag}";
+                    $"{candidate.CurrentTag} → {candidate.TargetTag}\n{candidate.Reason}";
+
                 UpdateButton.Visibility = Visibility.Visible;
+
+                if (!quiet)
+                {
+                    SetStatus(
+                        candidate.PackageKind == UpdatePackageKind.Delta
+                            ? "Доступно обновление."
+                            : "Доступно обновление; требуется полный Setup.");
+                }
             });
         }
-        catch
+        catch (Exception ex)
         {
-            // Update checks are intentionally non-blocking.
+            if (!quiet)
+            {
+                await Dispatcher.InvokeAsync(() =>
+                    SetStatus($"Проверка обновлений: {ex.Message}"));
+            }
         }
     }
 
-    private async void UpdateButton_OnClick(object sender, RoutedEventArgs e)
+    private async void UpdateButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
     {
         if (_availableUpdate is null)
         {
-            _ = CheckForUpdatesAsync();
+            await CheckForUpdatesAsync(quiet: false);
             return;
         }
 
         var candidate = _availableUpdate;
+        var window = new UpdateWindow(candidate) { Owner = this };
 
-        var answer = MessageBox.Show(
-            $"Установить обновление {candidate.TargetTag}?\n\n" +
-            "Файл будет скачан напрямую из GitHub, проверен по SHA-256 и запущен без браузера.",
-            "Обновление ChatGPT Desktop Local Bridge",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (answer != MessageBoxResult.Yes)
+        if (window.ShowDialog() != true ||
+            !window.InstallRequested)
         {
             return;
         }
@@ -65,8 +104,13 @@ public partial class MainWindow
                 candidate,
                 progress);
 
-            SetStatus("Обновление проверено. Запуск установщика…");
+            UpdateService.MarkPending(candidate);
             SaveRuntimeSettings();
+
+            SetStatus(
+                candidate.PackageKind == UpdatePackageKind.Delta
+                    ? "Delta-update проверен. Запуск установки…"
+                    : "Полный Setup проверен. Запуск установки…");
 
             UpdateService.StartInstaller(path);
             Application.Current.Shutdown();

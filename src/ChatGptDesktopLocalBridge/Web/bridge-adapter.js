@@ -13,6 +13,8 @@
   const pending = new Map();
   const STABLE_MESSAGE_MS = 700;
   let lastNativeSendDebug = null;
+  let lastContextNavigationTarget = null;
+  let lastContextNavigationAt = 0;
 
   function findComposer() {
     const selectors = [
@@ -173,6 +175,73 @@
     }
   }
 
+  function normalizeNavigationTarget(value) {
+    if (!value || typeof value !== "string") return null;
+
+    try {
+      const url = new URL(value, location.origin);
+      if (url.protocol !== "https:") return null;
+      if (url.hostname !== "chatgpt.com" &&
+          !url.hostname.endsWith(".chatgpt.com")) {
+        return null;
+      }
+
+      url.hash = "";
+      return url.href;
+    } catch {
+      return null;
+    }
+  }
+
+  function resolveNavigationTarget(node) {
+    let element = node instanceof Element ? node : node?.parentElement || null;
+
+    for (let depth = 0; element && depth < 10; depth += 1) {
+      if (element instanceof HTMLAnchorElement && element.href) {
+        const resolved = normalizeNavigationTarget(element.href);
+        if (resolved) return resolved;
+      }
+
+      for (const name of ["href", "data-href", "data-url", "data-path", "data-route"]) {
+        const raw = element.getAttribute?.(name);
+        const resolved = normalizeNavigationTarget(raw);
+        if (resolved) return resolved;
+      }
+
+      const nested = element.querySelector?.("a[href]");
+      if (nested?.href) {
+        const resolved = normalizeNavigationTarget(nested.href);
+        if (resolved) return resolved;
+      }
+
+      const conversationId =
+        element.getAttribute?.("data-conversation-id") ||
+        element.dataset?.conversationId;
+
+      if (conversationId &&
+          /^[a-zA-Z0-9_-]{8,}$/.test(conversationId)) {
+        return normalizeNavigationTarget("/c/" + conversationId);
+      }
+
+      element = element.parentElement;
+    }
+
+    return null;
+  }
+
+  function contextNavigationTarget() {
+    if (Date.now() - lastContextNavigationAt > 2500) {
+      return null;
+    }
+
+    return lastContextNavigationTarget;
+  }
+
+  document.addEventListener("contextmenu", event => {
+    lastContextNavigationTarget = resolveNavigationTarget(event.target);
+    lastContextNavigationAt = Date.now();
+  }, true);
+
   function getAssistantMessageNodes() {
     return document.querySelectorAll(
       "[data-message-author-role='assistant'], " +
@@ -278,7 +347,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 5,
+      version: 6,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -289,6 +358,8 @@
       nativeInputReady: Boolean(composer && composerForm),
       assistantMessages: getAssistantMessageNodes().length,
       userMessages: getUserMessageNodes().length,
+      composerEmpty: nativeSendState().composerEmpty,
+      lastContextNavigationTarget: contextNavigationTarget(),
       lastNativeSendDebug
     };
   }
@@ -311,7 +382,8 @@
     submitNativeSend,
     scan: scheduleScan,
     health,
-    version: 5
+    contextNavigationTarget,
+    version: 6
   };
 
   const observer = new MutationObserver(scheduleScan);

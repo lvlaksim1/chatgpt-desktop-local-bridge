@@ -22,12 +22,44 @@ public partial class MainWindow
         await EnsureBridgeForTabAsync(tab, automatic: false);
     }
 
+    private void ScheduleBridgeStart(
+        ChatTab tab,
+        TimeSpan delay)
+    {
+        tab.BridgeRetryCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        tab.BridgeRetryCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay, cts.Token);
+                await Dispatcher.InvokeAsync(
+                    () => _ = EnsureBridgeForTabAsync(
+                        tab,
+                        automatic: true,
+                        cancellationToken: cts.Token));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
     private async Task EnsureBridgeForTabAsync(
         ChatTab tab,
-        bool automatic)
+        bool automatic,
+        CancellationToken cancellationToken = default)
     {
         if (!tab.NavigationReady ||
+            !tab.PageReady ||
             tab.Browser.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(ActiveTab, tab) && automatic)
         {
             return;
         }
@@ -38,11 +70,55 @@ public partial class MainWindow
             {
                 SetStatus($"Мост уже готов · {tab.BridgeHost.SessionId[..8]}…");
             }
+
             return;
         }
 
         if (tab.ReadyCompletion is not null)
         {
+            return;
+        }
+
+        SetTabState(tab, "waiting");
+
+        if (ReferenceEquals(ActiveTab, tab))
+        {
+            SetStatus(automatic
+                ? "Ожидание готовности Local Bridge…"
+                : "Подготовка Local Bridge…");
+        }
+
+        var composerReady = await WaitForBridgeComposerAsync(
+            tab,
+            automatic ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(12),
+            cancellationToken);
+
+        if (!composerReady)
+        {
+            if (automatic)
+            {
+                tab.BridgeRetryCount++;
+                SetTabState(tab, "waiting");
+
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    SetStatus("ChatGPT загружен; мост ждёт готовности поля ввода.");
+                }
+
+                if (tab.BridgeRetryCount <= 6)
+                {
+                    ScheduleBridgeStart(
+                        tab,
+                        TimeSpan.FromSeconds(
+                            Math.Min(3 + tab.BridgeRetryCount * 2, 15)));
+                }
+            }
+            else
+            {
+                SetTabState(tab, "error");
+                SetStatus("Local Bridge: поле ввода ChatGPT ещё не готово.");
+            }
+
             return;
         }
 
@@ -76,14 +152,16 @@ public partial class MainWindow
                     : "Инициализация Local Bridge…");
             }
 
-            var sent = await SendTextToChatAsync(
+            var sent = await TrySendBootstrapWithRetriesAsync(
                 tab,
-                host.CreateBootstrapMessage());
+                host.CreateBootstrapMessage(),
+                automatic ? 4 : 2,
+                cancellationToken);
 
             if (!sent)
             {
                 throw new InvalidOperationException(
-                    "Не удалось отправить bootstrap Local Bridge.");
+                    "ChatGPT не принял bootstrap после ожидания готовности.");
             }
 
             if (!automatic)
@@ -92,23 +170,51 @@ public partial class MainWindow
                 _settings.Save();
             }
 
-            await completion.Task.WaitAsync(TimeSpan.FromSeconds(60));
+            await completion.Task.WaitAsync(
+                TimeSpan.FromSeconds(60),
+                cancellationToken);
 
             tab.BridgeReady = true;
+            tab.BridgeRetryCount = 0;
             tab.LastBootstrappedUrl =
                 tab.Browser.Source?.AbsoluteUri ?? tab.LastUrl;
+
+            SetTabState(tab, "ready");
 
             if (ReferenceEquals(ActiveTab, tab))
             {
                 SetStatus($"Мост готов · {host.SessionId[..8]}…");
             }
         }
+        catch (OperationCanceledException)
+        {
+            tab.BridgeHost = null;
+            tab.BridgeReady = false;
+        }
         catch (TimeoutException)
         {
             tab.BridgeHost = null;
             tab.BridgeReady = false;
+            SetTabState(tab, automatic ? "waiting" : "error");
 
-            if (ReferenceEquals(ActiveTab, tab))
+            if (automatic)
+            {
+                tab.BridgeRetryCount++;
+
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    SetStatus("Мост не подтвердил READY; повторю автоматически.");
+                }
+
+                if (tab.BridgeRetryCount <= 6)
+                {
+                    ScheduleBridgeStart(
+                        tab,
+                        TimeSpan.FromSeconds(
+                            Math.Min(4 + tab.BridgeRetryCount * 2, 16)));
+                }
+            }
+            else if (ReferenceEquals(ActiveTab, tab))
             {
                 SetStatus("Local Bridge: нет подтверждения READY.");
             }
@@ -117,8 +223,26 @@ public partial class MainWindow
         {
             tab.BridgeHost = null;
             tab.BridgeReady = false;
+            SetTabState(tab, automatic ? "waiting" : "error");
 
-            if (ReferenceEquals(ActiveTab, tab))
+            if (automatic)
+            {
+                tab.BridgeRetryCount++;
+
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    SetStatus("Local Bridge ещё не готов; повторю автоматически.");
+                }
+
+                if (tab.BridgeRetryCount <= 6)
+                {
+                    ScheduleBridgeStart(
+                        tab,
+                        TimeSpan.FromSeconds(
+                            Math.Min(4 + tab.BridgeRetryCount * 2, 16)));
+                }
+            }
+            else if (ReferenceEquals(ActiveTab, tab))
             {
                 SetStatus($"Ошибка Local Bridge: {ex.Message}");
             }
@@ -130,6 +254,94 @@ public partial class MainWindow
                 tab.ReadyCompletion = null;
             }
         }
+    }
+
+    private async Task<bool> WaitForBridgeComposerAsync(
+        ChatTab tab,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var raw = await tab.Browser.ExecuteScriptAsync(
+                    """
+                    (() => {
+                      const health = window.__localBridge?.health?.();
+                      const state = window.__localBridge?.nativeSendState?.();
+                      return {
+                        adapter: Boolean(health?.webViewAvailable),
+                        nativeInputReady: Boolean(health?.nativeInputReady),
+                        composerEmpty: Boolean(state?.composerEmpty)
+                      };
+                    })()
+                    """);
+
+                using var document = JsonDocument.Parse(raw);
+                var root = document.RootElement;
+
+                var adapter =
+                    root.TryGetProperty("adapter", out var a) &&
+                    a.ValueKind == JsonValueKind.True;
+                var nativeReady =
+                    root.TryGetProperty("nativeInputReady", out var n) &&
+                    n.ValueKind == JsonValueKind.True;
+                var composerEmpty =
+                    root.TryGetProperty("composerEmpty", out var c) &&
+                    c.ValueKind == JsonValueKind.True;
+
+                if (adapter && nativeReady && composerEmpty)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            await Task.Delay(250, cancellationToken);
+        }
+
+        return false;
+    }
+
+    private async Task<bool> TrySendBootstrapWithRetriesAsync(
+        ChatTab tab,
+        string bootstrap,
+        int attempts,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (await SendTextToChatAsync(tab, bootstrap))
+            {
+                return true;
+            }
+
+            if (attempt < attempts)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(500 * attempt),
+                    cancellationToken);
+
+                if (!await WaitForBridgeComposerAsync(
+                        tab,
+                        TimeSpan.FromSeconds(5),
+                        cancellationToken))
+                {
+                    continue;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void CoreWebView2_OnWebMessageReceived(

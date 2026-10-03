@@ -9,26 +9,78 @@ namespace ChatGptDesktopLocalBridge;
 
 public partial class MainWindow
 {
-    private async Task AddChatTabAsync(string url, bool select)
+    private Task AddChatTabAsync(
+        string url,
+        bool select,
+        bool allowDuplicate)
     {
+        var normalized = NormalizeNavigationUrl(url);
+
+        if (!allowDuplicate)
+        {
+            var existing = _tabs.FirstOrDefault(tab =>
+                string.Equals(
+                    AppSettings.CanonicalizeUrl(
+                        tab.Browser.Source?.AbsoluteUri ?? tab.LastUrl),
+                    AppSettings.CanonicalizeUrl(normalized),
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                if (select)
+                {
+                    ChatTabs.SelectedItem = existing.Item;
+                    ShowSelectedTab();
+                }
+
+                return Task.CompletedTask;
+            }
+        }
+
         if (_webEnvironment is null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps ||
-            !(uri.Host.Equals("chatgpt.com", StringComparison.OrdinalIgnoreCase) ||
-              uri.Host.EndsWith(".chatgpt.com", StringComparison.OrdinalIgnoreCase)))
-        {
-            uri = new Uri("https://chatgpt.com/");
-            url = uri.AbsoluteUri;
-        }
-
+        var palette = ThemePalette.FromBase(_settings.ThemeColor);
         var browser = new WebView2
         {
+            Visibility = Visibility.Hidden,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var loadingText = new TextBlock
+        {
+            Text = "Загрузка ChatGPT…",
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush(palette.Muted),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var loadingPanel = new Border
+        {
+            Background = Brush(palette.Base),
+            Child = loadingText
+        };
+
+        var container = new Grid
+        {
+            Visibility = Visibility.Hidden,
+            Background = Brush(palette.Base)
+        };
+        container.Children.Add(browser);
+        container.Children.Add(loadingPanel);
+
+        var statusGlyph = new TextBlock
+        {
+            Text = "●",
+            Margin = new Thickness(0, 0, 6, 0),
+            Foreground = Brushes.Gray,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 10
         };
 
         var headerText = new TextBlock
@@ -46,7 +98,7 @@ public partial class MainWindow
             Padding = new Thickness(4, 0, 4, 0),
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            Foreground = new SolidColorBrush(Color.FromRgb(0xB8, 0xBB, 0xC0)),
+            Foreground = Brush(palette.Muted),
             ToolTip = "Закрыть вкладку"
         };
 
@@ -54,58 +106,188 @@ public partial class MainWindow
         {
             Orientation = Orientation.Horizontal
         };
+        header.Children.Add(statusGlyph);
         header.Children.Add(headerText);
         header.Children.Add(closeButton);
 
-        var item = new TabItem
-        {
-            Header = header,
-            Content = browser
-        };
+        var item = new TabItem { Header = header };
 
         var tab = new ChatTab
         {
             Browser = browser,
-            Item = item,
+            Container = container,
+            LoadingPanel = loadingPanel,
             HeaderText = headerText,
-            LastUrl = url
+            StatusGlyph = statusGlyph,
+            Item = item,
+            LastUrl = normalized
         };
 
         closeButton.Click += (_, _) => CloseChatTab(tab);
 
         _tabs.Add(tab);
         ChatTabs.Items.Add(item);
+        BrowserHost.Children.Add(container);
 
-        await browser.EnsureCoreWebView2Async(_webEnvironment);
-
-        browser.CoreWebView2.Settings.IsWebMessageEnabled = true;
-        browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
-
-        browser.CoreWebView2.WebMessageReceived +=
-            (_, e) => CoreWebView2_OnWebMessageReceived(tab, e);
-
-        browser.CoreWebView2.DocumentTitleChanged +=
-            (_, _) => Dispatcher.BeginInvoke(
-                new Action(() => UpdateTabHeader(tab)));
-
-        browser.CoreWebView2.NewWindowRequested += (_, e) =>
+        if (select)
         {
-            var target = e.Uri;
-            e.Handled = true;
+            ChatTabs.SelectedItem = item;
+            ShowSelectedTab();
+        }
 
-            Dispatcher.BeginInvoke(
-                new Action(() => _ = AddChatTabAsync(target, select: true)));
-        };
+        _ = InitializeChatTabAsync(tab, normalized);
+        return Task.CompletedTask;
+    }
 
-        browser.CoreWebView2.ContextMenuRequested += (_, e) =>
+    private async Task InitializeChatTabAsync(
+        ChatTab tab,
+        string url)
+    {
+        try
         {
-            var link = e.ContextMenuTarget.LinkUri;
-            if (string.IsNullOrWhiteSpace(link))
+            SetTabState(tab, "loading");
+
+            await tab.Browser.EnsureCoreWebView2Async(_webEnvironment);
+
+            tab.Browser.CoreWebView2.Settings.IsWebMessageEnabled = true;
+            tab.Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
+
+            await tab.Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                BuildChatThemeBootstrapScript());
+
+            await tab.Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                _adapterScript);
+
+            tab.Browser.CoreWebView2.WebMessageReceived +=
+                (_, e) => CoreWebView2_OnWebMessageReceived(tab, e);
+
+            tab.Browser.CoreWebView2.DocumentTitleChanged +=
+                (_, _) => Dispatcher.BeginInvoke(
+                    new Action(() => UpdateTabHeader(tab)));
+
+            tab.Browser.CoreWebView2.NewWindowRequested += (_, e) =>
+            {
+                var target = e.Uri;
+                e.Handled = true;
+
+                Dispatcher.BeginInvoke(
+                    new Action(() =>
+                        _ = AddChatTabAsync(
+                            target,
+                            select: true,
+                            allowDuplicate: false)));
+            };
+
+            tab.Browser.CoreWebView2.ContextMenuRequested +=
+                async (_, e) => await AddOpenInTabContextMenuAsync(tab, e);
+
+            tab.Browser.NavigationStarting += (_, _) =>
+            {
+                tab.NavigationReady = false;
+                tab.PageReady = false;
+                tab.BridgeReady = false;
+                tab.BridgeHost = null;
+                tab.ReadyCompletion = null;
+                tab.LastBootstrappedUrl = null;
+                tab.BridgeRetryCts?.Cancel();
+                tab.BridgeRetryCts = null;
+                SetTabState(tab, "loading");
+
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    ShowSelectedTab();
+                    SetStatus("Загрузка ChatGPT…");
+                }
+            };
+
+            tab.Browser.NavigationCompleted += async (_, e) =>
+            {
+                tab.NavigationReady = e.IsSuccess;
+                tab.LastUrl = tab.Browser.Source?.AbsoluteUri ?? tab.LastUrl;
+                UpdateTabHeader(tab);
+
+                if (e.IsSuccess)
+                {
+                    await ApplyUnifiedThemeToTabAsync(tab);
+                    await Task.Delay(120);
+                    tab.PageReady = true;
+                    SetTabState(tab, "idle");
+
+                    if (ReferenceEquals(ActiveTab, tab))
+                    {
+                        ShowSelectedTab();
+                        SetStatus("ChatGPT готов");
+
+                        if (_settings.AutoInitializeBridge)
+                        {
+                            ScheduleBridgeStart(
+                                tab,
+                                TimeSpan.FromMilliseconds(300));
+                        }
+                    }
+                }
+                else
+                {
+                    tab.PageReady = false;
+                    SetTabState(tab, "error");
+
+                    if (ReferenceEquals(ActiveTab, tab))
+                    {
+                        ShowSelectedTab();
+                        SetStatus($"Ошибка навигации: {e.WebErrorStatus}");
+                    }
+                }
+            };
+
+            tab.Browser.Source = new Uri(url);
+        }
+        catch (Exception ex)
+        {
+            tab.PageReady = false;
+            SetTabState(tab, "error");
+
+            if (ReferenceEquals(ActiveTab, tab))
+            {
+                SetStatus($"Ошибка вкладки: {ex.Message}");
+                ShowSelectedTab();
+            }
+        }
+    }
+
+    private async Task AddOpenInTabContextMenuAsync(
+        ChatTab tab,
+        CoreWebView2ContextMenuRequestedEventArgs e)
+    {
+        var deferral = e.GetDeferral();
+
+        try
+        {
+            var target = e.ContextMenuTarget.LinkUri;
+
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                try
+                {
+                    var raw = await tab.Browser.ExecuteScriptAsync(
+                        "window.__localBridge?.contextNavigationTarget?.() ?? null");
+
+                    if (!string.IsNullOrWhiteSpace(raw) && raw != "null")
+                    {
+                        target = JsonSerializer.Deserialize<string>(raw);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (!AppSettings.IsChatUrl(target))
             {
                 return;
             }
 
-            var openInTab = _webEnvironment.CreateContextMenuItem(
+            var resolved = target!;
+            var openInTab = _webEnvironment!.CreateContextMenuItem(
                 "Открыть в новой вкладке",
                 null,
                 CoreWebView2ContextMenuItemKind.Command);
@@ -113,54 +295,18 @@ public partial class MainWindow
             openInTab.CustomItemSelected += (_, _) =>
             {
                 Dispatcher.BeginInvoke(
-                    new Action(() => _ = AddChatTabAsync(link, select: true)));
+                    new Action(() =>
+                        _ = AddChatTabAsync(
+                            resolved,
+                            select: false,
+                            allowDuplicate: false)));
             };
 
             e.MenuItems.Insert(0, openInTab);
-        };
-
-        browser.NavigationCompleted += async (_, e) =>
+        }
+        finally
         {
-            tab.NavigationReady = e.IsSuccess;
-            tab.LastUrl = browser.Source?.AbsoluteUri ?? tab.LastUrl;
-            UpdateTabHeader(tab);
-
-            if (e.IsSuccess)
-            {
-                await ApplyChatBackgroundAsync(tab);
-
-                if (!string.Equals(
-                        tab.LastBootstrappedUrl,
-                        tab.LastUrl,
-                        StringComparison.Ordinal))
-                {
-                    tab.BridgeHost = null;
-                    tab.BridgeReady = false;
-                    tab.ReadyCompletion = null;
-
-                    if (_settings.AutoInitializeBridge)
-                    {
-                        _ = EnsureBridgeForTabAsync(tab, automatic: true);
-                    }
-                }
-            }
-
-            if (ReferenceEquals(ActiveTab, tab))
-            {
-                SetStatus(e.IsSuccess
-                    ? "ChatGPT готов"
-                    : $"Ошибка навигации: {e.WebErrorStatus}");
-            }
-        };
-
-        await browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
-            _adapterScript);
-
-        browser.Source = uri;
-
-        if (select)
-        {
-            ChatTabs.SelectedItem = item;
+            deferral.Complete();
         }
     }
 
@@ -177,14 +323,19 @@ public partial class MainWindow
             return;
         }
 
+        tab.BridgeRetryCts?.Cancel();
         _tabs.RemoveAt(index);
         ChatTabs.Items.Remove(tab.Item);
+        BrowserHost.Children.Remove(tab.Container);
         tab.Browser.Dispose();
 
         if (ChatTabs.SelectedIndex < 0 && ChatTabs.Items.Count > 0)
         {
             ChatTabs.SelectedIndex = Math.Min(index, ChatTabs.Items.Count - 1);
         }
+
+        ShowSelectedTab();
+        SaveRuntimeSettings();
     }
 
     private void UpdateTabHeader(ChatTab tab)
@@ -195,11 +346,14 @@ public partial class MainWindow
             title = "ChatGPT";
         }
 
-        title = title.Replace(" | OpenAI", "", StringComparison.OrdinalIgnoreCase);
+        title = title.Replace(
+            " | OpenAI",
+            "",
+            StringComparison.OrdinalIgnoreCase);
 
-        if (title.Length > 28)
+        if (title.Length > 30)
         {
-            title = title[..27] + "…";
+            title = title[..29] + "…";
         }
 
         tab.HeaderText.Text = title;
@@ -209,10 +363,12 @@ public partial class MainWindow
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (!_applicationReady)
+        if (!_applicationReady && _tabs.Count == 0)
         {
             return;
         }
+
+        ShowSelectedTab();
 
         var tab = ActiveTab;
         if (tab is null)
@@ -220,84 +376,197 @@ public partial class MainWindow
             return;
         }
 
-        SetStatus(tab.BridgeReady
-            ? $"Мост готов · {tab.BridgeHost?.SessionId[..8]}…"
+        if (!tab.PageReady)
+        {
+            SetStatus("Загрузка ChatGPT…");
+            return;
+        }
+
+        SetStatus(tab.BridgeReady && tab.BridgeHost is not null
+            ? $"Мост готов · {tab.BridgeHost.SessionId[..8]}…"
             : "ChatGPT готов");
 
-        if (_settings.AutoInitializeBridge &&
-            tab.NavigationReady &&
-            !tab.BridgeReady)
+        if (_settings.AutoInitializeBridge && !tab.BridgeReady)
         {
-            _ = EnsureBridgeForTabAsync(tab, automatic: true);
+            ScheduleBridgeStart(
+                tab,
+                TimeSpan.FromMilliseconds(150));
+        }
+
+        SaveRuntimeSettings();
+    }
+
+    private void ShowSelectedTab()
+    {
+        var active = ActiveTab;
+
+        foreach (var tab in _tabs)
+        {
+            var selected = ReferenceEquals(tab, active);
+            tab.Container.Visibility = selected
+                ? Visibility.Visible
+                : Visibility.Hidden;
+
+            if (!selected)
+            {
+                tab.Browser.Visibility = Visibility.Hidden;
+                continue;
+            }
+
+            if (tab.PageReady)
+            {
+                tab.LoadingPanel.Visibility = Visibility.Collapsed;
+                tab.Browser.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                tab.Browser.Visibility = Visibility.Hidden;
+                tab.LoadingPanel.Visibility = Visibility.Visible;
+            }
         }
     }
 
-    private async Task ApplyChatBackgroundToAllTabsAsync()
+    private void SetTabState(ChatTab tab, string state)
+    {
+        tab.StatusGlyph.Foreground = state switch
+        {
+            "ready" => Brushes.LimeGreen,
+            "waiting" => Brushes.Goldenrod,
+            "error" => Brushes.IndianRed,
+            "loading" => Brushes.SteelBlue,
+            _ => Brushes.Gray
+        };
+    }
+
+    private async Task ApplyUnifiedThemeToAllTabsAsync()
     {
         foreach (var tab in _tabs)
         {
-            await ApplyChatBackgroundAsync(tab);
+            var palette = ThemePalette.FromBase(_settings.ThemeColor);
+            tab.Container.Background = Brush(palette.Base);
+            tab.LoadingPanel.Background = Brush(palette.Base);
+
+            if (tab.LoadingPanel.Child is TextBlock text)
+            {
+                text.Foreground = Brush(palette.Muted);
+            }
+
+            await ApplyUnifiedThemeToTabAsync(tab);
         }
     }
 
-    private async Task ApplyChatBackgroundAsync(ChatTab tab)
+    private async Task ApplyUnifiedThemeToTabAsync(ChatTab tab)
     {
         if (tab.Browser.CoreWebView2 is null)
         {
             return;
         }
 
-        var color = NormalizeColor(_settings.ChatBackground);
-        var colorJson = JsonSerializer.Serialize(color);
-
-        var script = string.IsNullOrWhiteSpace(color)
-            ? """
-              (() => {
-                document.getElementById('__local_bridge_chat_background')?.remove();
-              })();
-              """
-            : $$"""
-              (() => {
-                let style = document.getElementById('__local_bridge_chat_background');
-                if (!style) {
-                  style = document.createElement('style');
-                  style.id = '__local_bridge_chat_background';
-                  document.head.appendChild(style);
-                }
-                const color = {{colorJson}};
-                style.textContent =
-                  'html, body, #__next { background-color: ' + color + ' !important; }' +
-                  'main { background-color: ' + color + ' !important; }' +
-                  '[class*="bg-token-main-surface-primary"] { background-color: ' + color + ' !important; }' +
-                  '[class*="bg-token-main-surface-secondary"] { background-color: ' + color + ' !important; }';
-              })();
-              """;
-
         try
         {
-            await tab.Browser.ExecuteScriptAsync(script);
+            await tab.Browser.ExecuteScriptAsync(
+                BuildChatThemeBootstrapScript());
         }
         catch
         {
-            // Appearance customization must never interfere with navigation.
         }
     }
 
-    private static string NormalizeColor(string value)
+    private string BuildChatThemeBootstrapScript()
     {
-        if (string.IsNullOrWhiteSpace(value))
+        var p = ThemePalette.FromBase(_settings.ThemeColor);
+        var values = JsonSerializer.Serialize(new
         {
-            return string.Empty;
+            @base = p.Base,
+            surface = p.Surface,
+            alt = p.SurfaceAlt,
+            deep = p.SurfaceDeep,
+            selected = p.Selected,
+            text = p.Text,
+            muted = p.Muted,
+            scheme = p.IsLight ? "light" : "dark"
+        });
+
+        var valuesLiteral = JsonSerializer.Serialize(values);
+
+        return """
+        (() => {
+          const values = JSON.parse(VALUE_PLACEHOLDER);
+
+          const apply = () => {
+            const root = document.documentElement;
+            if (!root) return;
+
+            root.style.backgroundColor = values.base;
+            root.style.colorScheme = values.scheme;
+
+            const vars = {
+              '--main-surface-primary': values.base,
+              '--main-surface-secondary': values.surface,
+              '--main-surface-tertiary': values.alt,
+              '--main-surface-background': values.base,
+              '--sidebar-surface-primary': values.surface,
+              '--sidebar-surface-secondary': values.alt,
+              '--sidebar-surface-tertiary': values.selected,
+              '--composer-surface': values.surface,
+              '--message-surface': values.base,
+              '--text-primary': values.text,
+              '--text-secondary': values.muted
+            };
+
+            for (const [name, value] of Object.entries(vars)) {
+              root.style.setProperty(name, value, 'important');
+            }
+
+            let style = document.getElementById('__local_bridge_unified_theme');
+            if (!style) {
+              style = document.createElement('style');
+              style.id = '__local_bridge_unified_theme';
+              root.appendChild(style);
+            }
+
+            style.textContent =
+              'html, body, #__next, main, [role="main"] {' +
+              'background-color:' + values.base + ' !important;}' +
+              'aside, nav, [class*="sidebar"], [class*="bg-token-sidebar-surface-primary"] {' +
+              'background-color:' + values.surface + ' !important;}' +
+              '[class*="bg-token-sidebar-surface-secondary"], [class*="bg-token-main-surface-secondary"] {' +
+              'background-color:' + values.alt + ' !important;}' +
+              '[class*="bg-token-main-surface-primary"], [class*="bg-black"], [class*="dark:bg-black"] {' +
+              'background-color:' + values.base + ' !important;}' +
+              'form, [data-testid*="composer"], [class*="composer"] {' +
+              'background-color:' + values.surface + ' !important;}';
+
+            if (document.body) {
+              document.body.style.backgroundColor = values.base;
+            }
+          };
+
+          apply();
+
+          if (!document.body) {
+            const observer = new MutationObserver(() => {
+              if (document.body) {
+                apply();
+                observer.disconnect();
+              }
+            });
+            observer.observe(document.documentElement, {
+              childList: true,
+              subtree: true
+            });
+          }
+        })();
+        """.Replace("VALUE_PLACEHOLDER", valuesLiteral);
+    }
+
+    private static string NormalizeNavigationUrl(string value)
+    {
+        if (!AppSettings.IsChatUrl(value))
+        {
+            return "https://chatgpt.com/";
         }
 
-        var normalized = value.Trim().ToUpperInvariant();
-        if (normalized.Length == 7 &&
-            normalized[0] == '#' &&
-            normalized.Skip(1).All(Uri.IsHexDigit))
-        {
-            return normalized;
-        }
-
-        return string.Empty;
+        return AppSettings.CanonicalizeUrl(value);
     }
 }

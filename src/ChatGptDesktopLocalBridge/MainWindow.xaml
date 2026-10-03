@@ -11,7 +11,6 @@
         ResizeMode="CanResize"
         Background="#151719"
         FontFamily="Segoe UI">
-
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="0"
                             ResizeBorderThickness="6"
@@ -21,29 +20,29 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#151719" />
-        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#191B1D" />
-        <SolidColorBrush x:Key="PanelInnerBrush" Color="#111315" />
-        <SolidColorBrush x:Key="PanelTextBrush" Color="#E5E7E9" />
-        <SolidColorBrush x:Key="PanelMutedBrush" Color="#92969B" />
-        <SolidColorBrush x:Key="PanelBorderBrush" Color="#34373A" />
-        <SolidColorBrush x:Key="TabBackgroundBrush" Color="#202225" />
-        <SolidColorBrush x:Key="TabSelectedBrush" Color="#2A2D30" />
+        <SolidColorBrush x:Key="ShellBackgroundBrush" Color="#202124" />
+        <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#222326" />
+        <SolidColorBrush x:Key="PanelAltBrush" Color="#2A2C2F" />
+        <SolidColorBrush x:Key="PanelInnerBrush" Color="#191A1D" />
+        <SolidColorBrush x:Key="TopBarBrush" Color="#1C1D20" />
+        <SolidColorBrush x:Key="PanelBorderBrush" Color="#44464A" />
+        <SolidColorBrush x:Key="SelectedBrush" Color="#303236" />
+        <SolidColorBrush x:Key="ButtonBrush" Color="#303236" />
+        <SolidColorBrush x:Key="ButtonHoverBrush" Color="#3A3D41" />
+        <SolidColorBrush x:Key="PanelTextBrush" Color="#F2F3F5" />
+        <SolidColorBrush x:Key="PanelMutedBrush" Color="#A5A9AF" />
 
         <Style x:Key="TopBarButtonStyle" TargetType="Button">
-            <Setter Property="Foreground" Value="#F2F2F2" />
-            <Setter Property="Background" Value="#303236" />
-            <Setter Property="BorderBrush" Value="#44474B" />
+            <Setter Property="Foreground" Value="{DynamicResource PanelTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ButtonBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Cursor" Value="Hand" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#3B3E42" />
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Background" Value="#242629" />
+                    <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter Property="Opacity" Value="0.55" />
@@ -52,7 +51,7 @@
         </Style>
 
         <Style x:Key="WindowButtonStyle" TargetType="Button">
-            <Setter Property="Foreground" Value="#ECECEC" />
+            <Setter Property="Foreground" Value="{DynamicResource PanelTextBrush}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Width" Value="44" />
@@ -61,7 +60,7 @@
             <Setter Property="Cursor" Value="Hand" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#35383C" />
+                    <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -77,10 +76,10 @@
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="DarkTabItemStyle" TargetType="TabItem">
+        <Style x:Key="ChatTabItemStyle" TargetType="TabItem">
             <Setter Property="Foreground" Value="{DynamicResource PanelMutedBrush}" />
-            <Setter Property="Background" Value="{DynamicResource TabBackgroundBrush}" />
-            <Setter Property="Padding" Value="11,7" />
+            <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />
+            <Setter Property="Padding" Value="9,7" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -90,22 +89,20 @@
                                 BorderBrush="{DynamicResource PanelBorderBrush}"
                                 BorderThickness="0,0,1,1"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center" />
+                            <ContentPresenter ContentSource="Header" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="TabBorder"
                                         Property="Background"
-                                        Value="{DynamicResource TabSelectedBrush}" />
+                                        Value="{DynamicResource SelectedBrush}" />
                                 <Setter Property="Foreground"
                                         Value="{DynamicResource PanelTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="TabBorder"
-                                        Property="Opacity"
-                                        Value="0.88" />
+                                        Property="Background"
+                                        Value="{DynamicResource ButtonHoverBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -113,46 +110,39 @@
             </Setter>
         </Style>
 
-        <Style x:Key="DarkTabControlStyle" TargetType="TabControl">
-            <Setter Property="Background" Value="{DynamicResource ShellBackgroundBrush}" />
+        <Style x:Key="HeaderOnlyTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="ItemContainerStyle" Value="{StaticResource DarkTabItemStyle}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ChatTabItemStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabControl">
-                        <Grid Background="{TemplateBinding Background}">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <Border Grid.Row="0"
-                                    Background="{DynamicResource PanelBackgroundBrush}"
-                                    BorderBrush="{DynamicResource PanelBorderBrush}"
-                                    BorderThickness="0,0,0,1">
-                                <TabPanel IsItemsHost="True"
-                                          KeyboardNavigation.TabIndex="1" />
-                            </Border>
-                            <Border Grid.Row="1"
-                                    Background="{TemplateBinding Background}">
-                                <ContentPresenter ContentSource="SelectedContent" />
-                            </Border>
-                        </Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource PanelBorderBrush}"
+                                BorderThickness="0,0,0,1">
+                            <TabPanel IsItemsHost="True" />
+                        </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="PanelTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ChatTabItemStyle}" />
+        </Style>
     </Window.Resources>
 
-    <Grid x:Name="RootGrid"
-          Background="{DynamicResource ShellBackgroundBrush}">
+    <Grid Background="{DynamicResource ShellBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="46" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
-                Background="#202124"
-                BorderBrush="#34373A"
+                Background="{DynamicResource TopBarBrush}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
                 BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -173,23 +163,23 @@
                     <StackPanel Orientation="Horizontal"
                                 Margin="12,0,8,0"
                                 VerticalAlignment="Center">
-                        <TextBlock Foreground="White"
+                        <TextBlock Foreground="{DynamicResource PanelTextBrush}"
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Text="ChatGPT Desktop Local Bridge" />
                         <TextBlock x:Name="VersionText"
                                    Margin="10,0,0,0"
-                                   Foreground="#979A9F"
+                                   Foreground="{DynamicResource PanelMutedBrush}"
                                    FontSize="12"
                                    VerticalAlignment="Center"
                                    Text="v—" />
                         <TextBlock x:Name="StatusText"
                                    Margin="18,0,10,0"
-                                   Foreground="#A8ABB0"
+                                   Foreground="{DynamicResource PanelMutedBrush}"
                                    FontSize="12"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
-                                   MaxWidth="390"
+                                   MaxWidth="430"
                                    Text="Запуск…" />
                     </StackPanel>
                 </Border>
@@ -200,29 +190,21 @@
                         Style="{StaticResource TopBarButtonStyle}"
                         Click="InitializeBridgeButton_OnClick"
                         Content="Мост" />
-
-                <Button x:Name="ReloadButton"
-                        Grid.Column="2"
+                <Button Grid.Column="2"
                         Margin="5,7,0,7"
                         Style="{StaticResource TopBarButtonStyle}"
                         Click="ReloadButton_OnClick"
                         Content="↻" />
-
-                <Button x:Name="NewChatButton"
-                        Grid.Column="3"
+                <Button Grid.Column="3"
                         Margin="5,7,0,7"
                         Style="{StaticResource TopBarButtonStyle}"
                         Click="NewChatButton_OnClick"
-                        ToolTip="Новая вкладка ChatGPT"
                         Content="+ Чат" />
-
-                <Button x:Name="SettingsButton"
-                        Grid.Column="4"
+                <Button Grid.Column="4"
                         Margin="5,7,0,7"
                         Style="{StaticResource TopBarButtonStyle}"
                         Click="SettingsButton_OnClick"
                         Content="Настройки" />
-
                 <Button x:Name="UpdateButton"
                         Grid.Column="5"
                         Margin="5,7,8,7"
@@ -230,30 +212,23 @@
                         Click="UpdateButton_OnClick"
                         Visibility="Collapsed"
                         Content="Обновить" />
-
                 <Button Grid.Column="6"
                         Style="{StaticResource WindowButtonStyle}"
                         Click="MinimizeButton_OnClick"
-                        ToolTip="Свернуть"
                         Content="—" />
-
                 <Button x:Name="MaximizeButton"
                         Grid.Column="7"
                         Style="{StaticResource WindowButtonStyle}"
                         Click="MaximizeButton_OnClick"
-                        ToolTip="Развернуть"
                         Content="□" />
-
                 <Button Grid.Column="8"
                         Style="{StaticResource CloseWindowButtonStyle}"
                         Click="CloseButton_OnClick"
-                        ToolTip="Закрыть"
                         Content="✕" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1"
-              Background="{DynamicResource ShellBackgroundBrush}">
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="460" />
                 <ColumnDefinition Width="6" />
@@ -263,10 +238,22 @@
                                   MaxWidth="760" />
             </Grid.ColumnDefinitions>
 
-            <TabControl x:Name="ChatTabs"
-                        Grid.Column="0"
-                        Style="{StaticResource DarkTabControlStyle}"
-                        SelectionChanged="ChatTabs_OnSelectionChanged" />
+            <Grid Grid.Column="0"
+                  Background="{DynamicResource ShellBackgroundBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TabControl x:Name="ChatTabs"
+                            Grid.Row="0"
+                            Style="{StaticResource HeaderOnlyTabControlStyle}"
+                            SelectionChanged="ChatTabs_OnSelectionChanged" />
+
+                <Grid x:Name="BrowserHost"
+                      Grid.Row="1"
+                      Background="{DynamicResource ShellBackgroundBrush}" />
+            </Grid>
 
             <GridSplitter Grid.Column="1"
                           Width="6"
@@ -278,8 +265,7 @@
                           ShowsPreview="False"
                           Cursor="SizeWE" />
 
-            <Border x:Name="BridgePanel"
-                    Grid.Column="2"
+            <Border Grid.Column="2"
                     Background="{DynamicResource PanelBackgroundBrush}"
                     BorderBrush="{DynamicResource PanelBorderBrush}"
                     BorderThickness="1,0,0,0">
@@ -289,8 +275,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0"
-                          Margin="12,9,8,8">
+                    <Grid Grid.Row="0" Margin="12,9,8,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -302,21 +287,17 @@
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource PanelTextBrush}"
                                    Text="Local Bridge" />
-                        <Button Grid.Column="1"
-                                Margin="5,0,0,0"
-                                Padding="8,4"
+                        <Button Grid.Column="1" Margin="5,0,0,0" Padding="8,4"
                                 Click="ClearActivityButton_OnClick"
                                 Content="Очистить события" />
-                        <Button Grid.Column="2"
-                                Margin="5,0,0,0"
-                                Padding="8,4"
+                        <Button Grid.Column="2" Margin="5,0,0,0" Padding="8,4"
                                 Click="ClearConsoleButton_OnClick"
                                 Content="Очистить консоль" />
                     </Grid>
 
                     <TabControl Grid.Row="1"
                                 Margin="8,0,8,8"
-                                Style="{StaticResource DarkTabControlStyle}">
+                                Style="{StaticResource PanelTabControlStyle}">
                         <TabItem Header="Активность">
                             <ListBox x:Name="ActivityList"
                                      BorderBrush="{DynamicResource PanelBorderBrush}"
@@ -326,7 +307,6 @@
                                      Padding="6"
                                      HorizontalContentAlignment="Stretch" />
                         </TabItem>
-
                         <TabItem Header="Консоль">
                             <TextBox x:Name="ConsoleTextBox"
                                      IsReadOnly="True"
