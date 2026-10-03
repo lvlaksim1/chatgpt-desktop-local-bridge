@@ -123,18 +123,80 @@ public partial class MainWindow
         }
 
         var policy = PermissionPolicy.LoadOrCreate();
-        var host = new BridgeHost(
-            policy,
-            text => SendTextToChatAsync(tab, text),
+        var statusSink = new Action<string>(
             message => Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (ReferenceEquals(ActiveTab, tab))
                 {
                     SetStatus(message);
                 }
-            })),
+            })));
+        var activitySink = new Action<BridgeActivityEvent>(
             activity => Dispatcher.BeginInvoke(
                 new Action(() => OnBridgeActivity(tab, activity))));
+
+        var conversationUri =
+            tab.Browser.Source?.AbsoluteUri ?? tab.LastUrl;
+        var pendingDeliveries =
+            await BridgeHost.GetPendingDeliveriesForConversationAsync(
+                conversationUri,
+                cancellationToken);
+
+        if (pendingDeliveries.Count > 1)
+        {
+            SetTabState(tab, "error");
+            if (ReferenceEquals(ActiveTab, tab))
+            {
+                SetStatus(
+                    "Восстановление Local Bridge заблокировано: для этого чата найдено несколько недоставленных результатов.");
+            }
+            return;
+        }
+
+        tab.BridgeHost?.Dispose();
+
+        if (pendingDeliveries.Count == 1)
+        {
+            var pending = pendingDeliveries[0];
+            var recoveryHost = new BridgeHost(
+                policy,
+                text => SendTextToChatAsync(tab, text),
+                statusSink,
+                sessionId: pending.Session,
+                confirmPermission: ConfirmBridgePermissionAsync,
+                activity: activitySink);
+
+            tab.BridgeHost = recoveryHost;
+            var resultAlreadyVisible =
+                await HasBridgeResultInConversationAsync(
+                    tab,
+                    pending.Session,
+                    pending.RequestId);
+
+            await recoveryHost.RecoverPendingDeliveryAsync(
+                pending,
+                resultAlreadyVisible,
+                cancellationToken);
+
+            tab.BridgeReady = true;
+            tab.BridgeRetryCount = 0;
+            tab.LastBootstrappedUrl = conversationUri;
+            SetTabState(tab, "ready");
+
+            if (ReferenceEquals(ActiveTab, tab))
+            {
+                SetStatus($"Мост восстановлен · {recoveryHost.SessionId[..8]}…");
+            }
+
+            return;
+        }
+
+        var host = new BridgeHost(
+            policy,
+            text => SendTextToChatAsync(tab, text),
+            statusSink,
+            confirmPermission: ConfirmBridgePermissionAsync,
+            activity: activitySink);
 
         tab.BridgeHost = host;
         tab.BridgeReady = false;
@@ -392,9 +454,12 @@ public partial class MainWindow
                     }
 
                     var requestCopy = requestElement.Clone();
+                    var requestSource = e.Source;
                     Dispatcher.BeginInvoke(
                         new Action(() =>
-                            _ = tab.BridgeHost.HandleAsync(requestCopy)));
+                            _ = tab.BridgeHost.HandleAsync(
+                                requestCopy,
+                                requestSource)));
                     return;
             }
         }
@@ -421,6 +486,68 @@ public partial class MainWindow
                 uri.Host.EndsWith(
                     ".chatgpt.com",
                     StringComparison.OrdinalIgnoreCase));
+    }
+
+    private Task<bool> ConfirmBridgePermissionAsync(
+        BridgePermissionPrompt prompt)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            return Task.FromResult(
+                ShowBridgePermissionPrompt(prompt));
+        }
+
+        return Dispatcher
+            .InvokeAsync(() => ShowBridgePermissionPrompt(prompt))
+            .Task;
+    }
+
+    private static bool ShowBridgePermissionPrompt(
+        BridgePermissionPrompt prompt)
+    {
+        var result = MessageBox.Show(
+            $"ChatGPT запрашивает локальное действие:\n\n{prompt.Capability}\n\n{prompt.Summary}\n\nРазрешить этот запрос один раз?",
+            "Разрешение Local Bridge",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        return result == MessageBoxResult.Yes;
+    }
+
+    private void StopLocalTaskButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (ActiveTab?.BridgeHost is not { } host)
+        {
+            SetStatus("В активной вкладке нет запущенной сессии Local Bridge.");
+            return;
+        }
+
+        var stop = host.StopActiveWork();
+        SetStatus(!stop.CancellationRequested && stop.StoppedProcesses == 0
+            ? "Сейчас нет выполняющегося локального действия."
+            : $"STOP отправлен · отмена={(stop.CancellationRequested ? "да" : "нет")} · процессов={stop.StoppedProcesses}");
+    }
+
+    private async Task<bool> HasBridgeResultInConversationAsync(
+        ChatTab tab,
+        string session,
+        string requestId)
+    {
+        if (tab.Browser.CoreWebView2 is null)
+        {
+            return false;
+        }
+
+        var sessionArgument = JsonSerializer.Serialize(session);
+        var requestIdArgument = JsonSerializer.Serialize(requestId);
+        var raw = await tab.Browser.ExecuteScriptAsync(
+            $"window.__localBridge?.hasResult?.({sessionArgument}, {requestIdArgument}) ?? false");
+
+        using var document = JsonDocument.Parse(raw);
+        return document.RootElement.ValueKind == JsonValueKind.True;
     }
 
     private void OnBridgeActivity(
@@ -617,6 +744,31 @@ public partial class MainWindow
 
         try
         {
+            var baselineRaw = await browser.ExecuteScriptAsync(
+                "window.__localBridge?.nativeSendReceipt?.(null, 0)?.userMessageCount ?? null");
+
+            if (string.IsNullOrWhiteSpace(baselineRaw) ||
+                baselineRaw == "null")
+            {
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    SetStatus("Ошибка отправки: send-receipt-unavailable");
+                }
+                return false;
+            }
+
+            using var baselineDocument = JsonDocument.Parse(baselineRaw);
+            if (baselineDocument.RootElement.ValueKind != JsonValueKind.Number ||
+                !baselineDocument.RootElement.TryGetInt32(
+                    out var baselineUserMessageCount))
+            {
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    SetStatus("Ошибка отправки: send-receipt-invalid");
+                }
+                return false;
+            }
+
             var preflightRaw = await browser.ExecuteScriptAsync(
                 "window.__localBridge?.prepareNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
 
@@ -640,7 +792,6 @@ public partial class MainWindow
                 {
                     SetStatus($"Ошибка отправки: {reason}");
                 }
-
                 return false;
             }
 
@@ -685,7 +836,6 @@ public partial class MainWindow
                 {
                     SetStatus("Ошибка отправки: native-input-not-accepted");
                 }
-
                 return false;
             }
 
@@ -715,30 +865,29 @@ public partial class MainWindow
                 {
                     SetStatus($"Ошибка отправки: {reason}");
                 }
-
                 return false;
             }
 
-            var sendDeadline = DateTime.UtcNow.AddSeconds(8);
+            var sendDeadline = DateTime.UtcNow.AddSeconds(30);
 
             while (DateTime.UtcNow < sendDeadline)
             {
-                var stateRaw = await browser.ExecuteScriptAsync(
-                    "window.__localBridge?.nativeSendState?.() ?? null");
+                var receiptRaw = await browser.ExecuteScriptAsync(
+                    $"window.__localBridge?.nativeSendReceipt?.({expectedArgument}, {baselineUserMessageCount}) ?? null");
 
-                if (!string.IsNullOrWhiteSpace(stateRaw) &&
-                    stateRaw != "null")
+                if (!string.IsNullOrWhiteSpace(receiptRaw) &&
+                    receiptRaw != "null")
                 {
-                    using var stateDocument = JsonDocument.Parse(stateRaw);
-                    var state = stateDocument.RootElement;
+                    using var receiptDocument = JsonDocument.Parse(receiptRaw);
+                    var receipt = receiptDocument.RootElement;
 
-                    var composerEmpty =
-                        state.TryGetProperty(
-                            "composerEmpty",
-                            out var emptyElement) &&
-                        emptyElement.ValueKind == JsonValueKind.True;
+                    var confirmed =
+                        receipt.TryGetProperty(
+                            "confirmed",
+                            out var confirmedElement) &&
+                        confirmedElement.ValueKind == JsonValueKind.True;
 
-                    if (composerEmpty)
+                    if (confirmed)
                     {
                         return true;
                     }
@@ -764,4 +913,5 @@ public partial class MainWindow
             return false;
         }
     }
+
 }
