@@ -56,6 +56,8 @@
                                 Tag="#243044" Click="PresetButton_OnClick" Content="Синяя" />
                         <Button Margin="0,0,8,8" Padding="10,5"
                                 Tag="#F1F2F4" Click="PresetButton_OnClick" Content="Светлая" />
+                        <Button Margin="0,0,8,8" Padding="10,5"
+                                Click="ResetThemeButton_OnClick" Content="Сбросить тему" />
                     </WrapPanel>
 
                     <Grid Margin="0,4,0,0">

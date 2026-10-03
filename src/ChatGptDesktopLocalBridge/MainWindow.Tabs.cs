@@ -732,6 +732,7 @@ public partial class MainWindow
             alt = p.SurfaceAlt,
             deep = p.SurfaceDeep,
             selected = p.Selected,
+            border = p.Border,
             text = p.Text,
             muted = p.Muted,
             scheme = p.IsLight ? "light" : "dark"
@@ -745,27 +746,36 @@ public partial class MainWindow
 
           const apply = () => {
             const root = document.documentElement;
-            if (!root) return;
+            if (!root) return false;
 
-            root.style.backgroundColor = values.base;
-            root.style.colorScheme = values.scheme;
-
+            const targets = [root, document.body].filter(Boolean);
             const vars = {
               '--main-surface-primary': values.base,
               '--main-surface-secondary': values.surface,
               '--main-surface-tertiary': values.alt,
               '--main-surface-background': values.base,
+              '--main-surface-primary-inverse': values.text,
               '--sidebar-surface-primary': values.surface,
               '--sidebar-surface-secondary': values.alt,
               '--sidebar-surface-tertiary': values.selected,
               '--composer-surface': values.surface,
+              '--composer-surface-primary': values.surface,
+              '--composer-surface-secondary': values.alt,
               '--message-surface': values.base,
               '--text-primary': values.text,
-              '--text-secondary': values.muted
+              '--text-secondary': values.muted,
+              '--border-light': values.border,
+              '--border-medium': values.border,
+              '--border-heavy': values.border
             };
 
-            for (const [name, value] of Object.entries(vars)) {
-              root.style.setProperty(name, value, 'important');
+            for (const target of targets) {
+              target.style.backgroundColor = values.base;
+              target.style.colorScheme = values.scheme;
+
+              for (const [name, value] of Object.entries(vars)) {
+                target.style.setProperty(name, value, 'important');
+              }
             }
 
             let style = document.getElementById('__local_bridge_unified_theme');
@@ -776,28 +786,43 @@ public partial class MainWindow
             }
 
             style.textContent =
-              'html, body, #__next, main, [role="main"] {' +
-              'background-color:' + values.base + ' !important;}' +
-              'aside, nav, [class*="sidebar"], [class*="bg-token-sidebar-surface-primary"] {' +
-              'background-color:' + values.surface + ' !important;}' +
-              '[class*="bg-token-sidebar-surface-secondary"], [class*="bg-token-main-surface-secondary"] {' +
-              'background-color:' + values.alt + ' !important;}' +
-              '[class*="bg-token-main-surface-primary"], [class*="bg-black"], [class*="dark:bg-black"] {' +
-              'background-color:' + values.base + ' !important;}' +
-              'form, [data-testid*="composer"], [class*="composer"] {' +
-              'background-color:' + values.surface + ' !important;}';
+              'html,body{min-height:100%!important;background:' + values.base + ' !important;}' +
+              'body{margin:0!important;color:' + values.text + ' !important;}' +
+              'body>div,#__next,#__next>div{min-height:100vh!important;background-color:' + values.base + ' !important;}' +
+              'main,[role="main"],[data-testid="conversation-turns"],' +
+              '[class*="bg-token-main-surface-primary"],[class*="main-surface-primary"],' +
+              '[class*="bg-black"],[class*="dark:bg-black"]{' +
+                'background-color:' + values.base + ' !important;}' +
+              'aside,nav,[class*="sidebar"],[class*="bg-token-sidebar-surface-primary"]{' +
+                'background-color:' + values.surface + ' !important;}' +
+              '[class*="bg-token-sidebar-surface-secondary"],' +
+              '[class*="bg-token-main-surface-secondary"],[class*="main-surface-secondary"]{' +
+                'background-color:' + values.alt + ' !important;}' +
+              'form,[data-testid*="composer"],[class*="composer"],[class*="composer-parent"]{' +
+                'background-color:' + values.surface + ' !important;}' +
+              '[role="dialog"],[role="menu"],[role="listbox"],' +
+              '[data-radix-popper-content-wrapper]>*,[class*="popover"],[class*="modal"]{' +
+                'background-color:' + values.surface + ' !important;color:' + values.text + ' !important;}' +
+              '[class*="border-token"],hr{border-color:' + values.border + ' !important;}';
 
             if (document.body) {
+              document.body.style.minHeight = '100vh';
               document.body.style.backgroundColor = values.base;
             }
+
+            window.__desktopShellVisual?.setTheme?.(
+              values.base,
+              values.muted
+            );
+
+            return true;
           };
 
           apply();
 
           if (!document.body) {
             const observer = new MutationObserver(() => {
-              if (document.body) {
-                apply();
+              if (document.body && apply()) {
                 observer.disconnect();
               }
             });

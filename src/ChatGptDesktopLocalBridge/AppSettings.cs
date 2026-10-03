@@ -4,8 +4,10 @@ namespace ChatGptDesktopLocalBridge;
 
 public sealed class AppSettings
 {
+    public const string DefaultThemeColor = "#202124";
+
     public bool AutoInitializeBridge { get; set; } = true;
-    public string ThemeColor { get; set; } = "#202124";
+    public string ThemeColor { get; set; } = DefaultThemeColor;
     public double RightPanelWidth { get; set; } = 360;
     public List<string> TabUrls { get; set; } = new() { "https://chatgpt.com/" };
     public int SelectedTabIndex { get; set; }
@@ -62,7 +64,7 @@ public sealed class AppSettings
                     "Light",
                     StringComparison.OrdinalIgnoreCase)
                     ? "#F2F3F5"
-                    : "#202124";
+                    : DefaultThemeColor;
             }
         }
 

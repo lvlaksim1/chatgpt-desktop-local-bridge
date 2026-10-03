@@ -16,14 +16,14 @@ public partial class SettingsWindow
         AutoBridgeCheckBox.IsChecked = settings.AutoInitializeBridge;
         SetColor(ThemePalette.IsValidHex(settings.ThemeColor)
             ? settings.ThemeColor
-            : "#202124");
+            : AppSettings.DefaultThemeColor);
 
         UpdateHistoryText.Text = UpdateService.GetRecentHistoryText();
         _ready = true;
         UpdatePreview();
     }
 
-    public string SelectedThemeColor { get; private set; } = "#202124";
+    public string SelectedThemeColor { get; private set; } = AppSettings.DefaultThemeColor;
     public bool SelectedAutoInitializeBridge { get; private set; } = true;
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -41,6 +41,14 @@ public partial class SettingsWindow
             SetColor(color);
             UpdatePreview();
         }
+    }
+
+    private void ResetThemeButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        SetColor(AppSettings.DefaultThemeColor);
+        UpdatePreview();
     }
 
     private void ColorSlider_OnValueChanged(
