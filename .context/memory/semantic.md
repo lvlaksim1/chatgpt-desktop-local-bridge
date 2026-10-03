@@ -74,3 +74,13 @@ Provenance: public `Kochava-Studios/witsy` main, `Aider-AI/aider` main, and thei
 - Aider supports web-chat workflows without an LLM API: it packages selected files + read-only files + repo map into browser-pastable context and can apply a copied web-model response locally. This is directly relevant to our no-Platform-API architecture: Local Bridge can remain connected to ordinary ChatGPT UI while a repo-aware local subsystem prepares context and safely applies edits.
 - Aider is Apache-2.0 licensed, so compatible code reuse is possible with required notices if later justified; prefer learning the architecture before copying implementation.
 
+## Official ChatGPT-plan transport supersession admitted 2026-10-04
+
+Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner-authorized transport experiment.
+
+- OpenAI now documents an official open-source/local-app path for eligible ChatGPT plan usage using OAuth 2.0/OIDC + PKCE and dynamic public-client registration, without requiring the user to provide an OpenAI API key or a client secret.
+- For this project, that official path supersedes the historical private `chatgpt.com/backend-api/codex/responses` implementation observed in gptme. The private backend remains historical reference evidence only and must not be used for the current experiment.
+- The official inference path is the public `https://api.openai.com/v1/responses` endpoint with the ChatGPT-plan OAuth bearer token. Current OSS-flow HTTP requests require `store:false` and `stream:true`; the client sends needed conversation history in `input`.
+- The transport changes how the model is reached; it does not replace the Local Tool Runtime safety boundary. Local filesystem/process/repo/MCP capabilities remain governed by local permissions, cancellation, audit, and containment.
+- Current Owner directive permits the standard GitHub connector until further notice; this supersedes the earlier connector-exception operating rule.
+

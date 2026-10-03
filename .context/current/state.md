@@ -1,27 +1,23 @@
 # Current state
 
-Updated: 2026-10-03 06:10 MSK
+Updated: 2026-10-04 02:23 MSK
 
-- manager generation: 17
+- manager generation: 18
 - product authority: `main`
 - current verified authoritative product head: `6e2a0b54b727c5474bad40ac038f727a39cceb8d`
 - manager-state authority: `manager-state`
-- canonical transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`
+- canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`
 - BRIDGE-M1: CLOSED
 - BRIDGE-M2: CLOSED
-- BRIDGE-M3: ACTIVE; durable foundation substantially implemented, reconciliation with proven transport baseline still pending
-- BRIDGE-M4: ACTIVE; first mutation/process slice live-proven on an `ea074e0`-derived development lineage
-- UI-SHELL-R1: ACTIVE; implementation stage 1–7 is built/published and awaiting Owner runtime validation
-- accepted UI runtime baseline remains `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053`
-- validation candidate head: `4c92f81d46b77f964b8e99fe25439058b9b835a1` on `dev/ui-shell-v5`
-- isolated implementation commits: `f30424d` → `0ff4286b` → `ee6ce6e` → `4c92f81`
-- CI run `37092162098`: PASS
-- prerelease: `ui-shell-4c92f81`, workflow version `0.2.15.0`
-- delta from accepted `ui-shell-af6ac65`: SHA-256 `a7dafb406b6af3bc45c04f5ff889518fd52b97ba8bb229ae6f6a3f96cffbb618`, 2,264,856 bytes
-- full Setup: SHA-256 `5a01b0a0609d91ef44e8356ab982f1dda3835201d18b8fc6b37252a45fceb59f`, 51,494,899 bytes
-- candidate keeps ordinary `WebView2`; loading/switch masking is page-owned and matched to native WebView background
-- candidate leaves `NewWindowRequested` native; custom app-tab action uses adapter-v7 cached DOM target only
-- candidate broadens theme coverage, adds explicit theme reset, keeps top update path delta-only, and moves full Setup to Settings → Updates
-- Owner-side Windows validation is still required before promoting the candidate
-- filesystem mutation and `process.run` remain live-proven on their development lineage
-- result auto-send still has one observed intermittent staged-but-not-auto-submitted failure
+- UI-SHELL-R1: ACTIVE; candidate `4c92f81d46b77f964b8e99fe25439058b9b835a1` remains CI-proven but Owner-runtime-pending; accepted UI baseline remains `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`
+- RUNTIME-FOUNDATION-V1: ACTIVE validation candidate on `dev/runtime-foundation-v1`, head `3f5ff0fdda85165c38a977f2d29c7e893ecf3774`, draft PR #22
+- PR #22 reconciles the durable main lineage with the proven write/process slice and adds real ASK confirmation, Windows Job Object process containment, generic STOP cancellation, a metadata-backed 15-tool registry, repo-aware tools, Git checkpoint/verification primitives, and an opt-in MCP stdio layer
+- latest repo-aware regression run `37161576559`: Build PASS; durable/runtime regression PASS, including temporary-Git status/diff/map/checkpoint/verify and Job Object STOP. Packaging continues on the same run; previous full pipeline for the same application source, run `37160870171`, passed publish/installer/update/uninstall E2E
+- MCP uses official `ModelContextProtocol.Core 2.2.0`; local server list is empty by default; only preconfigured server IDs may be called; `mcp.read=AUTO`, `mcp.call=ASK`; broad environment inheritance is disabled
+- `repo.map` is a bounded first-generation heuristic map, not yet the full tree-sitter/PageRank-quality design learned from Aider
+- CHATGPT-PLAN-TRANSPORT: isolated experiment on `exp/chatgpt-plan-transport`, head `f2a3056b917a084c780c07f6f74ae6f3e7991c7b`, draft PR #23
+- PR #23 uses OpenAI's official Sign in with ChatGPT open-source flow: OAuth/OIDC/PKCE + public `/v1/models` and `/v1/responses`; no API key and no private ChatGPT backend endpoint
+- PR #23 Windows CI run `37161271895`: PASS; live OAuth/model/inference validation still requires interactive Owner sign-in
+- the accepted/default product transport remains ordinary `chatgpt.com` in WebView2 with in-process native IPC; no transport migration has been approved
+- intermittent result staged-but-not-auto-submitted behavior remains open
+- Owner directive currently permits use of the standard GitHub connector until further notice

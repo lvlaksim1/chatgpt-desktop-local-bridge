@@ -1,57 +1,44 @@
 # Manager intentions and commitments
 
+Manager generation: 18.
+Updated: 2026-10-04 02:23 MSK
+
 ## Completed
+- BRIDGE-M0A through BRIDGE-M0E
+- BRIDGE-M1: CLOSED; canonical live transport baseline `ea074e0`
+- BRIDGE-M2: CLOSED as a feature milestone
 
-### BRIDGE-M0A through BRIDGE-M0E
-- completed
+## Active — UI-SHELL-R1
+Owner-established accepted recovery baseline remains `0.2.8.0 / af6ac653`.
+Candidate `4c92f81` is built and CI-proven but is not accepted until Owner-side signed-in Windows validation passes.
+Do not reintroduce CompositionControl or direct `ContextMenuTarget.LinkUri` without new independent runtime evidence.
 
-### BRIDGE-M1
-- CLOSED
-- canonical live transport baseline: `ea074e0`
+## Active — RUNTIME-FOUNDATION-V1 / BRIDGE-M3+M4 reconciliation
+Authorized objective: execute the sequence durable execution → permissions → Job Object/STOP → Tool Registry → repo-aware tools → Git safety/verification → MCP.
 
-### BRIDGE-M2
-- CLOSED as a feature milestone
-- later adapter hardening must preserve the `ea074e0` transport invariant
+Current development candidate is `dev/runtime-foundation-v1` / PR #22, head `3f5ff0fdda85165c38a977f2d29c7e893ecf3774`.
 
-## Active
+Implemented commitments:
+1. Preserve main-line durable request/result ledger semantics.
+2. Reconcile proven `fs.write_text`, `fs.append_text`, `fs.write_file`, and `process.run` into the main-derived development lineage.
+3. Make ASK real and interactive; retain AUTO/ASK/DENY as the policy boundary.
+4. Contain bridge-owned process trees with Windows Job Objects and expose an emergency STOP that cancels generic active work.
+5. Maintain one metadata-backed registry for model-visible local tools.
+6. Provide bounded repo status/diff/map/checkpoint/verify primitives.
+7. Use Git checkpoints and verification as safety/evidence primitives rather than silently mixing Owner changes with agent changes.
+8. Expose MCP as an optional extension behind the same permission layer, never as a bypass around it.
+9. Do not merge PR #22 into `main` before Owner runtime validation.
 
-### UI-SHELL-R1 — Recover and stabilize from 0.2.8
+## Active — CHATGPT-PLAN-TRANSPORT experiment
+Owner authorized the experiment as the last stage of the development sequence.
+The current experiment is `exp/chatgpt-plan-transport` / draft PR #23, head `f2a3056b917a084c780c07f6f74ae6f3e7991c7b`.
 
-Owner directive on 2026-10-03 establishes `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053` as the development baseline after rejecting 0.2.9/0.2.10.
+Commitments:
+1. Use OpenAI's official Sign in with ChatGPT open-source flow and public Responses endpoint, not the historical private backend endpoint observed in gptme.
+2. Keep the experiment isolated from the accepted WebView transport.
+3. Do not persist OAuth access/refresh/ID tokens in the first probe.
+4. Require live Owner OAuth/model/inference proof before adding protected token persistence.
+5. Require explicit Owner architecture approval before native ChatGPT-plan transport can become a product mode or default.
 
-Implementation state:
-- points 1–7 requested by the Owner are implemented on `dev/ui-shell-v5` through isolated commits ending at release commit `4c92f81d46b77f964b8e99fe25439058b9b835a1`;
-- CI/release pipeline passed and prerelease `ui-shell-4c92f81` is published;
-- accepted runtime baseline remains `0.2.8.0 / af6ac653` until Owner-side Windows validation.
-
-Active commitments:
-1. Obtain Owner-side validation of startup, initial loading/black area, loaded-tab switching, background preloading, normal downloads, custom open-in-tab, theme/reset behavior, update UX, and Local Bridge restoration.
-2. If validation passes, explicitly promote `4c92f81` as the next accepted UI baseline.
-3. If validation fails, use the isolated commit stack (`f30424d`, `0ff4286b`, `ee6ce6e`, `4c92f81`) to identify/revert the failing slice rather than accumulating speculative fixes.
-4. Preserve ordinary `WebView2`; do not reintroduce `WebView2CompositionControl` without independent deployment/runtime proof.
-5. Preserve the no-`ContextMenuTarget.LinkUri` rule and fail-closed optional UI behavior.
-6. After UI validation, continue diagnostics, transport, permission, tool-expansion, and production-hardening work.
-7. Do not claim UI-SHELL-R1 complete from CI alone.
-
-### BRIDGE-M3 — Durable execution and delivery
-Durable request lifecycle, pending-result persistence, replay-safe classification, conversation-bound recovery, delivered-payload retirement, bounded result transport, and centralized capability registration are substantially implemented on the product lineage.
-
-Reconciliation with the proven `ea074e0` transport behavior remains incomplete.
-
-### BRIDGE-M4 — Controlled mutation and process execution
-An `ea074e0`-derived development lineage now exposes live-proven:
-- `fs.write_text`
-- `fs.append_text`
-- `fs.write_file`
-- `process.run`
-
-Owner-side validation passed for file append, Git CLI, GitHub CLI authentication, and remote repository access.
-
-Continuing commitments:
-1. Use Local Bridge local CLI as the default GitHub execution path when available.
-2. Keep process commands noninteractive and bounded; never expose or persist authentication tokens.
-3. Prefer one complete bounded work stage per bridge request.
-4. Reconcile proven M4 changes with product authority `main` while preserving the `ea074e0` transport invariant and later M3 durability.
-5. Harden intermittent result auto-submit.
-6. Add stronger bridge-owned process containment before broad shell/process expansion; Windows Job Object kill-on-close remains the preferred target.
-7. Persist significant state updates to `manager-state`; once available, prefer doing so through Local Bridge CLI rather than the connector.
+## Operating directive
+The Owner's newer directive permits the standard GitHub connector until further notice; it supersedes the older connector-exception rule. Never store credentials, cookies, OAuth tokens, or hidden reasoning in Git.

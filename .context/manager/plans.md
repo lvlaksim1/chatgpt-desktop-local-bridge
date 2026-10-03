@@ -1,73 +1,74 @@
 # Manager plans
 
-Manager generation: 17.
-Product authority: `main`.
-Current known authoritative product head: `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
-Canonical transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
-Accepted UI runtime baseline: `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053`.\nCurrent validation candidate: `ui-shell-4c92f81` / `4c92f81d46b77f964b8e99fe25439058b9b835a1` on `dev/ui-shell-v5`.
+Manager generation: 18.
+Updated: 2026-10-04 02:23 MSK
 
-## Closed milestones
-- BRIDGE-M1: CLOSED.
-- BRIDGE-M2: CLOSED.
+Product authority: `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
+Canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
+Accepted UI baseline: `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`.
+UI validation candidate: `4c92f81d46b77f964b8e99fe25439058b9b835a1`.
 
-## UI-SHELL-R1 recovery plan
+## Runtime-foundation plan
 
-The requested implementation stage 1–7 is code-complete and CI-complete on validation candidate `4c92f81`.
+Development candidate:
+- branch `dev/runtime-foundation-v1`
+- draft PR #22
+- current head `3f5ff0fdda85165c38a977f2d29c7e893ecf3774`
 
 Implemented slices:
-1. `f30424d` — ordinary-WebView paint stabilization, page-owned loading/switch shield, native background matching, warm parent-only tab switching, background preload preservation.
-2. `0ff4286b` — removal of `NewWindowRequested` interception, adapter-v7 DOM context target publication, safe custom app-tab action with no `ContextMenuTarget.LinkUri`.
-3. `ee6ce6e` — broader unified ChatGPT theme coverage plus explicit default-theme reset.
-4. `4c92f81` — delta-only top updater, full Setup under Settings → Updates, prerelease packaging.
+- durable main lineage retained;
+- M4 write/file/process tools reconciled;
+- Windows Job Object kill-on-close and STOP;
+- interactive ASK;
+- 15-tool metadata registry;
+- repo status/diff/map/checkpoint/verify;
+- opt-in MCP stdio via official C# SDK;
+- reduced MCP environment inheritance and ASK on calls;
+- expanded Windows regression tests including a real temporary Git repo.
 
-Validation gate:
-- CI run `37092162098`: PASS.
-- Prerelease `ui-shell-4c92f81`: published.
-- Owner-side signed-in Windows validation: PENDING.
-- Accepted runtime baseline remains `af6ac653` until that validation passes.
+Evidence:
+- run `37160870171`: complete Windows CI, publish, Setup, delta/updater and legacy uninstall E2E PASS for the application source at `b256a0c5`;
+- run `37161576559`: after adding repo runtime coverage, Build PASS and durable/runtime/repo regression PASS at head `3f5ff0f`; later packaging is not needed to prove the test-only cleanup fix changes no application source.
 
-Owner validation order:
-1. startup and first navigation;
-2. loading/black-area behavior;
-3. switching already-loaded tabs and background preload;
-4. ordinary download-link behavior;
-5. right-click custom “Открыть в новой вкладке” without crash;
-6. Local Bridge auto-restore;
-7. unified theme coverage and “Сбросить тему”;
-8. updater placement/behavior.
+Validation/promotion:
+1. Keep PR #22 draft.
+2. Produce an installable development candidate when live Owner testing starts.
+3. Validate bridge/permission/process/STOP/repo behavior on the signed-in Windows runtime.
+4. Re-test result auto-submit intermittency.
+5. Only after PASS request/promote merge to `main` under Owner authority.
 
-If any regression appears, map it to the isolated commit slice and repair/revert that slice first. Do not stack another broad WebView rewrite on an unverified candidate.
+## Repo-aware follow-on
+The v1 map is deliberately conservative. After live proof, evolve toward:
+- parser-backed definitions/references;
+- dependency graph ranking;
+- explicit editable/read-only/whole-repo context scopes;
+- deterministic token/character budgets;
+- caching keyed by file modification/content state.
 
-After Owner PASS, promote the validated commit as next UI baseline and proceed to Diagnostics, transport hardening, fine-grained ASK permissions, local-tool expansion, and production hardening.
+## MCP follow-on
+Keep config empty by default. Next proof uses a disposable preconfigured server. Add stronger server-process containment before unattended expansion. Future HTTP/SSE/OAuth transports are optional and must not bypass Local Tool Runtime permissions/audit.
 
-## BRIDGE-M3
-Durable execution/delivery is substantially implemented on `main`, but the product lineage must still be reconciled with the proven `ea074e0` transport behavior.
+## ChatGPT-plan transport experiment
 
-## BRIDGE-M4 proven slice
+Development candidate:
+- branch `exp/chatgpt-plan-transport`
+- draft PR #23
+- head `f2a3056b917a084c780c07f6f74ae6f3e7991c7b`
+- CI run `37161271895`: PASS
 
-Filesystem mutation:
-- branch `m4-write-tools-ea074e0`
-- commits `c13781814ade651ee6b7d51f37a4b37ad997491b`, `826674c158df8ad868ec85823adbc2b38bb1653d`
-- workflow commit `38c2aca554268a07343b8e1a6c805e787b3971f9`
-- prerelease `dev-ea074e0-write-tools`
-- live `fs.append_text(D:/test/file.txt)`: PASS
+The probe follows official OpenAI OSS/local-app SIWC: stable host ID, dynamic client registration, system-browser OAuth/OIDC/PKCE, state+nonce validation, ID-token signature/issuer/audience/lifetime validation, required `chatgpt.tokens.use.direct`, account model discovery, and `store:false` + `stream:true` public Responses inference.
 
-Process/CLI:
-- branch `m4-process-run-write-tools`
-- commits `a2c00c7619506c5aa0e98a523fc4b14ad255d141`, `ef2ac99a73cdc3c9a8fba8965d3a6ee9714e2753`
-- workflow commit `cdb78c9d5f1a230d012f26fca1e391be5c5c23f9`
-- prerelease `dev-process-run`
-- local Git, GitHub CLI, GitHub auth, and remote repo query: PASS
+Promotion gates:
+1. Owner live sign-in.
+2. account-specific model discovery.
+3. completed streamed inference.
+4. protected rotating refresh-token persistence and sign-out.
+5. saved/multiple account UX.
+6. Local Tool Runtime function-tool round trip.
+7. usage/limit/revocation recovery.
+8. explicit Owner architecture approval.
 
-Distribution:
-- full setup SHA-256 `ceec3c9c0204624979ee344b7a26a59821247618bc43645c9493f4dfbcf35d60`
-- incremental updater SHA-256 `03fde14068ca7159ed8be3c7f3b9d6b8d861f9cff58b5ae20bca82cf35d61fd6`
+The ordinary WebView2 ChatGPT mode remains authoritative throughout the experiment.
 
-## Cross-track plan
-1. Stabilize the UI recovery lineage from 0.2.8 without disturbing the proven bridge behavior.
-2. Treat Local Bridge + local CLI as the normal GitHub-control channel when available.
-3. Reconcile the proven write/process lineage with `main` without reintroducing the post-`ea074e0` transport regression or discarding M3 durability.
-4. Reproduce and harden the staged-but-not-auto-sent result condition.
-5. Add stronger bridge-owned process containment before broad shell/process expansion.
-6. After reconciliation, rerun the unchanged `win.ini` benchmark plus write/process smoke tests.
-7. Keep development-release retention clean and avoid unnecessary large Actions artifacts.
+## Cross-track rule
+Do not combine unvalidated UI, runtime-foundation, and transport changes into one broad promotion. Validate and promote each boundary independently.

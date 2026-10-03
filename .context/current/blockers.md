@@ -1,26 +1,22 @@
 # Current blockers and open risks
 
-Updated: 2026-10-03 06:10 MSK
+Updated: 2026-10-04 02:23 MSK
 
-## UI-SHELL-R1 validation gate
+## Owner runtime gates
+- UI-SHELL-R1 candidate `4c92f81` still requires signed-in Windows validation before it can replace accepted UI baseline `af6ac653`.
+- Runtime foundation PR #22 still requires Owner-side live validation of WebView transport compatibility, ASK prompts, write/process execution, STOP behavior, and representative repo tools before any merge to `main`.
 
-The implementation stage 1–7 has passed CI but not yet the only evidence that can validate signed-in WebView behavior: Owner-side Windows testing.
+## Result delivery
+At least one prior result was completely staged in the ChatGPT composer but not automatically submitted. Durable execution and result persistence do not by themselves close this DOM/send boundary.
 
-The candidate must not supersede accepted baseline `0.2.8.0 / af6ac653` until the Owner verifies startup, loading/black-area behavior, already-loaded tab switching and background preload, ordinary downloads, custom context-menu open-in-tab without crash, Local Bridge restoration, theme/reset behavior, and updater placement/behavior.
+## Repo-aware layer
+`repo.map` v1 is intentionally dependency-free and bounded. It ranks text files and symbol-like declarations, but it does not yet implement Aider-style tree-sitter definition/reference graphs or PageRank. Do not represent it as semantic-completeness proof.
 
-The implementation is intentionally split into four commits so a regression can be isolated without another broad rewrite.
+## MCP containment
+The Local Tool Runtime can cancel an active MCP call, and MCP configuration is allowlisted/preconfigured with reduced environment inheritance. However the official SDK owns its stdio child-process lifecycle, so those server processes are not yet attached to the bridge's Windows Job Object. Treat broad unattended MCP-server execution as not fully contained.
 
-## Composition-control deployment failure
-`WebView2CompositionControl` remains excluded from the recovery lineage. The earlier missing `Microsoft.Windows.SDK.NET` runtime dependency is unresolved and no new runtime proof exists.
+## ChatGPT-plan transport experiment
+PR #23 is compile/CI-proven only. Live OAuth, account-specific model discovery, streamed inference, rotating refresh-token storage, multi-account switching, usage-limit recovery, and Local Tool Runtime function-call round trips remain unproven. The experiment must not become the default transport without explicit Owner approval.
 
-## Context-menu COM boundary
-Direct `CoreWebView2ContextMenuTarget.LinkUri` remains forbidden. Candidate `4c92f81` uses pre-captured adapter target state only; runtime timing still requires Owner validation.
-
-## BRIDGE-M3 reconciliation
-The exact `ea074e0` transport path is live-proven, while later `main` contains substantial M3 durability work. These lineages remain unreconciled.
-
-## Result auto-submit intermittency
-At least one process-run result was fully inserted into the ChatGPT composer but automatic submission failed. Later results delivered automatically.
-
-## BRIDGE-M4 process containment
-`process.run` still lacks Windows Job Object kill-on-close. Stronger bridge-owned process containment remains required before broad unattended process expansion.
+## Composition/WebView constraints
+`WebView2CompositionControl` remains excluded after the prior deployment failure. Direct `CoreWebView2ContextMenuTarget.LinkUri` remains forbidden after the observed COM crash.

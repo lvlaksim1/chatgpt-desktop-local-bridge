@@ -1,50 +1,65 @@
 # Latest handoff
 
-Updated: 2026-10-03 06:10 MSK
+Updated: 2026-10-04 02:23 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 17.
-Product authority: `main`.
+Manager generation: 18.
+Product authority: `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
 Manager-state authority: `manager-state`.
-Canonical transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
-Accepted UI runtime baseline: `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053`.
-Current UI validation candidate: `ui-shell-4c92f81` / `4c92f81d46b77f964b8e99fe25439058b9b835a1`.
+Canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
+Accepted UI baseline: `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`.
+UI candidate: `4c92f81d46b77f964b8e99fe25439058b9b835a1`, still Owner-runtime-pending.
 
-## UI-SHELL-R1 stage 1–7 implementation
+## Owner directive executed
 
-The Owner directed execution of the first UI recovery stage from the clean 0.2.8 baseline and requested repository work through the standard GitHub connector.
+The Owner authorized implementation of:
+durable execution → permissions → Job Object/STOP → Tool Registry → repo-aware tools → Git safety + verification → MCP layer → ChatGPT subscription/plan transport experiment.
 
-Isolated commits:
-- `f30424d` — page-owned paint shield, native WebView background matching, warm parent-only tab switching, preload preservation;
-- `0ff4286b` — native link/download path restored, `NewWindowRequested` interception removed, safe adapter-cached context target;
-- `ee6ce6e` — broader unified theme and explicit reset;
-- `4c92f81` — delta-only top updater, full Setup moved to Settings → Updates, release trigger.
+## Runtime foundation
 
-CI run `37092162098` completed successfully.
-Prerelease `ui-shell-4c92f81` was published (workflow version `0.2.15.0`).
+Branch: `dev/runtime-foundation-v1`
+Draft PR: #22
+Head: `3f5ff0fdda85165c38a977f2d29c7e893ecf3774`
 
-Delta from accepted 0.2.8 tag:
-- `ChatGptDesktopLocalBridge-Update-from-ui-shell-af6ac65.exe`
-- SHA-256 `a7dafb406b6af3bc45c04f5ff889518fd52b97ba8bb229ae6f6a3f96cffbb618`
-- size 2,264,856 bytes
+Implemented:
+- reconciled M4 write/process tools into the durable main-derived lineage;
+- `ProcessExecutionManager` with bounded redirected IO, timeout/cancellation, Windows Job Object kill-on-close and tree-kill fallback;
+- interactive WPF ASK confirmation and default safe permission profile;
+- generic STOP cancellation surfaced in the toolbar;
+- metadata-backed registry with 15 tools;
+- `repo.status`, `repo.diff`, bounded `repo.map`, `repo.checkpoint`, `repo.verify`;
+- checkpoint storage under LocalAppData, without mutating the repository;
+- official C# MCP SDK stdio client, empty config by default, server/tool allowlisting, reduced environment inheritance, `mcp.call=ASK`;
+- real Windows regression coverage for process containment plus a temporary Git repository exercising status/diff/map/checkpoint/verify.
 
-Full Setup:
-- `ChatGptDesktopLocalBridge-ui-shell-Setup.exe`
-- SHA-256 `5a01b0a0609d91ef44e8356ab982f1dda3835201d18b8fc6b37252a45fceb59f`
-- size 51,494,899 bytes
+Evidence:
+- `37160870171`: full pipeline PASS for current application source before the later test-only commits;
+- first repo-smoke run exposed only a Windows test-cleanup issue after the suite had already printed PASS;
+- cleanup was hardened in test-only commit `3f5ff0f`;
+- `37161576559`: Build PASS and expanded durable/runtime/repo regression PASS.
 
-## Validation status
+Do not merge to `main` yet. Signed-in Owner runtime proof remains required.
 
-CI/build/package: PASS.
-Owner-side signed-in Windows runtime: PENDING.
+## ChatGPT-plan transport experiment
 
-Do not call this candidate accepted and do not supersede `af6ac653` until the Owner validates startup, rendering, tab switching, downloads, context menu, bridge restoration, theme/reset, and updater UX.
+Branch: `exp/chatgpt-plan-transport`
+Draft PR: #23
+Head: `f2a3056b917a084c780c07f6f74ae6f3e7991c7b`
+CI: run `37161271895` PASS.
 
-If a regression is found, use the isolated commit stack to repair the narrow slice rather than adding another broad WebView rewrite.
+Important discovery: OpenAI now documents an official Sign in with ChatGPT flow for open-source/local apps. It can authorize eligible ChatGPT plan usage without an API key or client secret and uses the public `https://api.openai.com/v1/responses` endpoint. The docs explicitly say not to use ChatGPT private `backend-api` endpoints for this flow.
 
-## Existing bridge commitments
+The isolated probe implements OAuth/OIDC/PKCE, dynamic client registration, loopback callback, state/nonce and ID-token validation, required plan scope, model discovery, and streamed `store:false` inference. It persists registration identity only and deliberately does not persist access/refresh/ID tokens yet.
 
-BRIDGE-M3 reconciliation with `ea074e0` remains open.
-BRIDGE-M4 write/process tools remain live-proven.
-Intermittent result auto-submit remains open.
-Windows Job Object/equivalent containment remains required before broad unattended process expansion.
+Live interactive OAuth/model/inference proof is still pending. No product-mode migration is approved.
+
+## Remaining high-value risks
+- intermittent WebView result auto-submit;
+- Owner runtime validation of PR #22;
+- MCP server child-process containment beyond call cancellation;
+- parser/graph-quality repo map;
+- SIWC refresh-token protection, multi-account UX, tool round-trip and usage recovery;
+- independent UI-SHELL-R1 Owner validation.
+
+## Operating note
+The Owner currently permits use of the standard GitHub connector until further notice.
