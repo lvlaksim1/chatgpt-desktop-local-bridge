@@ -3,6 +3,10 @@ using System.Text.Json;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
 
+public sealed record BridgeStopResult(
+    bool CancellationRequested,
+    int StoppedProcesses);
+
 public sealed class BridgeHost : IDisposable
 {
     private const string RequestStart = "[[LOCAL_BRIDGE_REQUEST_V1]]";
@@ -17,6 +21,8 @@ public sealed class BridgeHost : IDisposable
     private readonly ToolRouter _router = new();
     private readonly DurableRequestLedger _requestLedger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _activeExecutionSync = new();
+    private CancellationTokenSource? _activeExecutionCancellation;
     private readonly string _logDirectory;
 
     public BridgeHost(
@@ -319,10 +325,19 @@ public sealed class BridgeHost : IDisposable
             string? errorCode;
             string deliveredStatus;
 
+            using var executionCancellation = new CancellationTokenSource();
+            lock (_activeExecutionSync)
+            {
+                _activeExecutionCancellation = executionCancellation;
+            }
+
             try
             {
                 _status($"Running {request.Tool} ({request.Id})…");
-                var result = await _router.ExecuteAsync(request.Tool, request.Args);
+                var result = await _router.ExecuteAsync(
+                    request.Tool,
+                    request.Args,
+                    executionCancellation.Token);
                 stopwatch.Stop();
 
                 ok = true;
@@ -344,6 +359,21 @@ public sealed class BridgeHost : IDisposable
                     Error: new BridgeError(ex.Code, ex.Message));
                 deliveredStatus = $"{request.Tool} failed: {ex.Message}";
             }
+            catch (OperationCanceledException)
+            {
+                stopwatch.Stop();
+
+                ok = false;
+                errorCode = "tool_cancelled";
+                resultEnvelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(
+                        "tool_cancelled",
+                        "The local tool execution was stopped."));
+                deliveredStatus = $"{request.Tool} was stopped.";
+            }
             catch (Exception ex)
             {
                 stopwatch.Stop();
@@ -356,6 +386,16 @@ public sealed class BridgeHost : IDisposable
                     false,
                     Error: new BridgeError("tool_error", ex.Message));
                 deliveredStatus = $"{request.Tool} failed: {ex.Message}";
+            }
+            finally
+            {
+                lock (_activeExecutionSync)
+                {
+                    if (ReferenceEquals(_activeExecutionCancellation, executionCancellation))
+                    {
+                        _activeExecutionCancellation = null;
+                    }
+                }
             }
 
             await CompleteAndDeliverAsync(
@@ -469,11 +509,34 @@ public sealed class BridgeHost : IDisposable
         }
     }
 
-    public int StopActiveProcesses() => _router.StopActiveProcesses();
+    public BridgeStopResult StopActiveWork()
+    {
+        var cancellationRequested = false;
+        lock (_activeExecutionSync)
+        {
+            if (_activeExecutionCancellation is not null &&
+                !_activeExecutionCancellation.IsCancellationRequested)
+            {
+                _activeExecutionCancellation.Cancel();
+                cancellationRequested = true;
+            }
+        }
+
+        var stoppedProcesses = _router.StopActiveProcesses();
+        return new BridgeStopResult(cancellationRequested, stoppedProcesses);
+    }
 
     public void Dispose()
     {
+        StopActiveWork();
         _router.Dispose();
+
+        lock (_activeExecutionSync)
+        {
+            _activeExecutionCancellation?.Dispose();
+            _activeExecutionCancellation = null;
+        }
+
         _gate.Dispose();
     }
 
