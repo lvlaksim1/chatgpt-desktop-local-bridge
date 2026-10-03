@@ -15,6 +15,7 @@ public sealed class BridgeHost
     private readonly PermissionPolicy _policy;
     private readonly Func<string, Task<bool>> _sendToChat;
     private readonly Action<string> _status;
+    private readonly Action<BridgeActivityEvent>? _activity;
     private readonly ToolRouter _router = new();
     private readonly HashSet<string> _executedRequestIds = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -23,17 +24,20 @@ public sealed class BridgeHost
     public BridgeHost(
         PermissionPolicy policy,
         Func<string, Task<bool>> sendToChat,
-        Action<string> status)
+        Action<string> status,
+        Action<BridgeActivityEvent>? activity = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
         _status = status;
+        _activity = activity;
         SessionId = Guid.NewGuid().ToString("N");
 
         _logDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ChatGptDesktopLocalBridge",
             "logs");
+
         Directory.CreateDirectory(_logDirectory);
     }
 
@@ -105,17 +109,22 @@ public sealed class BridgeHost
     public async Task HandleAsync(JsonElement requestElement)
     {
         await _gate.WaitAsync();
+
         try
         {
             BridgeRequest? request;
+
             try
             {
                 request = requestElement.Deserialize<BridgeRequest>(
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
             }
             catch (Exception ex)
             {
-                _status($"Rejected malformed bridge request: {ex.Message}");
+                _status($"Отклонён некорректный запрос Local Bridge: {ex.Message}");
                 return;
             }
 
@@ -123,19 +132,30 @@ public sealed class BridgeHost
                 string.IsNullOrWhiteSpace(request.Id) ||
                 string.IsNullOrWhiteSpace(request.Tool))
             {
-                _status("Rejected malformed bridge request.");
+                _status("Отклонён некорректный запрос Local Bridge.");
                 return;
             }
 
+            var args = CloneArgs(request.Args);
+            Emit(request, "received", args);
+
             if (!string.Equals(request.Session, SessionId, StringComparison.Ordinal))
             {
-                _status("Rejected bridge request with an invalid session.");
+                Emit(
+                    request,
+                    "failed",
+                    args,
+                    ok: false,
+                    errorCode: "invalid_session",
+                    errorMessage: "Invalid bridge session.");
+
+                _status("Отклонён запрос с неверной сессией Local Bridge.");
                 return;
             }
 
             if (!_executedRequestIds.Add(request.Id))
             {
-                _status($"Ignored duplicate request {request.Id}.");
+                _status($"Повторный запрос {request.Id} проигнорирован.");
                 return;
             }
 
@@ -144,46 +164,148 @@ public sealed class BridgeHost
 
             if (decision == PermissionDecision.Deny)
             {
-                await SendErrorAsync(request, "permission_denied", $"Capability {capability} is denied.");
-                await WriteAuditAsync(request, false, "permission_denied", 0);
+                Emit(
+                    request,
+                    "failed",
+                    args,
+                    ok: false,
+                    errorCode: "permission_denied",
+                    errorMessage: $"Capability {capability} is denied.");
+
+                await TrySendErrorAsync(
+                    request,
+                    args,
+                    "permission_denied",
+                    $"Capability {capability} is denied.");
+
+                await WriteAuditAsync(
+                    request,
+                    false,
+                    "permission_denied",
+                    0);
+
                 return;
             }
 
             if (decision == PermissionDecision.Ask)
             {
-                await SendErrorAsync(
+                const string code = "permission_requires_confirmation";
+                var message =
+                    $"Capability {capability} is configured as ASK. Interactive confirmation UI is not enabled yet.";
+
+                Emit(
                     request,
-                    "permission_requires_confirmation",
-                    $"Capability {capability} is configured as ASK. Interactive confirmation UI is the next implementation stage.");
-                await WriteAuditAsync(request, false, "permission_requires_confirmation", 0);
+                    "failed",
+                    args,
+                    ok: false,
+                    errorCode: code,
+                    errorMessage: message);
+
+                await TrySendErrorAsync(request, args, code, message);
+                await WriteAuditAsync(request, false, code, 0);
                 return;
             }
 
             var stopwatch = Stopwatch.StartNew();
+
             try
             {
-                _status($"Running {request.Tool} ({request.Id})…");
-                var result = await _router.ExecuteAsync(request.Tool, request.Args);
+                Emit(request, "running", args);
+                _status($"Выполняется {request.Tool} ({request.Id})…");
+
+                var result = await _router.ExecuteAsync(
+                    request.Tool,
+                    request.Args);
+
                 stopwatch.Stop();
 
-                var envelope = new BridgeResult(SessionId, request.Id, true, result);
-                await SendResultAsync(envelope);
-                await WriteAuditAsync(request, true, null, stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} completed in {stopwatch.ElapsedMilliseconds} ms.");
+                var resultElement = JsonSerializer.SerializeToElement(result);
+
+                Emit(
+                    request,
+                    "completed",
+                    args,
+                    ok: true,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    result: resultElement);
+
+                var envelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    true,
+                    result);
+
+                var delivered = await TrySendResultAsync(
+                    request,
+                    args,
+                    envelope,
+                    stopwatch.ElapsedMilliseconds);
+
+                await WriteAuditAsync(
+                    request,
+                    delivered,
+                    delivered ? null : "result_delivery_failed",
+                    stopwatch.ElapsedMilliseconds);
+
+                _status(delivered
+                    ? $"{request.Tool} завершён за {stopwatch.ElapsedMilliseconds} мс."
+                    : $"{request.Tool} выполнен, но результат не доставлен в ChatGPT.");
             }
             catch (BridgeToolException ex)
             {
                 stopwatch.Stop();
-                await SendErrorAsync(request, ex.Code, ex.Message);
-                await WriteAuditAsync(request, false, ex.Code, stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} failed: {ex.Message}");
+
+                Emit(
+                    request,
+                    "failed",
+                    args,
+                    ok: false,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    errorCode: ex.Code,
+                    errorMessage: ex.Message);
+
+                await TrySendErrorAsync(
+                    request,
+                    args,
+                    ex.Code,
+                    ex.Message,
+                    stopwatch.ElapsedMilliseconds);
+
+                await WriteAuditAsync(
+                    request,
+                    false,
+                    ex.Code,
+                    stopwatch.ElapsedMilliseconds);
+
+                _status($"{request.Tool}: ошибка — {ex.Message}");
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                await SendErrorAsync(request, "tool_error", ex.Message);
-                await WriteAuditAsync(request, false, "tool_error", stopwatch.ElapsedMilliseconds);
-                _status($"{request.Tool} failed: {ex.Message}");
+
+                Emit(
+                    request,
+                    "failed",
+                    args,
+                    ok: false,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    errorCode: "tool_error",
+                    errorMessage: ex.Message);
+
+                await TrySendErrorAsync(
+                    request,
+                    args,
+                    "tool_error",
+                    ex.Message,
+                    stopwatch.ElapsedMilliseconds);
+
+                await WriteAuditAsync(
+                    request,
+                    false,
+                    "tool_error",
+                    stopwatch.ElapsedMilliseconds);
+
+                _status($"{request.Tool}: ошибка — {ex.Message}");
             }
         }
         finally
@@ -192,7 +314,12 @@ public sealed class BridgeHost
         }
     }
 
-    private async Task SendErrorAsync(BridgeRequest request, string code, string message)
+    private async Task<bool> TrySendErrorAsync(
+        BridgeRequest request,
+        JsonElement args,
+        string code,
+        string message,
+        long elapsedMs = 0)
     {
         var envelope = new BridgeResult(
             SessionId,
@@ -200,23 +327,92 @@ public sealed class BridgeHost
             false,
             Error: new BridgeError(code, message));
 
-        await SendResultAsync(envelope);
+        return await TrySendResultAsync(
+            request,
+            args,
+            envelope,
+            elapsedMs);
     }
 
-    private async Task SendResultAsync(BridgeResult result)
+    private async Task<bool> TrySendResultAsync(
+        BridgeRequest request,
+        JsonElement args,
+        BridgeResult result,
+        long elapsedMs)
     {
-        var json = JsonSerializer.Serialize(result, new JsonSerializerOptions
+        try
         {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        });
+            var json = JsonSerializer.Serialize(
+                result,
+                new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+                });
 
-        var message = $"{ResultStart}\n{json}\n{ResultEnd}";
-        var sent = await _sendToChat(message);
+            var message = $"{ResultStart}\n{json}\n{ResultEnd}";
+            var sent = await _sendToChat(message);
 
-        if (!sent)
-        {
-            throw new InvalidOperationException("Could not inject bridge result into the ChatGPT composer.");
+            if (!sent)
+            {
+                Emit(
+                    request,
+                    "delivery_failed",
+                    args,
+                    ok: false,
+                    elapsedMs: elapsedMs,
+                    errorCode: "result_delivery_failed",
+                    errorMessage: "Could not inject bridge result into the ChatGPT composer.");
+            }
+
+            return sent;
         }
+        catch (Exception ex)
+        {
+            Emit(
+                request,
+                "delivery_failed",
+                args,
+                ok: false,
+                elapsedMs: elapsedMs,
+                errorCode: "result_delivery_failed",
+                errorMessage: ex.Message);
+
+            return false;
+        }
+    }
+
+    private void Emit(
+        BridgeRequest request,
+        string phase,
+        JsonElement args,
+        bool? ok = null,
+        long? elapsedMs = null,
+        JsonElement? result = null,
+        string? errorCode = null,
+        string? errorMessage = null)
+    {
+        _activity?.Invoke(
+            new BridgeActivityEvent(
+                DateTimeOffset.Now,
+                phase,
+                request.Id,
+                request.Tool,
+                args,
+                ok,
+                elapsedMs,
+                result,
+                errorCode,
+                errorMessage));
+    }
+
+    private static JsonElement CloneArgs(JsonElement args)
+    {
+        if (args.ValueKind == JsonValueKind.Undefined)
+        {
+            return JsonSerializer.SerializeToElement(new { });
+        }
+
+        return args.Clone();
     }
 
     private async Task WriteAuditAsync(
@@ -240,6 +436,8 @@ public sealed class BridgeHost
             _logDirectory,
             $"bridge-{DateTime.UtcNow:yyyyMMdd}.jsonl");
 
-        await File.AppendAllTextAsync(path, JsonSerializer.Serialize(record) + Environment.NewLine);
+        await File.AppendAllTextAsync(
+            path,
+            JsonSerializer.Serialize(record) + Environment.NewLine);
     }
 }

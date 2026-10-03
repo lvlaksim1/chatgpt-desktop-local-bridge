@@ -1,462 +1,272 @@
-using System.Diagnostics;
-using System.Text.Json;
 using System.Windows;
-using System.Windows.Input;
+using System.Windows.Controls;
+using System.Windows.Media;
 using ChatGptDesktopLocalBridge.Bridge;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
+using Microsoft.Win32;
 
 namespace ChatGptDesktopLocalBridge;
 
 public partial class MainWindow
 {
     private readonly string _appDataRoot;
-    private TaskCompletionSource<bool>? _bridgeReadyCompletion;
-    private BridgeHost? _bridgeHost;
+    private readonly AppSettings _settings;
+    private readonly List<ChatTab> _tabs = new();
+
+    private CoreWebView2Environment? _webEnvironment;
+    private string _adapterScript = string.Empty;
+    private UpdateCandidate? _availableUpdate;
+    private bool _applicationReady;
+
+    private sealed class ChatTab
+    {
+        public required WebView2 Browser { get; init; }
+        public required TabItem Item { get; init; }
+        public required TextBlock HeaderText { get; init; }
+        public required string LastUrl { get; set; }
+
+        public BridgeHost? BridgeHost { get; set; }
+        public TaskCompletionSource<bool>? ReadyCompletion { get; set; }
+        public bool BridgeReady { get; set; }
+        public bool NavigationReady { get; set; }
+        public string? LastBootstrappedUrl { get; set; }
+    }
 
     public MainWindow()
     {
-        InitializeComponent();
+        _settings = AppSettings.Load();
 
-        VersionText.Text = LoadDisplayVersion();
-        StateChanged += (_, _) => UpdateMaximizeButton();
+        InitializeComponent();
 
         _appDataRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ChatGptDesktopLocalBridge");
 
-        Loaded += async (_, _) => await InitializeWebViewAsync();
+        VersionText.Text = LoadDisplayVersion();
+        BridgePanelColumn.Width = new GridLength(_settings.RightPanelWidth);
+
+        Width = _settings.WindowWidth;
+        Height = _settings.WindowHeight;
+
+        if (_settings.WindowLeft.HasValue)
+        {
+            Left = _settings.WindowLeft.Value;
+        }
+
+        if (_settings.WindowTop.HasValue)
+        {
+            Top = _settings.WindowTop.Value;
+        }
+
+        ApplyShellTheme();
+
+        SourceInitialized += MainWindow_OnSourceInitialized;
+        StateChanged += (_, _) => UpdateMaximizeButton();
+        Closing += MainWindow_OnClosing;
+        Loaded += async (_, _) => await InitializeApplicationAsync();
     }
+
+    private ChatTab? ActiveTab =>
+        ChatTabs.SelectedItem is TabItem selected
+            ? _tabs.FirstOrDefault(tab => ReferenceEquals(tab.Item, selected))
+            : null;
 
     private static string LoadDisplayVersion()
     {
-        try
+        var identity = UpdateService.LoadInstalledIdentity();
+        if (!string.IsNullOrWhiteSpace(identity?.AppVersion))
         {
-            var releaseInfoPath = Path.Combine(AppContext.BaseDirectory, "release-info.json");
-            if (File.Exists(releaseInfoPath))
-            {
-                using var document = JsonDocument.Parse(File.ReadAllText(releaseInfoPath));
-                if (document.RootElement.TryGetProperty("appVersion", out var versionElement) &&
-                    versionElement.ValueKind == JsonValueKind.String &&
-                    !string.IsNullOrWhiteSpace(versionElement.GetString()))
-                {
-                    return $"v{versionElement.GetString()}";
-                }
-            }
-        }
-        catch
-        {
-            // Fall back to the assembly version for local/debug builds.
+            return $"v{identity.AppVersion}";
         }
 
         var assemblyVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString();
         return $"v{assemblyVersion ?? "dev"}";
     }
 
-    private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 2)
-        {
-            ToggleMaximize();
-            return;
-        }
-
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            DragMove();
-        }
-    }
-
-    private void MinimizeButton_OnClick(object sender, RoutedEventArgs e)
-        => WindowState = WindowState.Minimized;
-
-    private void MaximizeButton_OnClick(object sender, RoutedEventArgs e)
-        => ToggleMaximize();
-
-    private void CloseButton_OnClick(object sender, RoutedEventArgs e)
-        => Close();
-
-    private void ToggleMaximize()
-    {
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
-
-        UpdateMaximizeButton();
-    }
-
-    private void UpdateMaximizeButton()
-    {
-        if (MaximizeButton is null)
-        {
-            return;
-        }
-
-        var maximized = WindowState == WindowState.Maximized;
-        MaximizeButton.Content = maximized ? "❐" : "□";
-        MaximizeButton.ToolTip = maximized ? "Восстановить" : "Развернуть";
-    }
-
-    private async Task InitializeWebViewAsync()
-    {
-        Directory.CreateDirectory(_appDataRoot);
-
-        var userDataFolder = Path.Combine(_appDataRoot, "WebView2");
-        var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
-        await Browser.EnsureCoreWebView2Async(environment);
-
-        Browser.CoreWebView2.Settings.IsWebMessageEnabled = true;
-        Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
-
-        Browser.CoreWebView2.WebMessageReceived += CoreWebView2_OnWebMessageReceived;
-        Browser.NavigationCompleted += Browser_OnNavigationCompleted;
-
-        var adapterPath = Path.Combine(AppContext.BaseDirectory, "Web", "bridge-adapter.js");
-        var adapterScript = await File.ReadAllTextAsync(adapterPath);
-        await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(adapterScript);
-
-        Browser.Source = new Uri("https://chatgpt.com/");
-        StatusText.Text = "Загрузка ChatGPT…";
-    }
-
-    private void Browser_OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
-    {
-        StatusText.Text = e.IsSuccess
-            ? "ChatGPT готов"
-            : $"Ошибка навигации: {e.WebErrorStatus}";
-    }
-
-    private void CoreWebView2_OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    private async Task InitializeApplicationAsync()
     {
         try
         {
-            if (!IsAllowedOrigin(e.Source))
+            Directory.CreateDirectory(_appDataRoot);
+
+            var userDataFolder = Path.Combine(_appDataRoot, "WebView2");
+            _webEnvironment = await CoreWebView2Environment.CreateAsync(
+                userDataFolder: userDataFolder);
+
+            var adapterPath = Path.Combine(
+                AppContext.BaseDirectory,
+                "Web",
+                "bridge-adapter.js");
+
+            _adapterScript = await File.ReadAllTextAsync(adapterPath);
+
+            foreach (var url in _settings.TabUrls.Take(12))
             {
-                StatusText.Text = $"Недоверенный источник: {e.Source}";
-                return;
+                await AddChatTabAsync(url, select: false);
             }
 
-            var json = e.WebMessageAsJson;
-            using var document = JsonDocument.Parse(json);
-
-            if (!document.RootElement.TryGetProperty("type", out var typeElement))
+            if (_tabs.Count == 0)
             {
-                return;
+                await AddChatTabAsync("https://chatgpt.com/", select: false);
             }
 
-            switch (typeElement.GetString())
-            {
-                case "bridge.ready":
-                    HandleBridgeReady(document.RootElement);
-                    return;
+            ChatTabs.SelectedIndex = Math.Clamp(
+                _settings.SelectedTabIndex,
+                0,
+                ChatTabs.Items.Count - 1);
 
-                case "bridge.request":
-                    if (!document.RootElement.TryGetProperty("request", out var requestElement) ||
-                        _bridgeHost is null)
-                    {
-                        return;
-                    }
+            _applicationReady = true;
+            SetStatus("ChatGPT загружается…");
 
-                    var requestCopy = requestElement.Clone();
-
-                    // WebView2 callbacks are serialized. Run the bridge loop only after this
-                    // WebMessageReceived callback returns so a later send-result message can arrive.
-                    Dispatcher.BeginInvoke(new Action(() => _ = HandleBridgeRequestAsync(requestCopy)));
-                    return;
-            }
+            _ = CheckForUpdatesAsync();
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Ошибка моста: {ex.Message}";
+            SetStatus($"Ошибка запуска: {ex.Message}");
         }
     }
 
-    private void HandleBridgeReady(JsonElement message)
+    private void MainWindow_OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_bridgeHost is null ||
-            !message.TryGetProperty("session", out var sessionElement) ||
-            sessionElement.ValueKind != JsonValueKind.String)
-        {
-            return;
-        }
+        SaveRuntimeSettings();
 
-        var session = sessionElement.GetString();
-        if (!string.Equals(session, _bridgeHost.SessionId, StringComparison.Ordinal))
+        foreach (var tab in _tabs)
         {
-            return;
-        }
-
-        _bridgeReadyCompletion?.TrySetResult(true);
-    }
-
-    private async Task HandleBridgeRequestAsync(JsonElement request)
-    {
-        try
-        {
-            if (_bridgeHost is not null)
-            {
-                await _bridgeHost.HandleAsync(request);
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Ошибка моста: {ex.Message}";
+            tab.Browser.Dispose();
         }
     }
 
-    private static bool IsAllowedOrigin(string source)
+    private void SaveRuntimeSettings()
     {
-        if (!Uri.TryCreate(source, UriKind.Absolute, out var uri))
+        if (BridgePanelColumn.ActualWidth > 0)
         {
-            return false;
+            _settings.RightPanelWidth = Math.Clamp(
+                BridgePanelColumn.ActualWidth,
+                260,
+                760);
         }
 
-        return uri.Scheme == Uri.UriSchemeHttps &&
-               (uri.Host.Equals("chatgpt.com", StringComparison.OrdinalIgnoreCase) ||
-                uri.Host.EndsWith(".chatgpt.com", StringComparison.OrdinalIgnoreCase));
+        _settings.SelectedTabIndex = Math.Max(ChatTabs.SelectedIndex, 0);
+        _settings.TabUrls = _tabs
+            .Select(tab => tab.Browser.Source?.AbsoluteUri ?? tab.LastUrl)
+            .Where(static url => !string.IsNullOrWhiteSpace(url))
+            .Distinct(StringComparer.Ordinal)
+            .Take(12)
+            .ToList();
+
+        if (_settings.TabUrls.Count == 0)
+        {
+            _settings.TabUrls.Add("https://chatgpt.com/");
+        }
+
+        var bounds = WindowState == WindowState.Normal
+            ? new Rect(Left, Top, Width, Height)
+            : RestoreBounds;
+
+        _settings.WindowLeft = bounds.Left;
+        _settings.WindowTop = bounds.Top;
+        _settings.WindowWidth = Math.Max(bounds.Width, 1000);
+        _settings.WindowHeight = Math.Max(bounds.Height, 650);
+
+        _settings.Save();
     }
 
-    private async void InitializeBridgeButton_OnClick(object sender, RoutedEventArgs e)
+    private void SetStatus(string message)
     {
-        InitializeBridgeButton.IsEnabled = false;
-        TaskCompletionSource<bool>? readyCompletion = null;
-
-        try
-        {
-            var policy = PermissionPolicy.LoadOrCreate();
-            _bridgeHost = new BridgeHost(
-                policy,
-                SendTextToChatAsync,
-                message => Dispatcher.Invoke(() => StatusText.Text = message));
-
-            readyCompletion = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            _bridgeReadyCompletion = readyCompletion;
-
-            var bootstrap = _bridgeHost.CreateBootstrapMessage();
-            var sent = await SendTextToChatAsync(bootstrap);
-            if (!sent)
-            {
-                if (!StatusText.Text.StartsWith("Ошибка отправки в ChatGPT:", StringComparison.Ordinal))
-                {
-                    StatusText.Text =
-                        "Не удалось отправить bootstrap моста.";
-                }
-                return;
-            }
-
-            StatusText.Text =
-                $"Bootstrap отправлен · {_bridgeHost.SessionId[..8]}…";
-
-            try
-            {
-                await readyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(60));
-                StatusText.Text =
-                    $"Мост готов · {_bridgeHost.SessionId[..8]}…";
-            }
-            catch (TimeoutException)
-            {
-                StatusText.Text =
-                    "Нет подтверждения READY от ChatGPT.";
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Ошибка инициализации моста: {ex.Message}";
-        }
-        finally
-        {
-            if (ReferenceEquals(_bridgeReadyCompletion, readyCompletion))
-            {
-                _bridgeReadyCompletion = null;
-            }
-
-            InitializeBridgeButton.IsEnabled = true;
-        }
+        StatusText.Text = message;
     }
 
     private void ReloadButton_OnClick(object sender, RoutedEventArgs e)
-        => Browser.Reload();
-
-    private void PermissionsButton_OnClick(object sender, RoutedEventArgs e)
     {
-        var path = PermissionPolicy.GetUserPolicyPath();
-        var startInfo = new ProcessStartInfo("notepad.exe")
-        {
-            UseShellExecute = true
-        };
-        startInfo.ArgumentList.Add(path);
-        Process.Start(startInfo);
+        ActiveTab?.Browser.Reload();
     }
 
-    private async void DiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
+    private async void NewChatButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (Browser.CoreWebView2 is null)
+        await AddChatTabAsync("https://chatgpt.com/", select: true);
+    }
+
+    private async void SettingsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var window = new SettingsWindow(_settings)
         {
-            StatusText.Text = "Диагностика недоступна: WebView2 ещё не готов.";
+            Owner = this
+        };
+
+        if (window.ShowDialog() != true)
+        {
             return;
         }
 
-        try
+        _settings.ShellTheme = window.SelectedShellTheme;
+        _settings.ChatBackground = window.SelectedChatBackground;
+        _settings.AutoInitializeBridge = window.SelectedAutoInitializeBridge;
+        _settings.Save();
+
+        ApplyShellTheme();
+        await ApplyChatBackgroundToAllTabsAsync();
+
+        if (_settings.AutoInitializeBridge && ActiveTab is { } tab)
         {
-            var raw = await Browser.ExecuteScriptAsync(
-                "window.__localBridge?.health?.() ?? null");
-
-            if (string.IsNullOrWhiteSpace(raw) || raw == "null")
-            {
-                StatusText.Text = "Ошибка диагностики: адаптер Local Bridge не внедрён.";
-                return;
-            }
-
-            using var document = JsonDocument.Parse(raw);
-            var root = document.RootElement;
-
-            var version = root.TryGetProperty("version", out var versionElement)
-                ? versionElement.ToString()
-                : "?";
-            var composerFound = root.TryGetProperty("composerFound", out var composerElement) &&
-                                composerElement.ValueKind == JsonValueKind.True;
-            var nativeInputReady = root.TryGetProperty("nativeInputReady", out var nativeInputElement) &&
-                                   nativeInputElement.ValueKind == JsonValueKind.True;
-            var webViewAvailable = root.TryGetProperty("webViewAvailable", out var webViewElement) &&
-                                   webViewElement.ValueKind == JsonValueKind.True;
-
-            StatusText.Text =
-                $"Адаптер v{version} · WebView {(webViewAvailable ? "OK" : "ОШИБКА")} · " +
-                $"поле ввода {(composerFound ? "OK" : "НЕ НАЙДЕНО")} · " +
-                $"native input {(nativeInputReady ? "ГОТОВ" : "НЕ ГОТОВ")}";
-
-            var details = JsonSerializer.Serialize(
-                root,
-                new JsonSerializerOptions { WriteIndented = true });
-
-            MessageBox.Show(
-                details,
-                "Диагностика Local Bridge",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Ошибка диагностики: {ex.Message}";
+            _ = EnsureBridgeForTabAsync(tab, automatic: true);
         }
     }
 
-    private async Task<bool> SendTextToChatAsync(string text)
+    private void ClearActivityButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (Browser.CoreWebView2 is null)
-        {
-            return false;
-        }
+        ActivityList.Items.Clear();
+    }
 
+    private void ClearConsoleButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        ConsoleTextBox.Clear();
+    }
+
+    private void ApplyShellTheme()
+    {
+        var light = _settings.ShellTheme switch
+        {
+            "Light" => true,
+            "System" => IsWindowsLightTheme(),
+            _ => false
+        };
+
+        if (light)
+        {
+            Resources["ShellBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xEA, 0xEB, 0xED));
+            Resources["PanelBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xF2, 0xF3, 0xF5));
+            Resources["PanelInnerBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+            Resources["PanelTextBrush"] = new SolidColorBrush(Color.FromRgb(0x20, 0x21, 0x24));
+            Resources["PanelMutedBrush"] = new SolidColorBrush(Color.FromRgb(0x65, 0x68, 0x6D));
+            Resources["PanelBorderBrush"] = new SolidColorBrush(Color.FromRgb(0xC9, 0xCB, 0xCF));
+            Resources["TabBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0xE2, 0xE4, 0xE7));
+            Resources["TabSelectedBrush"] = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        }
+        else
+        {
+            Resources["ShellBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x15, 0x17, 0x19));
+            Resources["PanelBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x19, 0x1B, 0x1D));
+            Resources["PanelInnerBrush"] = new SolidColorBrush(Color.FromRgb(0x11, 0x13, 0x15));
+            Resources["PanelTextBrush"] = new SolidColorBrush(Color.FromRgb(0xE5, 0xE7, 0xE9));
+            Resources["PanelMutedBrush"] = new SolidColorBrush(Color.FromRgb(0x92, 0x96, 0x9B));
+            Resources["PanelBorderBrush"] = new SolidColorBrush(Color.FromRgb(0x34, 0x37, 0x3A));
+            Resources["TabBackgroundBrush"] = new SolidColorBrush(Color.FromRgb(0x20, 0x22, 0x25));
+            Resources["TabSelectedBrush"] = new SolidColorBrush(Color.FromRgb(0x2A, 0x2D, 0x30));
+        }
+    }
+
+    private static bool IsWindowsLightTheme()
+    {
         try
         {
-            var preflightRaw = await Browser.ExecuteScriptAsync(
-                "window.__localBridge?.prepareNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
+            using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
 
-            using var preflightDocument = JsonDocument.Parse(preflightRaw);
-            var preflight = preflightDocument.RootElement;
-
-            var accepted = preflight.TryGetProperty("accepted", out var acceptedElement) &&
-                           acceptedElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-                           acceptedElement.GetBoolean();
-
-            if (!accepted)
-            {
-                var reason = preflight.TryGetProperty("reason", out var reasonElement) &&
-                             reasonElement.ValueKind == JsonValueKind.String
-                    ? reasonElement.GetString()
-                    : "composer-preflight-failed";
-
-                StatusText.Text = $"Ошибка отправки в ChatGPT: {reason}";
-                return false;
-            }
-
-            var insertParameters = JsonSerializer.Serialize(new { text });
-            await Browser.CoreWebView2.CallDevToolsProtocolMethodAsync(
-                "Input.insertText",
-                insertParameters);
-
-            var expectedArgument = JsonSerializer.Serialize(text);
-            var insertionDeadline = DateTime.UtcNow.AddSeconds(5);
-            var inserted = false;
-
-            while (DateTime.UtcNow < insertionDeadline)
-            {
-                var stateRaw = await Browser.ExecuteScriptAsync(
-                    $"window.__localBridge?.nativeSendState?.({expectedArgument}) ?? null");
-
-                if (!string.IsNullOrWhiteSpace(stateRaw) && stateRaw != "null")
-                {
-                    using var stateDocument = JsonDocument.Parse(stateRaw);
-                    var state = stateDocument.RootElement;
-                    inserted = state.TryGetProperty("textMatches", out var matchesElement) &&
-                               matchesElement.ValueKind == JsonValueKind.True;
-
-                    if (inserted)
-                    {
-                        break;
-                    }
-                }
-
-                await Task.Delay(100);
-            }
-
-            if (!inserted)
-            {
-                StatusText.Text = "Ошибка отправки в ChatGPT: native-input-not-accepted";
-                return false;
-            }
-
-            var submitRaw = await Browser.ExecuteScriptAsync(
-                "window.__localBridge?.submitNativeSend?.() ?? {accepted:false, reason:'adapter-not-ready'}");
-
-            using var submitDocument = JsonDocument.Parse(submitRaw);
-            var submit = submitDocument.RootElement;
-            var submitAccepted =
-                submit.TryGetProperty("accepted", out var submitAcceptedElement) &&
-                submitAcceptedElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-                submitAcceptedElement.GetBoolean();
-
-            if (!submitAccepted)
-            {
-                var reason = submit.TryGetProperty("reason", out var reasonElement) &&
-                             reasonElement.ValueKind == JsonValueKind.String
-                    ? reasonElement.GetString()
-                    : "native-submit-rejected";
-
-                StatusText.Text = $"Ошибка отправки в ChatGPT: {reason}";
-                return false;
-            }
-
-            var sendDeadline = DateTime.UtcNow.AddSeconds(8);
-            while (DateTime.UtcNow < sendDeadline)
-            {
-                var stateRaw = await Browser.ExecuteScriptAsync(
-                    "window.__localBridge?.nativeSendState?.() ?? null");
-
-                if (!string.IsNullOrWhiteSpace(stateRaw) && stateRaw != "null")
-                {
-                    using var stateDocument = JsonDocument.Parse(stateRaw);
-                    var state = stateDocument.RootElement;
-                    var composerEmpty =
-                        state.TryGetProperty("composerEmpty", out var emptyElement) &&
-                        emptyElement.ValueKind == JsonValueKind.True;
-
-                    if (composerEmpty)
-                    {
-                        return true;
-                    }
-                }
-
-                await Task.Delay(100);
-            }
-
-            StatusText.Text = "Ошибка отправки в ChatGPT: native-submit-not-confirmed";
-            return false;
+            return Convert.ToInt32(key?.GetValue("AppsUseLightTheme", 0)) != 0;
         }
-        catch (Exception ex)
+        catch
         {
-            StatusText.Text = $"Ошибка отправки в ChatGPT: {ex.Message}";
             return false;
         }
     }
