@@ -223,6 +223,112 @@ try
 
     using (var router = new ToolRouter())
     {
+        var repoRoot = Path.Combine(root, "repo-tools");
+        Directory.CreateDirectory(repoRoot);
+
+        static void RunGit(string cwd, params string[] arguments)
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git.exe",
+                WorkingDirectory = cwd,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new Exception("Could not start git.exe for repo-tool regression setup.");
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                throw new Exception(
+                    $"git {string.Join(" ", arguments)} failed: {process.StandardError.ReadToEnd()}");
+            }
+        }
+
+        RunGit(repoRoot, "init");
+        RunGit(repoRoot, "config", "user.name", "Local Bridge CI");
+        RunGit(repoRoot, "config", "user.email", "local-bridge-ci@example.invalid");
+
+        var trackedFile = Path.Combine(repoRoot, "BridgeSample.cs");
+        await File.WriteAllTextAsync(
+            trackedFile,
+            "namespace Demo;\npublic static class BridgeSample { public static string Value() => \"v1\"; }\n");
+        RunGit(repoRoot, "add", "BridgeSample.cs");
+        RunGit(repoRoot, "commit", "-m", "baseline");
+
+        await File.WriteAllTextAsync(
+            trackedFile,
+            "namespace Demo;\npublic static class BridgeSample { public static string Value() => \"v2\"; }\n");
+
+        var statusResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.status",
+                Args(JsonSerializer.Serialize(new { path = repoRoot }))));
+        Require(
+            statusResult.GetProperty("clean").GetBoolean() == false,
+            "repo.status failed to report the modified working tree.");
+
+        var diffResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.diff",
+                Args(JsonSerializer.Serialize(new { path = repoRoot, staged = false, max_chars = 20_000 }))));
+        Require(
+            diffResult.GetProperty("diff").GetString()?.Contains(
+                "v2",
+                StringComparison.Ordinal) == true,
+            "repo.diff did not return the working-tree change.");
+
+        var mapResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.map",
+                Args(JsonSerializer.Serialize(new
+                {
+                    path = repoRoot,
+                    query = "BridgeSample Value",
+                    max_files = 20,
+                    max_chars = 20_000
+                }))));
+        Require(
+            mapResult.GetProperty("map").GetString()?.Contains(
+                "BridgeSample.cs",
+                StringComparison.OrdinalIgnoreCase) == true,
+            "repo.map did not surface the query-relevant source file.");
+
+        var checkpointResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.checkpoint",
+                Args(JsonSerializer.Serialize(new { path = repoRoot }))));
+        var checkpointPath = checkpointResult.GetProperty("checkpointPath").GetString();
+        Require(
+            checkpointPath is not null && File.Exists(Path.Combine(checkpointPath, "working.diff")),
+            "repo.checkpoint did not persist the working diff.");
+        if (!string.IsNullOrWhiteSpace(checkpointPath) && Directory.Exists(checkpointPath))
+        {
+            Directory.Delete(checkpointPath, recursive: true);
+        }
+
+        var verifyResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.verify",
+                Args(JsonSerializer.Serialize(new
+                {
+                    path = repoRoot,
+                    file = "cmd.exe",
+                    arguments = new[] { "/d", "/c", "exit 0" },
+                    timeout_ms = 10_000,
+                    max_output_chars = 4_096
+                }))));
+        Require(
+            verifyResult.GetProperty("ok").GetBoolean(),
+            "repo.verify did not report a successful bounded command.");
+
         var processResult = await router.ExecuteAsync(
             "process.run",
             Args("{\"file\":\"cmd.exe\",\"arguments\":[\"/d\",\"/c\",\"echo bridge-process-ok\"],\"timeout_ms\":10000,\"max_output_chars\":4096}"));
