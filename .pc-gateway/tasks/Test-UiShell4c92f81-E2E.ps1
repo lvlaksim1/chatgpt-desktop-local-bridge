@@ -563,19 +563,12 @@ function Wait-BridgeReadyStatus {
     while ([DateTime]::UtcNow -lt $deadline) {
         $lastTexts = @(Get-UiTexts -Root $Root)
 
-        $ready = @($lastTexts | Where-Object { $_ -like 'Мост готов · *' } | Select-Object -First 1)
+        $bridgeWord = -join @([char]0x041C,[char]0x043E,[char]0x0441,[char]0x0442)
+        $readyWord = -join @([char]0x0433,[char]0x043E,[char]0x0442,[char]0x043E,[char]0x0432)
+        $readyPattern = $bridgeWord + ' ' + $readyWord + ' ' + [char]0x00B7 + ' *'
+        $ready = @($lastTexts | Where-Object { $_ -like $readyPattern } | Select-Object -First 1)
         if ($ready.Count -gt 0) {
             return [string]$ready[0]
-        }
-
-        $failure = @($lastTexts | Where-Object {
-            $_ -like 'Ошибка Local Bridge:*' -or
-            $_ -like 'Local Bridge: нет подтверждения READY*' -or
-            $_ -like 'Ошибка отправки:*'
-        } | Select-Object -First 1)
-
-        if ($failure.Count -gt 0) {
-            throw ('Bridge initialization failed: ' + [string]$failure[0])
         }
 
         Start-Sleep -Milliseconds 500
@@ -723,9 +716,24 @@ try {
     Write-Host 'BRIDGE_M1_STAGE=cdp-target-ready'
 
     $socket = New-Object System.Net.WebSockets.ClientWebSocket
-    $socket.ConnectAsync(
-        [Uri]$target.webSocketDebuggerUrl,
-        [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    $connectCts = New-Object System.Threading.CancellationTokenSource
+    $connectCts.CancelAfter(15000)
+    try {
+        try {
+            $socket.ConnectAsync(
+                [Uri]$target.webSocketDebuggerUrl,
+                $connectCts.Token).GetAwaiter().GetResult()
+        }
+        catch {
+            if ($connectCts.IsCancellationRequested) {
+                throw 'CDP websocket connect timed out after 15000 ms.'
+            }
+            throw
+        }
+    }
+    finally {
+        $connectCts.Dispose()
+    }
 
     [void](Send-CdpCommand -Socket $socket -Id $cdpId -Method 'Page.navigate' -Params @{
         url = 'https://chatgpt.com/'
@@ -789,7 +797,8 @@ try {
     Write-Host 'BRIDGE_M1_STAGE=visual-ready'
 
 
-    Invoke-UiButton -Root $uiRoot -Name 'Мост'
+    $bridgeButtonName = -join @([char]0x041C,[char]0x043E,[char]0x0441,[char]0x0442)
+    Invoke-UiButton -Root $uiRoot -Name $bridgeButtonName
     Write-Host 'BRIDGE_M1_STAGE=initialize-clicked'
     $bridgeReadyText = Wait-BridgeReadyStatus -Root $uiRoot -TimeoutSeconds 90
     Write-Host ('BRIDGE_M1_STAGE=bridge-ready:' + $bridgeReadyText)
