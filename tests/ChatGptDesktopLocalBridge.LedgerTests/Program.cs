@@ -359,6 +359,28 @@ finally
 {
     if (Directory.Exists(root))
     {
-        Directory.Delete(root, recursive: true);
+        try
+        {
+            Directory.Delete(root, recursive: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            foreach (var file in Directory.EnumerateFiles(
+                         root,
+                         "*",
+                         SearchOption.AllDirectories))
+            {
+                try
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+                catch
+                {
+                    // Best-effort test cleanup only.
+                }
+            }
+
+            Directory.Delete(root, recursive: true);
+        }
     }
 }
