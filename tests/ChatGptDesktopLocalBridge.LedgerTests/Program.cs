@@ -170,7 +170,7 @@ try
         "Oversized-result error envelope exceeded the transport bound.");
 
     var definitions = ToolRouter.Definitions;
-    Require(definitions.Count == 12, "Unexpected number of registered bridge tools.");
+    Require(definitions.Count == 15, "Unexpected number of registered bridge tools.");
     Require(
         definitions.Select(definition => definition.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Count,
         "Bridge tool registry contains duplicate names.");
@@ -211,6 +211,15 @@ try
     Require(
         ToolRouter.GetCapability("repo.map") == "repo.read",
         "Repo map is no longer governed by the repo.read capability.");
+    Require(
+        ToolRouter.GetCapability("mcp.list_tools") == "mcp.read",
+        "MCP discovery is no longer governed by the mcp.read capability.");
+    Require(
+        ToolRouter.GetCapability("mcp.call") == "mcp.call",
+        "MCP execution capability mapping drifted.");
+    Require(
+        ToolRouter.GetDefinition("mcp.call")?.IsLongRunning == true,
+        "mcp.call is no longer marked as long-running.");
 
     using (var router = new ToolRouter())
     {
