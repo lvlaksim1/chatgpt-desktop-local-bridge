@@ -139,6 +139,7 @@ public partial class MainWindow
         foreach (var tab in _tabs)
         {
             tab.BridgeRetryCts?.Cancel();
+            tab.BridgeHost?.Dispose();
             tab.Browser.Dispose();
         }
     }
