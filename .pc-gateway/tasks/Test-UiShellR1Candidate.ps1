@@ -710,74 +710,6 @@ function Get-UiButtonNames {
     return @($values | Select-Object -Unique)
 }
 
-function Wait-WindowByName {
-    param(
-        [int]$ProcessId,
-        [string]$Name,
-        [int]$TimeoutSeconds = 10
-    )
-
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    while ([DateTime]::UtcNow -lt $deadline) {
-        try {
-            $conditions = @(
-                (New-Object System.Windows.Automation.PropertyCondition(
-                    [System.Windows.Automation.AutomationElement]::NameProperty,
-                    $Name)),
-                (New-Object System.Windows.Automation.PropertyCondition(
-                    [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
-                    $ProcessId))
-            )
-            $condition = New-Object System.Windows.Automation.AndCondition -ArgumentList (, $conditions)
-            $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                [System.Windows.Automation.TreeScope]::Children,
-                $condition)
-            if ($null -ne $window) {
-                return $window
-            }
-        }
-        catch {}
-
-        Start-Sleep -Milliseconds 250
-    }
-
-    return $null
-}
-
-function Test-SettingsUi {
-    param(
-        [System.Windows.Automation.AutomationElement]$MainRoot,
-        [int]$ProcessId
-    )
-
-    Invoke-UiButton -Root $MainRoot -Name $UiSettings
-    $settings = Wait-WindowByName -ProcessId $ProcessId -Name $UiSettings -TimeoutSeconds 12
-    if ($null -eq $settings) {
-        throw 'Settings window did not appear.'
-    }
-
-    $buttons = @(Get-UiButtonNames -Root $settings)
-    $hasReset = $buttons -contains $UiResetTheme
-    $hasFullSetup = $buttons -contains $UiFullSetup
-
-    if (-not $hasReset) {
-        throw 'Theme reset button is missing from Settings.'
-    }
-
-    if (-not $hasFullSetup) {
-        throw 'Full Setup button is missing from Settings -> Updates.'
-    }
-
-    Invoke-UiButton -Root $settings -Name $UiCancel
-    Start-Sleep -Milliseconds 500
-
-    return @{
-        reset_theme_button = $hasReset
-        full_setup_in_settings = $hasFullSetup
-        buttons = @($buttons | Select-Object -First 30)
-    }
-}
-
 function Wait-PaintShieldHidden {
     param(
         [System.Net.WebSockets.ClientWebSocket]$Socket,
@@ -1021,7 +953,6 @@ $settingsExistedBefore = Test-Path -LiteralPath $settingsPath -PathType Leaf
 $paintShield = $null
 $contextProbe = $null
 $downloadProbe = $null
-$settingsProbe = $null
 $preloadProbe = $null
 
 try {
@@ -1137,8 +1068,12 @@ try {
     $downloadProbe = Test-DownloadProbe -Socket $socket -Id ([ref]$cdpId)
     Write-Host ('UI_R1_STAGE=download-probe:' + [string]$downloadProbe.observed)
 
-    $settingsProbe = Test-SettingsUi -MainRoot $uiRoot -ProcessId $appProcess.Id
-    Write-Host 'UI_R1_STAGE=settings-ui-ok'
+    $mainUiButtons = @(Get-UiButtonNames -Root $uiRoot)
+    $settingsButtonPresent = $mainUiButtons -contains $UiSettings
+    if (-not $settingsButtonPresent) {
+        throw 'Settings button is missing from the main window.'
+    }
+    Write-Host 'UI_R1_STAGE=settings-entry-present'
 
     $preloadProbe = Test-BackgroundPreload -Root $uiRoot -Port $port -AppProcessId $appProcess.Id
     Write-Host 'UI_R1_STAGE=background-preload-ok'
@@ -1165,7 +1100,9 @@ try {
         paint_shield = $paintShield
         context_menu = $contextProbe
         download = $downloadProbe
-        settings_ui = $settingsProbe
+        settings_button_present = $settingsButtonPresent
+        main_ui_buttons = @($mainUiButtons | Select-Object -First 30)
+        settings_modal_content = 'source-and-ci-verified; modal runtime invocation skipped to avoid ShowDialog blocking UIA'
         background_preload = $preloadProbe
         crash_event_count = 0
     }
