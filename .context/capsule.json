@@ -1,9 +1,21 @@
 {
   "schema": "context-capsule",
   "version": "2.0.0-dev",
-  "source": "lvlaksim1/context-capsule",
-  "core_commit": "5538327ac70b81b4f56f46a545547452c8477994",
+  "source": "lvlaksim1/context-capsule-project-manager",
+  "core_commit": "5c00785c19af132267e20d55a47c634fea477bfa",
   "installed_at": "2026-10-01",
   "repository": "lvlaksim1/chatgpt-desktop-local-bridge",
-  "update_policy": "manual"
+  "update_policy": "manual",
+  "project_manager_commit": "5c00785c19af132267e20d55a47c634fea477bfa",
+  "context_capsule_commit": "2ef41a5ed57ae514cc5980065560d7e55d5e4b9a",
+  "provenance": {
+    "context_capsule": {
+      "repository": "lvlaksim1/context-capsule",
+      "commit": "2ef41a5ed57ae514cc5980065560d7e55d5e4b9a"
+    },
+    "project_manager": {
+      "repository": "lvlaksim1/context-capsule-project-manager",
+      "commit": "5c00785c19af132267e20d55a47c634fea477bfa"
+    }
+  }
 }

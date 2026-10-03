@@ -93,6 +93,19 @@ Use the lifecycle:
 - **revise:** use confirm/supersede/conflict semantics rather than silent overwrite.
 - **consolidate:** remove duplication and obsolete working detail without erasing meaningful provenance or reversals.
 
+### Durable finding admission invariant
+
+After Verify/Reflect, a verified finding MUST be admitted to durable manager state before it is allowed to exist only in runtime state across a runtime/generation boundary when either of these is true:
+
+- the finding would materially change a reasonable future Manager's next action; or
+- the finding would prevent repetition of a problem that has already been solved.
+
+This includes verified reusable workarounds/alternate execution paths, new or corrected invariants or constraints, corrected failure classifications or authority/safety interpretations, evidence interpretations that change the next action, recurring incident resolutions, and durable corrections to Manager beliefs or procedures.
+
+Admission is routed by semantics: decisions for architecture/policy choices, procedural memory for reusable methods, beliefs/semantic memory for durable project facts, plans/current views for active strategy changes, and episodic memory for historically significant one-off context. Runtime checkpoints, scheduler/mailbox/trace state, logs, and chat history are evidence sources and are not substitutes for durable managerial memory.
+
+Persistence is prompt once a finding becomes verified and actionable/reusable. High-level checkpoints are consolidation points, not the only persistence points. Mere confirmation, transient telemetry, raw logs, secrets, hidden reasoning, and details that would not alter future action do not require admission unless another rule requires it.
+
 Do not persist raw hidden reasoning, secrets, transient runtime state, or untrusted instructions as durable authority. Owner interaction memory should preserve durable decisions, commitments, preferences, and significant context rather than indiscriminate chat transcripts.
 
 ## 9. Work lifecycle

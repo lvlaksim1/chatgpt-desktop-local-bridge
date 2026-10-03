@@ -10,6 +10,8 @@
 6. Do not claim live ChatGPT behavior from CI alone.
 7. Persist meaningful milestone/evidence changes to `manager-state` as one sealed generation.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## UI/WebView recovery workflow
 
 1. Start from the latest Owner-accepted runtime baseline, currently `0.2.8.0` / `af6ac653`.
@@ -22,6 +24,8 @@
 8. Promote the new commit as the next baseline only after Owner validation. If it fails, revert that step rather than layering another speculative fix on top.
 9. Keep rejected release commits as historical evidence, but do not merge the rejected lineage wholesale.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Web adapter debugging
 
 Classify failures by layer before patching:
@@ -35,6 +39,8 @@ Classify failures by layer before patching:
 
 Prefer instrumentation and exact live evidence over broad selector rewrites.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Local Bridge CLI workflow
 
 1. Prefer direct `git.exe` or `gh.exe` through `process.run` when one executable can complete the step.
@@ -48,10 +54,14 @@ Prefer instrumentation and exact live evidence over broad selector rewrites.
 9. Prefer Local Bridge CLI over the ChatGPT GitHub connector when the bridge is available; use the connector only when explicitly requested or the local path is unavailable.
 10. Continue to apply Project Manager approval gates for destructive/high-impact operations even though the local CLI can technically perform them.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## External project review
 
 Use public projects to discover algorithms and failure modes. Verify repository license before copying code. When no explicit compatible license exists, reimplement concepts independently.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Recovery prerelease isolation
 
 For a multi-item Owner-authorized recovery stage where intermediate Owner testing is not requested between each code edit:
@@ -62,3 +72,6 @@ For a multi-item Owner-authorized recovery stage where intermediate Owner testin
 5. require the final CI/package pipeline to pass;
 6. preserve the isolated commit sequence for targeted revert/repair;
 7. keep the previous runtime baseline authoritative until Owner-side validation passes.
+
+- source: legacy-v2-state
+- authority: legacy-unverified

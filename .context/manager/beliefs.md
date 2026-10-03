@@ -50,3 +50,5 @@
 35. Windows CI run `37092162098` for release commit `4c92f81` completed successfully, including bridge-adapter validation, build, publish, full Setup, both delta packages, and prerelease publication.
 36. Development prerelease `ui-shell-4c92f81` (workflow version `0.2.15.0`) was published. Delta from accepted `ui-shell-af6ac65`: SHA-256 `a7dafb406b6af3bc45c04f5ff889518fd52b97ba8bb229ae6f6a3f96cffbb618`, size 2,264,856 bytes. Full Setup: SHA-256 `5a01b0a0609d91ef44e8356ab982f1dda3835201d18b8fc6b37252a45fceb59f`, size 51,494,899 bytes.
 37. `ui-shell-4c92f81` is a validation candidate, not yet an accepted runtime baseline. Owner-side Windows validation remains required before superseding accepted baseline `0.2.8.0 / af6ac653`.
+
+- source: legacy-v2-state

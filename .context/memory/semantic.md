@@ -7,6 +7,8 @@
 - Exactly-once execution and exactly-once result delivery are separate reliability problems; durable request identity/recovery is required before mutating/process capability can be considered robust.
 - Windows Job Objects with kill-on-close remain the preferred containment primitive for future bridge-owned process trees and emergency STOP.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Local Bridge lessons admitted 2026-10-02
 
 - Complete application behavior at source `ea074e0`, not merely one submit call, is the canonical live transport baseline. Same-day Owner proof establishes that later transport failures are application regressions.
@@ -16,6 +18,8 @@
 - Interactive elapsed time is dominated by chat round trips, not local command execution. Safe dependent CLI work should be grouped into one bounded noninteractive stage where practical.
 - Owner operating decision: future GitHub manipulation should normally use Local Bridge with local `git`, `gh`, and PowerShell. ChatGPT connector use is exceptional.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## UI shell lessons admitted 2026-10-03
 
 - `0.2.8.0` / `af6ac653` is the Owner-accepted recovery baseline after the 0.2.9/0.2.10 UI regression sequence.
@@ -26,12 +30,16 @@
 - When several foundational WebView behaviors change in one release, a runtime regression becomes expensive to isolate. The recovery workflow should advance through narrowly scoped prereleases, promoting only Owner-validated baselines.
 - A rejected release may still contain useful design ideas, but it is evidence, not a source branch to merge wholesale into the accepted baseline.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Third-party licensing note
 
 - `nwn900/ChatGPTDesktopApp` declares ISC.
 - `mozg4D/chatgpt-local-agent` declares MIT.
 - `mikhail494/chatgpt-local-hands` had no explicit repository license at review time; do not copy its code without later license verification.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## UI recovery candidate admitted 2026-10-03
 
 - A page-owned fixed paint shield inside ordinary WebView2 is the current recovery strategy for masking navigation and tab-reveal paint transitions while avoiding the deployment failure of the CompositionControl experiment. It is implemented and CI-proven but not yet Owner-runtime-proven.
@@ -39,6 +47,8 @@
 - Native link/download semantics and custom app-tab navigation are intentionally separated: normal WebView behavior is left unintercepted, while explicit app-tab opening depends on a pre-captured DOM target.
 - The recovery stage was committed in isolated slices before the release commit so runtime failures can be mapped back to a narrow change set.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## gptme architectural reference admitted 2026-10-04
 
 Provenance: public `gptme/gptme` master and official `gptme.org` documentation reviewed 2026-10-04. External project is reference evidence only, not project authority.
@@ -51,6 +61,8 @@ Provenance: public `gptme/gptme` master and official `gptme.org` documentation r
 - The subscription provider is therefore a potentially important alternative transport/reference for the project's no-Platform-API goal, but it is not equivalent to preserving ordinary `chatgpt.com` conversations/UI. Adoption would be a product-architecture decision and remains Owner-gated; do not silently replace the accepted WebView2 + native Local Bridge path.
 - gptme's own documentation advises keeping humans at irreversible/public boundaries and reducing unattended-agent blast radius with isolated environments, scoped credentials and version-controlled work. This is compatible with the Local Bridge policy direction toward configurable permissions and stronger process containment.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Witsy and Aider architectural references admitted 2026-10-04
 
 Provenance: public `Kochava-Studios/witsy` main, `Aider-AI/aider` main, and their project documentation reviewed 2026-10-04. External projects are reference evidence only, not project authority.
@@ -74,6 +86,8 @@ Provenance: public `Kochava-Studios/witsy` main, `Aider-AI/aider` main, and thei
 - Aider supports web-chat workflows without an LLM API: it packages selected files + read-only files + repo map into browser-pastable context and can apply a copied web-model response locally. This is directly relevant to our no-Platform-API architecture: Local Bridge can remain connected to ordinary ChatGPT UI while a repo-aware local subsystem prepares context and safely applies edits.
 - Aider is Apache-2.0 licensed, so compatible code reuse is possible with required notices if later justified; prefer learning the architecture before copying implementation.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Official ChatGPT-plan transport supersession admitted 2026-10-04
 
 Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner-authorized transport experiment.
@@ -84,3 +98,5 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - The transport changes how the model is reached; it does not replace the Local Tool Runtime safety boundary. Local filesystem/process/repo/MCP capabilities remain governed by local permissions, cancellation, audit, and containment.
 - Current Owner directive permits the standard GitHub connector until further notice; this supersedes the earlier connector-exception operating rule.
 
+- source: legacy-v2-state
+- authority: legacy-unverified

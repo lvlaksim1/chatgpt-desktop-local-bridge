@@ -31,7 +31,8 @@
     "semantic": ".context/memory/semantic.md",
     "procedural": ".context/memory/procedural.md",
     "episodes": [
-      ".context/memory/episodes/2026-10-01-manager-bootstrap.md"
+      ".context/memory/episodes/2026-10-01-manager-bootstrap.md",
+      ".context/memory/episodes/2026-10-02-local-cli-bootstrap.md"
     ]
   },
   "current": {
@@ -75,7 +76,31 @@
     "self_authority_expansion_forbidden": true,
     "service_expertise_not_project_authority": true,
     "direct_owner_invocation_first_class": true,
-    "manager_state_coherence_required": true
+    "manager_state_coherence_required": true,
+    "durable_finding_gate_required": true,
+    "interactive_first_execution_required": true,
+    "autonomous_scheduler_fallback_only": true,
+    "task_scoped_live_carrier_required": true,
+    "scheduler_global_shutdown_on_owner_presence_forbidden": true,
+    "expired_live_carrier_fallback_supported": true,
+    "live_bounded_delegation_return_required": true,
+    "delegation_preserves_commitment_owner": true,
+    "explicit_handoff_required_for_responsibility_transfer": true,
+    "responsibility_authority_orthogonal": true,
+    "handoff_requires_target_acceptance": true,
+    "delegated_authority_attenuation_required": true,
+    "authority_root_provenance_required": true,
+    "subdelegation_inherits_constraints": true,
+    "owner_root_grant_normalized": true,
+    "first_delegation_attenuates_owner_grant": true,
+    "delegated_scope_attenuation_required": true,
+    "handoff_acceptance_target_home_verified": true,
+    "handoff_acceptance_execution_fence_bound": true,
+    "external_task_authority_non_escalating": true,
+    "supplied_execution_fence_enforced": true,
+    "evidence_backed_external_completion_required": true,
+    "terminal_execution_cleanup_required": true,
+    "external_gate_reconciliation_required": true
   },
   "updated_at": "2026-10-03",
   "context_version": "2.0.0-dev",

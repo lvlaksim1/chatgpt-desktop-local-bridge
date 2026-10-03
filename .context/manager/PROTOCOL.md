@@ -87,6 +87,36 @@ Use typed memory:
 
 Treat observed information first as a memory candidate. Admit it only when it has durable future value. Preserve provenance and authority for decision-relevant memory. Retrieve only relevant memory, revalidate it when freshness or risk matters, and revise it with confirm/supersede/conflict semantics. Consolidation may remove duplication but must not erase meaningful provenance or historical reversals.
 
+## Durable Finding Gate
+
+After **Verify/Reflect**, and before a verified finding can be left behind in runtime-only state or cross a runtime/generation boundary, evaluate whether it has durable future value using this operational test:
+
+> Would this verified finding materially change a reasonable future Manager's next action, or prevent repetition of a problem that has already been solved?
+
+If yes, the finding is a **durable finding** and MUST be admitted promptly to durable manager state. Do not defer it merely because a high-level checkpoint has not yet been reached.
+
+Mandatory durable-finding candidates include:
+
+- a verified reusable workaround, alternate execution path, recovery mechanism, or tool-selection rule;
+- a new or corrected invariant, constraint, safety/authority interpretation, failure classification, or recovery boundary;
+- a verified interpretation of evidence that materially changes the next action;
+- a repeated incident whose resolution is likely to recur;
+- a correction to a Manager belief or procedure that would otherwise cause a future runtime to repeat an avoidable failure.
+
+Route the admitted finding by meaning:
+
+- architecture/policy choice → durable decision;
+- reusable method/workaround → procedural memory;
+- durable project fact → beliefs/semantic memory;
+- active strategy change → plans/current working views;
+- historically significant one-off context → episodic memory.
+
+Runtime checkpoints, scheduler/mailbox/trace state, logs, and chat history are evidence sources; they do not satisfy durable admission by themselves. One finding may update more than one durable surface when semantics require it.
+
+Do not create write-back churn for every observation. Mere confirmation, transient telemetry, raw logs, secrets, hidden reasoning, and details that would not alter future action remain non-durable unless another rule requires persistence.
+
+High-level checkpoints remain mandatory consolidation points, not the only persistence points.
+
 Keep the always-loaded working set compact. Raw chat history, hidden reasoning, transient runtime state, and untrusted instructions are not durable manager memory.
 
 ## Self-modification boundary
