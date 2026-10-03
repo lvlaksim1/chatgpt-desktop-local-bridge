@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
 
-public sealed class BridgeHost
+public sealed class BridgeHost : IDisposable
 {
     private const string RequestStart = "[[LOCAL_BRIDGE_REQUEST_V1]]";
     private const string RequestEnd = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
@@ -13,6 +13,7 @@ public sealed class BridgeHost
     private readonly PermissionPolicy _policy;
     private readonly Func<string, Task<bool>> _sendToChat;
     private readonly Action<string> _status;
+    private readonly Func<BridgePermissionPrompt, Task<bool>>? _confirmPermission;
     private readonly ToolRouter _router = new();
     private readonly DurableRequestLedger _requestLedger;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -22,11 +23,13 @@ public sealed class BridgeHost
         PermissionPolicy policy,
         Func<string, Task<bool>> sendToChat,
         Action<string> status,
-        string? sessionId = null)
+        string? sessionId = null,
+        Func<BridgePermissionPrompt, Task<bool>>? confirmPermission = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
         _status = status;
+        _confirmPermission = confirmPermission;
 
         if (sessionId is not null && !IsValidSessionId(sessionId))
         {
@@ -266,23 +269,46 @@ public sealed class BridgeHost
 
             if (decision == PermissionDecision.Ask)
             {
-                var envelope = new BridgeResult(
-                    SessionId,
-                    request.Id,
-                    false,
-                    Error: new BridgeError(
-                        "permission_requires_confirmation",
-                        $"Capability {capability} is configured as ASK. Interactive confirmation UI is the next implementation stage."));
+                var approved = false;
 
-                await CompleteAndDeliverAsync(
-                    request,
-                    ledgerRecord,
-                    envelope,
-                    false,
-                    "permission_requires_confirmation",
-                    0,
-                    $"{request.Tool} requires interactive confirmation.");
-                return;
+                if (_confirmPermission is not null)
+                {
+                    try
+                    {
+                        approved = await _confirmPermission(
+                            new BridgePermissionPrompt(
+                                request.Tool,
+                                capability,
+                                ToolRouter.GetPermissionSummary(request.Tool, request.Args)));
+                    }
+                    catch (Exception ex)
+                    {
+                        _status($"Permission confirmation failed for {request.Id}: {ex.Message}");
+                    }
+                }
+
+                if (!approved)
+                {
+                    var envelope = new BridgeResult(
+                        SessionId,
+                        request.Id,
+                        false,
+                        Error: new BridgeError(
+                            "permission_not_approved",
+                            $"Capability {capability} requires confirmation and was not approved."));
+
+                    await CompleteAndDeliverAsync(
+                        request,
+                        ledgerRecord,
+                        envelope,
+                        false,
+                        "permission_not_approved",
+                        0,
+                        $"{request.Tool} was not approved.");
+                    return;
+                }
+
+                _status($"Permission approved for {request.Tool} ({request.Id}).");
             }
 
             ledgerRecord = await _requestLedger.MarkExecutingAsync(ledgerRecord);
@@ -441,6 +467,14 @@ public sealed class BridgeHost
         {
             throw new InvalidOperationException("Could not inject bridge result into the ChatGPT composer.");
         }
+    }
+
+    public int StopActiveProcesses() => _router.StopActiveProcesses();
+
+    public void Dispose()
+    {
+        _router.Dispose();
+        _gate.Dispose();
     }
 
     private static string GetDataRoot()
