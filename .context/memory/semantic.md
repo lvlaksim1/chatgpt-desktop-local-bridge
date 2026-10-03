@@ -31,3 +31,10 @@
 - `nwn900/ChatGPTDesktopApp` declares ISC.
 - `mozg4D/chatgpt-local-agent` declares MIT.
 - `mikhail494/chatgpt-local-hands` had no explicit repository license at review time; do not copy its code without later license verification.
+
+## UI recovery candidate admitted 2026-10-03
+
+- A page-owned fixed paint shield inside ordinary WebView2 is the current recovery strategy for masking navigation and tab-reveal paint transitions while avoiding the deployment failure of the CompositionControl experiment. It is implemented and CI-proven but not yet Owner-runtime-proven.
+- Keeping initialized WebViews warm while switching only their parent containers is the current tab-preload strategy. Hidden ready tabs are armed with an internal switch shield before their next reveal.
+- Native link/download semantics and custom app-tab navigation are intentionally separated: normal WebView behavior is left unintercepted, while explicit app-tab opening depends on a pre-captured DOM target.
+- The recovery stage was committed in isolated slices before the release commit so runtime failures can be mapped back to a narrow change set.

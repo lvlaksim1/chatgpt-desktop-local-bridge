@@ -1,19 +1,16 @@
 # Next actions
 
-Updated: 2026-10-03 05:49 MSK
+Updated: 2026-10-03 06:10 MSK
 
-1. Treat `0.2.8.0` / `af6ac653` on `dev/ui-shell-v5` as the accepted UI recovery baseline.
-2. Make the next UI change narrowly scoped: address loading/black-area behavior using ordinary `WebView2` only, preserving bridge restore and background preloading.
-3. Build a development prerelease, require Windows CI success, then obtain Owner-side runtime validation before accepting that commit as the next baseline.
-4. Only after that validation, separately address loaded-tab switch flash.
-5. Then separately restore/verify native download behavior for ordinary clicks.
-6. Reintroduce the explicit custom “Открыть в новой вкладке” action using safe DOM/adapter-cached target resolution; never use direct `ContextMenuTarget.LinkUri`.
-7. Harden optional UI event handlers so their failures cannot crash the whole process.
-8. Expand unified theme coverage, add explicit theme reset, and keep full Setup under Settings → Updates while the ordinary top update path remains delta-focused.
-9. After UI recovery, implement Diagnostics filters/copy/expand/export and distinguish tool-execution success from delivery failure.
-10. Continue transport research, fine-grained ASK permissions, tool expansion, and production hardening after the UI/transport foundations are stable.
-11. Use Local Bridge + local `git`/`gh` as the default GitHub execution channel whenever available; batch bounded dependent work where safe.
-12. Reconcile the M4 process/write lineage with product authority `main` while preserving the exact `ea074e0` transport behavior and later M3 durability.
-13. Reproduce and harden staged-but-not-auto-submitted result delivery.
-14. Add Windows Job Object or equivalent robust bridge-owned process containment before broad shell/process expansion.
-15. Keep release retention clean and persist future significant state changes to `manager-state` as sealed generations.
+1. Owner installs the delta `ChatGptDesktopLocalBridge-Update-from-ui-shell-af6ac65.exe` from prerelease `ui-shell-4c92f81`.
+2. Validate startup first; if startup fails, collect fresh Windows Application/.NET Runtime evidence before changing code.
+3. Validate initial loading/black-area behavior and loaded-tab switching.
+4. Confirm background tabs still preload and Local Bridge still restores automatically.
+5. Validate ordinary download links.
+6. Validate right-click “Открыть в новой вкладке” and confirm no process crash.
+7. Validate broader unified theme plus “Сбросить тему”.
+8. Verify the top updater is delta-only and full Setup is available only under Settings → Updates.
+9. On full PASS, promote `4c92f81` as the next accepted UI baseline and close the implementation portion of UI-SHELL-R1.
+10. On any FAIL, map the regression to `f30424d`, `0ff4286b`, `ee6ce6e`, or `4c92f81` and repair/revert only that slice.
+11. After UI validation, proceed to Diagnostics, then transport hardening, fine-grained ASK permissions, tool expansion, and production hardening.
+12. Continue BRIDGE-M3/M4 reconciliation and process-containment work without losing the `ea074e0` transport invariant.

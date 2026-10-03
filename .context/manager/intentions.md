@@ -19,15 +19,19 @@
 
 Owner directive on 2026-10-03 establishes `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053` as the development baseline after rejecting 0.2.9/0.2.10.
 
+Implementation state:
+- points 1–7 requested by the Owner are implemented on `dev/ui-shell-v5` through isolated commits ending at release commit `4c92f81d46b77f964b8e99fe25439058b9b835a1`;
+- CI/release pipeline passed and prerelease `ui-shell-4c92f81` is published;
+- accepted runtime baseline remains `0.2.8.0 / af6ac653` until Owner-side Windows validation.
+
 Active commitments:
-1. Continue UI-shell work from `af6ac653`, not from the rejected 0.2.9/0.2.10 lineage.
-2. Preserve ordinary `WebView2`; do not reintroduce `WebView2CompositionControl` without explicit independent runtime/deployment proof.
-3. Replace unsafe direct `ContextMenuTarget.LinkUri` access with a crash-safe target-resolution path.
-4. Preserve working Local Bridge restore, background tab preloading, profile continuity, and the incremental updater while UI behavior changes.
-5. Deliver one fundamental WebView/UI behavior change per development prerelease where practical, require Owner-side validation, and only then advance to the next change.
-6. Address the planned UI backlog: loading flash, loaded-tab switch flash, black/unused browser area, native download behavior, safe “open in new tab”, unified theme coverage, explicit theme reset, and relocation of full Setup to Settings/Updates.
-7. After the UI recovery slice is stable, continue diagnostics, transport, permission, tool-expansion, and production-hardening work listed in the active plan.
-8. Do not claim the UI recovery complete from CI alone.
+1. Obtain Owner-side validation of startup, initial loading/black area, loaded-tab switching, background preloading, normal downloads, custom open-in-tab, theme/reset behavior, update UX, and Local Bridge restoration.
+2. If validation passes, explicitly promote `4c92f81` as the next accepted UI baseline.
+3. If validation fails, use the isolated commit stack (`f30424d`, `0ff4286b`, `ee6ce6e`, `4c92f81`) to identify/revert the failing slice rather than accumulating speculative fixes.
+4. Preserve ordinary `WebView2`; do not reintroduce `WebView2CompositionControl` without independent deployment/runtime proof.
+5. Preserve the no-`ContextMenuTarget.LinkUri` rule and fail-closed optional UI behavior.
+6. After UI validation, continue diagnostics, transport, permission, tool-expansion, and production-hardening work.
+7. Do not claim UI-SHELL-R1 complete from CI alone.
 
 ### BRIDGE-M3 — Durable execution and delivery
 Durable request lifecycle, pending-result persistence, replay-safe classification, conversation-bound recovery, delivered-payload retirement, bounded result transport, and centralized capability registration are substantially implemented on the product lineage.

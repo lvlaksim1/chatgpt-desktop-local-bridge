@@ -1,10 +1,10 @@
 # Manager plans
 
-Manager generation: 16.
+Manager generation: 17.
 Product authority: `main`.
 Current known authoritative product head: `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
 Canonical transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
-Current UI recovery baseline: `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053` on `dev/ui-shell-v5`.
+Accepted UI runtime baseline: `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930053`.\nCurrent validation candidate: `ui-shell-4c92f81` / `4c92f81d46b77f964b8e99fe25439058b9b835a1` on `dev/ui-shell-v5`.
 
 ## Closed milestones
 - BRIDGE-M1: CLOSED.
@@ -12,30 +12,33 @@ Current UI recovery baseline: `0.2.8.0` / `af6ac65306d5e91b84c48bb44fb7bc37da930
 
 ## UI-SHELL-R1 recovery plan
 
-0.2.9 and 0.2.10 are rejected runtime lineages. Do not port them wholesale back onto the accepted baseline.
+The requested implementation stage 1–7 is code-complete and CI-complete on validation candidate `4c92f81`.
 
-Use a staged validation sequence from `af6ac653`:
-1. Preserve ordinary `WebView2` and first fix the loading/black-area behavior without changing the browser-control class. Keep the custom “Загрузка ChatGPT…” cover until a safe visual-ready criterion, but do not use a composition control.
-2. Separately address switching between already-loaded tabs so the preloaded WebViews remain warm and switching does not introduce a white/blue/black intermediate frame.
-3. Preserve background tab preloading throughout.
-4. Restore native/expected download behavior for ordinary clicks. Normal site navigation/download behavior must not be repurposed into an app-tab action.
-5. Reintroduce “Открыть в новой вкладке” only as an explicit custom context-menu command. Resolve the target via a safe pre-captured DOM/adapter path; never depend on direct `ContextMenuTarget.LinkUri` access.
-6. Harden optional UI handlers so context-menu/theme/link failures cannot terminate the whole application.
-7. Expand unified theme coverage across ChatGPT surfaces and dynamic UI without making the theme layer a startup dependency.
-8. Add an explicit theme reset/default action.
-9. Keep the ordinary top-panel update path delta-only; place full Setup under Settings → Updates as recovery/fallback.
-10. After the above UI recovery steps pass Owner validation, add Diagnostics improvements: filters by tab/tool/request ID, copy, expand request/result, diagnostics bundle export, and explicit distinction between local execution success and result-delivery failure.
-11. Research and harden result transport so large results rely less on, or can eventually avoid, ChatGPT composer automation while keeping the no-OpenAI-API constraint.
-12. Implement real fine-grained `ASK` permission UX: action/path/process-aware Allow once / Always allow / Deny.
-13. Expand local tools only after transport and permissions are stable: stat/hash, line-range read, atomic patch/edit, then higher-level process/files capabilities.
-14. Production hardening: E2E launch → tabs → bridge → tool → result → update → restart; multi-monitor/DPI; temp cleanup; installer/uninstaller; app icon; Russian UI consistency.
-15. Merge verified UI work toward product authority only after the development lineage is stable and Owner validation is complete.
+Implemented slices:
+1. `f30424d` — ordinary-WebView paint stabilization, page-owned loading/switch shield, native background matching, warm parent-only tab switching, background preload preservation.
+2. `0ff4286b` — removal of `NewWindowRequested` interception, adapter-v7 DOM context target publication, safe custom app-tab action with no `ContextMenuTarget.LinkUri`.
+3. `ee6ce6e` — broader unified ChatGPT theme coverage plus explicit default-theme reset.
+4. `4c92f81` — delta-only top updater, full Setup under Settings → Updates, prerelease packaging.
 
-Validation discipline:
-- prefer one fundamental WebView/UI behavior change per prerelease;
-- require Windows CI for compile/package integrity;
-- require Owner-side signed-in Windows evidence for WebView/ChatGPT runtime behavior;
-- if a step regresses runtime behavior, revert only that step and keep the last accepted baseline.
+Validation gate:
+- CI run `37092162098`: PASS.
+- Prerelease `ui-shell-4c92f81`: published.
+- Owner-side signed-in Windows validation: PENDING.
+- Accepted runtime baseline remains `af6ac653` until that validation passes.
+
+Owner validation order:
+1. startup and first navigation;
+2. loading/black-area behavior;
+3. switching already-loaded tabs and background preload;
+4. ordinary download-link behavior;
+5. right-click custom “Открыть в новой вкладке” without crash;
+6. Local Bridge auto-restore;
+7. unified theme coverage and “Сбросить тему”;
+8. updater placement/behavior.
+
+If any regression appears, map it to the isolated commit slice and repair/revert that slice first. Do not stack another broad WebView rewrite on an unverified candidate.
+
+After Owner PASS, promote the validated commit as next UI baseline and proceed to Diagnostics, transport hardening, fine-grained ASK permissions, local-tool expansion, and production hardening.
 
 ## BRIDGE-M3
 Durable execution/delivery is substantially implemented on `main`, but the product lineage must still be reconciled with the proven `ea074e0` transport behavior.

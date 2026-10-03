@@ -51,3 +51,14 @@ Prefer instrumentation and exact live evidence over broad selector rewrites.
 ## External project review
 
 Use public projects to discover algorithms and failure modes. Verify repository license before copying code. When no explicit compatible license exists, reimplement concepts independently.
+
+## Recovery prerelease isolation
+
+For a multi-item Owner-authorized recovery stage where intermediate Owner testing is not requested between each code edit:
+1. start from the exact accepted runtime baseline;
+2. commit each fundamental mechanism as an isolated non-release commit;
+3. place the release trigger only on the final integration commit;
+4. let branch concurrency cancel obsolete intermediate CI runs;
+5. require the final CI/package pipeline to pass;
+6. preserve the isolated commit sequence for targeted revert/repair;
+7. keep the previous runtime baseline authoritative until Owner-side validation passes.
