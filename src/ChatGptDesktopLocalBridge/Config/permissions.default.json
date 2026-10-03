@@ -6,10 +6,12 @@
     "fs.read_text": "AUTO",
     "repo.read": "AUTO",
     "repo.checkpoint": "AUTO",
+    "mcp.read": "AUTO",
 
     "fs.write_text": "ASK",
     "process.start": "ASK",
     "repo.verify": "ASK",
+    "mcp.call": "ASK",
     "fs.delete": "ASK",
     "process.kill": "ASK",
     "registry.write": "ASK",
