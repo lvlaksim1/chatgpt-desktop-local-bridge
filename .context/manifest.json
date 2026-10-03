@@ -50,7 +50,8 @@
     ".context/decisions/DEC-0004-repository-storage-retention.md",
     ".context/decisions/DEC-0005-incremental-update-channel.md",
     ".context/decisions/DEC-0006-single-exe-updates.md",
-    ".context/decisions/DEC-0007-windows-powershell-and-delta-safe-uninstall.md"
+    ".context/decisions/DEC-0007-windows-powershell-and-delta-safe-uninstall.md",
+    ".context/decisions/DEC-0008-ui-shell-rollback-and-validation.md"
   ],
   "dialogues": [],
   "history": [],
@@ -76,7 +77,7 @@
     "direct_owner_invocation_first_class": true,
     "manager_state_coherence_required": true
   },
-  "updated_at": "2026-10-02",
+  "updated_at": "2026-10-03",
   "context_version": "2.0.0-dev",
   "authority": {
     "manager_state_branch": "manager-state",

@@ -16,6 +16,16 @@
 - Interactive elapsed time is dominated by chat round trips, not local command execution. Safe dependent CLI work should be grouped into one bounded noninteractive stage where practical.
 - Owner operating decision: future GitHub manipulation should normally use Local Bridge with local `git`, `gh`, and PowerShell. ChatGPT connector use is exceptional.
 
+## UI shell lessons admitted 2026-10-03
+
+- `0.2.8.0` / `af6ac653` is the Owner-accepted recovery baseline after the 0.2.9/0.2.10 UI regression sequence.
+- A compile-successful `WebView2CompositionControl` substitution is not deployment-safe by inference. On the Owner's Windows 10 system it triggered a startup `FileNotFoundException` for `Microsoft.Windows.SDK.NET, Version=10.0.17763.10`.
+- `CoreWebView2ContextMenuTarget.LinkUri` has a timing-sensitive COM boundary: direct access produced `0x8000000E` and terminated the application. Context-link resolution must not depend on that property.
+- Optional WebView UI enhancements must be isolated from application survival: context menu, theming, and link helpers should fail closed rather than terminate the WPF process.
+- WebView visual correctness is a live-runtime property. CI cannot validate flashes, black surfaces, signed-in downloads, dynamic ChatGPT theme coverage, or context-menu timing.
+- When several foundational WebView behaviors change in one release, a runtime regression becomes expensive to isolate. The recovery workflow should advance through narrowly scoped prereleases, promoting only Owner-validated baselines.
+- A rejected release may still contain useful design ideas, but it is evidence, not a source branch to merge wholesale into the accepted baseline.
+
 ## Third-party licensing note
 
 - `nwn900/ChatGPTDesktopApp` declares ISC.
