@@ -20,6 +20,7 @@ public partial class MainWindow
             "ChatGptDesktopLocalBridge");
 
         Loaded += async (_, _) => await InitializeWebViewAsync();
+        Closed += (_, _) => _bridgeHost?.Dispose();
     }
 
     private async Task InitializeWebViewAsync()
@@ -171,11 +172,13 @@ public partial class MainWindow
             {
                 var pending = pendingDeliveries[0];
 
+                _bridgeHost?.Dispose();
                 _bridgeHost = new BridgeHost(
                     policy,
                     SendTextToChatAsync,
                     statusSink,
-                    pending.Session);
+                    pending.Session,
+                    ConfirmBridgePermissionAsync);
 
                 var resultAlreadyVisible =
                     await HasBridgeResultInCurrentConversationAsync(
@@ -191,10 +194,12 @@ public partial class MainWindow
                 return;
             }
 
+            _bridgeHost?.Dispose();
             _bridgeHost = new BridgeHost(
                 policy,
                 SendTextToChatAsync,
-                statusSink);
+                statusSink,
+                confirmPermission: ConfirmBridgePermissionAsync);
 
             readyCompletion = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -251,6 +256,42 @@ public partial class MainWindow
 
             InitializeBridgeButton.IsEnabled = true;
         }
+    }
+
+    private Task<bool> ConfirmBridgePermissionAsync(BridgePermissionPrompt prompt)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            return Task.FromResult(ShowBridgePermissionPrompt(prompt));
+        }
+
+        return Dispatcher.InvokeAsync(() => ShowBridgePermissionPrompt(prompt)).Task;
+    }
+
+    private static bool ShowBridgePermissionPrompt(BridgePermissionPrompt prompt)
+    {
+        var result = System.Windows.MessageBox.Show(
+            $"ChatGPT requests local capability:\n\n{prompt.Capability}\n\n{prompt.Summary}\n\nAllow this request once?",
+            "Local Bridge permission",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question,
+            System.Windows.MessageBoxResult.No);
+
+        return result == System.Windows.MessageBoxResult.Yes;
+    }
+
+    private void StopLocalTaskButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (_bridgeHost is null)
+        {
+            StatusText.Text = "No Local Bridge session is active.";
+            return;
+        }
+
+        var stop = _bridgeHost.StopActiveWork();
+        StatusText.Text = !stop.CancellationRequested && stop.StoppedProcesses == 0
+            ? "No local tool execution is currently running."
+            : $"STOP requested. Tool cancellation: {(stop.CancellationRequested ? "yes" : "no")}; process jobs stopped: {stop.StoppedProcesses}.";
     }
 
     private void ReloadButton_OnClick(object sender, System.Windows.RoutedEventArgs e)

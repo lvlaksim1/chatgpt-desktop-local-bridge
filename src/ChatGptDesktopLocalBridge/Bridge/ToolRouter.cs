@@ -8,10 +8,17 @@ public sealed record BridgeToolDefinition(
     string Capability,
     string Description,
     string ArgsExample,
-    Func<JsonElement, Task<object?>> ExecuteAsync);
+    bool IsMutating = false,
+    bool IsLongRunning = false);
 
-public sealed class ToolRouter
+public sealed class ToolRouter : IDisposable
 {
+    private const int MaxWriteFileBytes = 1_048_576;
+    private const int DefaultProcessTimeoutMs = 120_000;
+    private const int MaxProcessTimeoutMs = 900_000;
+    private const int DefaultProcessOutputChars = 200_000;
+    private const int MaxProcessOutputChars = 1_000_000;
+
     private static readonly IReadOnlyList<BridgeToolDefinition> ToolDefinitions =
         new BridgeToolDefinition[]
         {
@@ -19,20 +26,87 @@ public sealed class ToolRouter
                 "system.info",
                 "system.info",
                 "Return basic Windows, runtime, and process architecture information.",
-                "{}",
-                _ => Task.FromResult<object?>(GetSystemInfo())),
+                "{}"),
             new(
                 "fs.list",
                 "fs.list",
                 "List up to 500 entries from a local directory.",
-                "{ \"path\": \"C:/some/directory\" }",
-                args => Task.FromResult<object?>(ListDirectory(args))),
+                "{ \"path\": \"C:/some/directory\" }"),
             new(
                 "fs.read_text",
                 "fs.read_text",
                 "Read a bounded amount of text from a local file.",
-                "{ \"path\": \"C:/some/file.txt\", \"max_chars\": 200000 }",
-                async args => await ReadTextAsync(args))
+                "{ \"path\": \"C:/some/file.txt\", \"max_chars\": 200000 }"),
+            new(
+                "fs.write_text",
+                "fs.write_text",
+                "Atomically create or replace a UTF-8 text file.",
+                "{ \"path\": \"C:/some/file.txt\", \"text\": \"text\", \"overwrite\": false, \"create_directories\": false }",
+                IsMutating: true),
+            new(
+                "fs.append_text",
+                "fs.write_text",
+                "Append UTF-8 text to a file.",
+                "{ \"path\": \"C:/some/file.txt\", \"text\": \"more text\", \"create_if_missing\": false, \"create_directories\": false }",
+                IsMutating: true),
+            new(
+                "fs.write_file",
+                "fs.write_text",
+                "Atomically create or replace a bounded binary/text file.",
+                "{ \"path\": \"C:/some/file.bin\", \"content\": \"BASE64_OR_TEXT\", \"encoding\": \"base64\", \"overwrite\": false, \"create_directories\": false }",
+                IsMutating: true),
+            new(
+                "process.run",
+                "process.start",
+                "Run one bounded non-interactive process inside a Windows Job Object.",
+                "{ \"file\": \"git.exe\", \"arguments\": [\"status\"], \"cwd\": \"C:/repo\", \"timeout_ms\": 120000, \"max_output_chars\": 200000 }",
+                IsMutating: true,
+                IsLongRunning: true),
+            new(
+                "repo.status",
+                "repo.read",
+                "Return branch, HEAD, and working-tree status for a Git repository.",
+                "{ \"path\": \"C:/repo\" }"),
+            new(
+                "repo.diff",
+                "repo.read",
+                "Return a bounded working-tree or staged Git diff.",
+                "{ \"path\": \"C:/repo\", \"staged\": false, \"max_chars\": 200000 }"),
+            new(
+                "repo.map",
+                "repo.read",
+                "Build a bounded local repository map with query-ranked files and symbol hints.",
+                "{ \"path\": \"C:/repo\", \"query\": \"bridge result delivery\", \"max_files\": 120, \"max_chars\": 120000 }"),
+            new(
+                "repo.checkpoint",
+                "repo.checkpoint",
+                "Capture Git status/diffs plus bounded untracked files into Local Bridge state without modifying the repository.",
+                "{ \"path\": \"C:/repo\" }",
+                IsMutating: true),
+            new(
+                "repo.verify",
+                "repo.verify",
+                "Run one bounded verification command from the repository root.",
+                "{ \"path\": \"C:/repo\", \"file\": \"dotnet.exe\", \"arguments\": [\"test\"], \"timeout_ms\": 300000, \"max_output_chars\": 200000 }",
+                IsMutating: true,
+                IsLongRunning: true),
+            new(
+                "mcp.list_servers",
+                "mcp.read",
+                "List locally configured MCP servers without exposing environment variable values.",
+                "{}"),
+            new(
+                "mcp.list_tools",
+                "mcp.read",
+                "List allowed tools exposed by one configured MCP server.",
+                "{ \"server\": \"server-id\", \"force_refresh\": false }"),
+            new(
+                "mcp.call",
+                "mcp.call",
+                "Call one tool on a preconfigured MCP server. Server commands cannot be supplied by the model.",
+                "{ \"server\": \"server-id\", \"tool\": \"tool-name\", \"arguments\": {}, \"timeout_ms\": 120000 }",
+                IsMutating: true,
+                IsLongRunning: true)
         };
 
     private static readonly IReadOnlyDictionary<string, BridgeToolDefinition> ToolDefinitionsByName =
@@ -40,17 +114,94 @@ public sealed class ToolRouter
             definition => definition.Name,
             StringComparer.Ordinal);
 
+    private readonly ProcessExecutionManager _processes = new();
+    private readonly RepoTools _repoTools;
+    private readonly McpManager _mcp = new();
+
+    public ToolRouter()
+    {
+        _repoTools = new RepoTools(_processes);
+    }
+
     public static IReadOnlyList<BridgeToolDefinition> Definitions => ToolDefinitions;
 
-    public async Task<object?> ExecuteAsync(string tool, JsonElement args)
+    public int ActiveProcessCount => _processes.ActiveCount;
+
+    public IReadOnlyList<string> ActiveProcessIds => _processes.ActiveExecutionIds;
+
+    public async Task<object?> ExecuteAsync(
+        string tool,
+        JsonElement args,
+        CancellationToken cancellationToken = default)
     {
-        if (!ToolDefinitionsByName.TryGetValue(tool, out var definition))
+        if (!ToolDefinitionsByName.ContainsKey(tool))
         {
             throw new BridgeToolException("unknown_tool", $"Unknown local tool: {tool}");
         }
 
-        return await definition.ExecuteAsync(args);
+        return tool switch
+        {
+            "system.info" => GetSystemInfo(),
+            "fs.list" => ListDirectory(args),
+            "fs.read_text" => await ReadTextAsync(args),
+            "fs.write_text" => await WriteTextAsync(args),
+            "fs.append_text" => await AppendTextAsync(args),
+            "fs.write_file" => await WriteFileAsync(args),
+            "process.run" => await RunProcessAsync(args, cancellationToken),
+            "repo.status" => await _repoTools.StatusAsync(
+                RequiredString(args, "path"),
+                cancellationToken),
+            "repo.diff" => await _repoTools.DiffAsync(
+                RequiredString(args, "path"),
+                OptionalBool(args, "staged", false),
+                Math.Clamp(OptionalInt(args, "max_chars", 200_000), 1_000, 1_000_000),
+                cancellationToken),
+            "repo.map" => await _repoTools.MapAsync(
+                RequiredString(args, "path"),
+                OptionalString(args, "query", string.Empty),
+                Math.Clamp(OptionalInt(args, "max_files", 120), 1, 500),
+                Math.Clamp(OptionalInt(args, "max_chars", 120_000), 1_000, 1_000_000),
+                cancellationToken),
+            "repo.checkpoint" => await _repoTools.CheckpointAsync(
+                RequiredString(args, "path"),
+                cancellationToken),
+            "repo.verify" => await _repoTools.VerifyAsync(
+                RequiredString(args, "path"),
+                RequiredString(args, "file"),
+                OptionalStringArray(args, "arguments"),
+                Math.Clamp(
+                    OptionalInt(args, "timeout_ms", 300_000),
+                    1_000,
+                    MaxProcessTimeoutMs),
+                Math.Clamp(
+                    OptionalInt(args, "max_output_chars", DefaultProcessOutputChars),
+                    1_000,
+                    MaxProcessOutputChars),
+                cancellationToken),
+            "mcp.list_servers" => await _mcp.ListServersAsync(cancellationToken),
+            "mcp.list_tools" => await _mcp.ListToolsAsync(
+                RequiredString(args, "server"),
+                OptionalBool(args, "force_refresh", false),
+                cancellationToken),
+            "mcp.call" => await _mcp.CallAsync(
+                RequiredString(args, "server"),
+                RequiredString(args, "tool"),
+                OptionalObject(args, "arguments"),
+                Math.Clamp(
+                    OptionalInt(args, "timeout_ms", DefaultProcessTimeoutMs),
+                    1_000,
+                    MaxProcessTimeoutMs),
+                cancellationToken),
+            _ => throw new BridgeToolException("unknown_tool", $"Unknown local tool: {tool}")
+        };
     }
+
+    public int StopActiveProcesses() => _processes.StopAll();
+
+    public static BridgeToolDefinition? GetDefinition(string tool)
+        => ToolDefinitionsByName.TryGetValue(tool, out var definition)
+            ? definition
+            : null;
 
     public static string GetCapability(string tool)
         => ToolDefinitionsByName.TryGetValue(tool, out var definition)
@@ -65,11 +216,37 @@ public sealed class ToolRouter
         {
             var definition = ToolDefinitions[index];
             lines.Add($"{index + 1}. {definition.Name}");
+            lines.Add($"   {definition.Description}");
             lines.Add($"   args: {definition.ArgsExample}");
             lines.Add(string.Empty);
         }
 
         return lines;
+    }
+
+    public static string GetPermissionSummary(string tool, JsonElement args)
+    {
+        try
+        {
+            return tool switch
+            {
+                "fs.write_text" or "fs.append_text" or "fs.write_file"
+                    => $"{tool}: {RequiredString(args, "path")}",
+                "process.run"
+                    => $"process.run: {RequiredString(args, "file")} {string.Join(" ", OptionalStringArray(args, "arguments"))}",
+                "repo.checkpoint"
+                    => $"repo.checkpoint: {RequiredString(args, "path")}",
+                "repo.verify"
+                    => $"repo.verify: {RequiredString(args, "file")} {string.Join(" ", OptionalStringArray(args, "arguments"))} in {RequiredString(args, "path")}",
+                "mcp.call"
+                    => $"mcp.call: {RequiredString(args, "server")}/{RequiredString(args, "tool")}",
+                _ => tool
+            };
+        }
+        catch
+        {
+            return tool;
+        }
     }
 
     private static object GetSystemInfo() => new
@@ -128,8 +305,7 @@ public sealed class ToolRouter
             throw new BridgeToolException("file_not_found", $"File does not exist: {fullPath}");
         }
 
-        var maxChars = OptionalInt(args, "max_chars", 200_000);
-        maxChars = Math.Clamp(maxChars, 1, 1_000_000);
+        var maxChars = Math.Clamp(OptionalInt(args, "max_chars", 200_000), 1, 1_000_000);
 
         using var reader = new StreamReader(fullPath, detectEncodingFromByteOrderMarks: true);
         var buffer = new char[maxChars + 1];
@@ -144,6 +320,329 @@ public sealed class ToolRouter
             truncated,
             maxChars
         };
+    }
+
+    private static async Task<object> WriteTextAsync(JsonElement args)
+    {
+        var path = RequiredString(args, "path");
+        var text = RequiredStringAllowEmpty(args, "text");
+        var overwrite = OptionalBool(args, "overwrite", false);
+        var createDirectories = OptionalBool(args, "create_directories", false);
+        var fullPath = ResolveWritePath(path, createDirectories);
+        var existed = File.Exists(fullPath);
+
+        if (existed && !overwrite)
+        {
+            throw new BridgeToolException(
+                "file_exists",
+                $"File already exists. Set overwrite=true to replace it: {fullPath}");
+        }
+
+        var encoding = new System.Text.UTF8Encoding(false);
+        var bytes = encoding.GetBytes(text);
+        await WriteBytesAtomicAsync(fullPath, bytes, overwrite);
+
+        return new
+        {
+            path = fullPath,
+            charsWritten = text.Length,
+            bytesWritten = bytes.Length,
+            encoding = "utf-8",
+            overwritten = existed
+        };
+    }
+
+    private static async Task<object> AppendTextAsync(JsonElement args)
+    {
+        var path = RequiredString(args, "path");
+        var text = RequiredStringAllowEmpty(args, "text");
+        var createIfMissing = OptionalBool(args, "create_if_missing", false);
+        var createDirectories = OptionalBool(args, "create_directories", false);
+        var fullPath = ResolveWritePath(path, createDirectories);
+        var existed = File.Exists(fullPath);
+
+        if (!existed && !createIfMissing)
+        {
+            throw new BridgeToolException(
+                "file_not_found",
+                $"File does not exist. Set create_if_missing=true to create it: {fullPath}");
+        }
+
+        if (Directory.Exists(fullPath))
+        {
+            throw new BridgeToolException("path_is_directory", $"Path is a directory: {fullPath}");
+        }
+
+        var encoding = new System.Text.UTF8Encoding(false);
+        await File.AppendAllTextAsync(fullPath, text, encoding);
+
+        return new
+        {
+            path = fullPath,
+            charsAppended = text.Length,
+            bytesAppended = encoding.GetByteCount(text),
+            created = !existed,
+            encoding = "utf-8"
+        };
+    }
+
+    private static async Task<object> WriteFileAsync(JsonElement args)
+    {
+        var path = RequiredString(args, "path");
+        var content = RequiredStringAllowEmpty(args, "content");
+        var encodingName = OptionalString(args, "encoding", "base64").Trim().ToLowerInvariant();
+        var overwrite = OptionalBool(args, "overwrite", false);
+        var createDirectories = OptionalBool(args, "create_directories", false);
+        var fullPath = ResolveWritePath(path, createDirectories);
+        var existed = File.Exists(fullPath);
+
+        if (existed && !overwrite)
+        {
+            throw new BridgeToolException(
+                "file_exists",
+                $"File already exists. Set overwrite=true to replace it: {fullPath}");
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = encodingName switch
+            {
+                "base64" => Convert.FromBase64String(content),
+                "utf8" or "utf-8" => new System.Text.UTF8Encoding(false).GetBytes(content),
+                _ => throw new BridgeToolException(
+                    "invalid_args",
+                    "encoding must be either 'base64' or 'utf8'.")
+            };
+        }
+        catch (FormatException)
+        {
+            throw new BridgeToolException("invalid_base64", "content is not valid Base64.");
+        }
+
+        if (bytes.Length > MaxWriteFileBytes)
+        {
+            throw new BridgeToolException(
+                "file_too_large",
+                $"Decoded file is {bytes.Length} bytes; maximum is {MaxWriteFileBytes} bytes.");
+        }
+
+        await WriteBytesAtomicAsync(fullPath, bytes, overwrite);
+
+        return new
+        {
+            path = fullPath,
+            bytesWritten = bytes.Length,
+            sourceEncoding = encodingName,
+            overwritten = existed,
+            maxBytes = MaxWriteFileBytes
+        };
+    }
+
+    private async Task<object> RunProcessAsync(
+        JsonElement args,
+        CancellationToken cancellationToken)
+    {
+        var file = RequiredString(args, "file");
+        var arguments = OptionalStringArray(args, "arguments");
+        var workingDirectoryRaw = OptionalString(args, "cwd", string.Empty);
+        var timeoutMs = Math.Clamp(
+            OptionalInt(args, "timeout_ms", DefaultProcessTimeoutMs),
+            1_000,
+            MaxProcessTimeoutMs);
+        var maxOutputChars = Math.Clamp(
+            OptionalInt(args, "max_output_chars", DefaultProcessOutputChars),
+            1_000,
+            MaxProcessOutputChars);
+
+        string? workingDirectory = null;
+        if (!string.IsNullOrWhiteSpace(workingDirectoryRaw))
+        {
+            workingDirectory = Path.GetFullPath(
+                Environment.ExpandEnvironmentVariables(workingDirectoryRaw));
+
+            if (!Directory.Exists(workingDirectory))
+            {
+                throw new BridgeToolException(
+                    "directory_not_found",
+                    $"Working directory does not exist: {workingDirectory}");
+            }
+        }
+
+        var outcome = await _processes.RunAsync(
+            new ProcessRunSpec(
+                file,
+                arguments,
+                workingDirectory,
+                timeoutMs,
+                maxOutputChars),
+            cancellationToken);
+
+        return new
+        {
+            executionId = outcome.ExecutionId,
+            file = outcome.File,
+            arguments = outcome.Arguments,
+            cwd = outcome.WorkingDirectory,
+            exitCode = outcome.ExitCode,
+            stdout = outcome.Stdout,
+            stderr = outcome.Stderr,
+            stdoutTruncated = outcome.StdoutTruncated,
+            stderrTruncated = outcome.StderrTruncated,
+            timedOut = outcome.TimedOut,
+            stopped = outcome.Stopped,
+            cancelled = outcome.Cancelled,
+            elapsedMs = outcome.ElapsedMs,
+            timeoutMs = outcome.TimeoutMs,
+            maxOutputChars = outcome.MaxOutputChars
+        };
+    }
+
+    private static string ResolveWritePath(string path, bool createDirectories)
+    {
+        var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+
+        if (Directory.Exists(fullPath))
+        {
+            throw new BridgeToolException("path_is_directory", $"Path is a directory: {fullPath}");
+        }
+
+        var parent = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(parent))
+        {
+            throw new BridgeToolException("invalid_path", $"Could not resolve parent directory: {fullPath}");
+        }
+
+        if (!Directory.Exists(parent))
+        {
+            if (!createDirectories)
+            {
+                throw new BridgeToolException(
+                    "directory_not_found",
+                    $"Parent directory does not exist. Set create_directories=true to create it: {parent}");
+            }
+
+            Directory.CreateDirectory(parent);
+        }
+
+        return fullPath;
+    }
+
+    private static async Task WriteBytesAtomicAsync(
+        string fullPath,
+        byte[] bytes,
+        bool overwrite)
+    {
+        var parent = Path.GetDirectoryName(fullPath)!;
+        var tempPath = Path.Combine(
+            parent,
+            $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.localbridge.tmp");
+
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, bytes);
+            File.Move(tempPath, fullPath, overwrite);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch
+                {
+                    // Best-effort cleanup only.
+                }
+            }
+        }
+    }
+
+    private static string[] OptionalStringArray(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object ||
+            !args.TryGetProperty(name, out var value))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeToolException(
+                "invalid_args",
+                $"Argument '{name}' must be an array of strings.");
+        }
+
+        var items = new List<string>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                throw new BridgeToolException(
+                    "invalid_args",
+                    $"Argument '{name}' must contain only strings.");
+            }
+
+            items.Add(item.GetString() ?? string.Empty);
+        }
+
+        return items.ToArray();
+    }
+
+    private static JsonElement OptionalObject(JsonElement args, string name)
+    {
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty(name, out var value))
+        {
+            if (value.ValueKind is not JsonValueKind.Object and not JsonValueKind.Null)
+            {
+                throw new BridgeToolException(
+                    "invalid_args",
+                    $"Argument '{name}' must be a JSON object.");
+            }
+
+            return value.Clone();
+        }
+
+        using var empty = JsonDocument.Parse("{}");
+        return empty.RootElement.Clone();
+    }
+
+    private static string RequiredStringAllowEmpty(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object ||
+            !args.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeToolException("invalid_args", $"Required string argument is missing: {name}");
+        }
+
+        return value.GetString() ?? string.Empty;
+    }
+
+    private static string OptionalString(JsonElement args, string name, string defaultValue)
+    {
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.String)
+        {
+            return value.GetString() ?? defaultValue;
+        }
+
+        return defaultValue;
+    }
+
+    private static bool OptionalBool(JsonElement args, string name, bool defaultValue)
+    {
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty(name, out var value) &&
+            value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            return value.GetBoolean();
+        }
+
+        return defaultValue;
     }
 
     private static string RequiredString(JsonElement args, string name)
@@ -169,6 +668,12 @@ public sealed class ToolRouter
         }
 
         return defaultValue;
+    }
+
+    public void Dispose()
+    {
+        _mcp.Dispose();
+        _processes.Dispose();
     }
 }
 
