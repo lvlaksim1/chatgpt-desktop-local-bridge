@@ -3,56 +3,149 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="ChatGPT Desktop Local Bridge"
-        Width="1280"
-        Height="860"
-        MinWidth="900"
-        MinHeight="600">
-    <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="8" BorderBrush="#DDD" BorderThickness="0,0,0,1">
+        Width="1440"
+        Height="900"
+        MinWidth="1100"
+        MinHeight="680"
+        Background="#F2F3F5"
+        FontFamily="Segoe UI">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="#202124"
+                Padding="12,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Foreground="White"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Text="ChatGPT Desktop Local Bridge" />
+
+                <TextBlock x:Name="VersionText"
+                           Grid.Column="1"
+                           Margin="10,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="#AEB0B4"
+                           FontSize="12"
+                           Text="v—" />
+
                 <Button x:Name="InitializeBridgeButton"
-                        Grid.Column="0"
-                        Margin="0,0,8,0"
+                        Grid.Column="3"
+                        Margin="8,0,0,0"
                         Padding="12,6"
                         Click="InitializeBridgeButton_OnClick"
-                        Content="Initialize Bridge" />
+                        Content="Инициализировать мост" />
 
                 <Button x:Name="ReloadButton"
-                        Grid.Column="1"
-                        Margin="0,0,8,0"
+                        Grid.Column="4"
+                        Margin="8,0,0,0"
                         Padding="12,6"
                         Click="ReloadButton_OnClick"
-                        Content="Reload" />
+                        Content="Перезагрузить" />
 
                 <Button x:Name="PermissionsButton"
-                        Grid.Column="2"
-                        Margin="0,0,8,0"
+                        Grid.Column="5"
+                        Margin="8,0,0,0"
                         Padding="12,6"
                         Click="PermissionsButton_OnClick"
-                        Content="Permissions" />
+                        Content="Разрешения" />
 
                 <Button x:Name="DiagnosticsButton"
-                        Grid.Column="3"
-                        Margin="0,0,12,0"
+                        Grid.Column="6"
+                        Margin="8,0,0,0"
                         Padding="12,6"
                         Click="DiagnosticsButton_OnClick"
-                        Content="Diagnostics" />
-
-                <TextBlock x:Name="StatusText"
-                           Grid.Column="4"
-                           VerticalAlignment="Center"
-                           Text="Starting WebView2…" />
+                        Content="Диагностика" />
             </Grid>
         </Border>
 
-        <wv2:WebView2 x:Name="Browser" />
-    </DockPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="340" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="White">
+                <wv2:WebView2 x:Name="Browser" />
+            </Border>
+
+            <Border Grid.Column="1"
+                    Background="#F7F7F8"
+                    BorderBrush="#D8D9DB"
+                    BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Margin="14,12,14,8"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="#202124"
+                               Text="Local Bridge" />
+
+                    <TabControl Grid.Row="1"
+                                Margin="8,0,8,8">
+                        <TabItem Header="Активность">
+                            <ListBox x:Name="ActivityList"
+                                     BorderThickness="0"
+                                     Background="White"
+                                     Padding="6">
+                                <ListBoxItem IsHitTestVisible="False">
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="#666"
+                                               Text="Панель активности готова. События Local Bridge будут подключены на следующем этапе." />
+                                </ListBoxItem>
+                            </ListBox>
+                        </TabItem>
+
+                        <TabItem Header="Консоль">
+                            <TextBox x:Name="ConsoleTextBox"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="NoWrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     BorderThickness="0"
+                                     Padding="8"
+                                     Background="#111315"
+                                     Foreground="#E7E7E7"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     Text="Консоль Local Bridge будет подключена на следующем этапе." />
+                        </TabItem>
+                    </TabControl>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2"
+                Background="#FAFAFA"
+                BorderBrush="#D8D9DB"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <TextBlock x:Name="StatusText"
+                       Foreground="#45474A"
+                       Text="Запуск WebView2…" />
+        </Border>
+    </Grid>
 </Window>
