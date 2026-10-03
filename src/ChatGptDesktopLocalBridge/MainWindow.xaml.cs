@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Input;
 using ChatGptDesktopLocalBridge.Bridge;
 using Microsoft.Web.WebView2.Core;
 
@@ -16,6 +18,7 @@ public partial class MainWindow
         InitializeComponent();
 
         VersionText.Text = LoadDisplayVersion();
+        StateChanged += (_, _) => UpdateMaximizeButton();
 
         _appDataRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -49,6 +52,50 @@ public partial class MainWindow
         return $"v{assemblyVersion ?? "dev"}";
     }
 
+    private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            return;
+        }
+
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
+    }
+
+    private void MinimizeButton_OnClick(object sender, RoutedEventArgs e)
+        => WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_OnClick(object sender, RoutedEventArgs e)
+        => ToggleMaximize();
+
+    private void CloseButton_OnClick(object sender, RoutedEventArgs e)
+        => Close();
+
+    private void ToggleMaximize()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+
+        UpdateMaximizeButton();
+    }
+
+    private void UpdateMaximizeButton()
+    {
+        if (MaximizeButton is null)
+        {
+            return;
+        }
+
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "❐" : "□";
+        MaximizeButton.ToolTip = maximized ? "Восстановить" : "Развернуть";
+    }
+
     private async Task InitializeWebViewAsync()
     {
         Directory.CreateDirectory(_appDataRoot);
@@ -74,7 +121,7 @@ public partial class MainWindow
     private void Browser_OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         StatusText.Text = e.IsSuccess
-            ? "ChatGPT готов. При необходимости войдите в аккаунт, затем инициализируйте мост."
+            ? "ChatGPT готов"
             : $"Ошибка навигации: {e.WebErrorStatus}";
     }
 
@@ -84,7 +131,7 @@ public partial class MainWindow
         {
             if (!IsAllowedOrigin(e.Source))
             {
-                StatusText.Text = $"Сообщение из недоверенного источника проигнорировано: {e.Source}";
+                StatusText.Text = $"Недоверенный источник: {e.Source}";
                 return;
             }
 
@@ -168,7 +215,7 @@ public partial class MainWindow
                 uri.Host.EndsWith(".chatgpt.com", StringComparison.OrdinalIgnoreCase));
     }
 
-    private async void InitializeBridgeButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
+    private async void InitializeBridgeButton_OnClick(object sender, RoutedEventArgs e)
     {
         InitializeBridgeButton.IsEnabled = false;
         TaskCompletionSource<bool>? readyCompletion = null;
@@ -192,24 +239,24 @@ public partial class MainWindow
                 if (!StatusText.Text.StartsWith("Ошибка отправки в ChatGPT:", StringComparison.Ordinal))
                 {
                     StatusText.Text =
-                        "Не удалось отправить bootstrap моста. Откройте диалог и запустите диагностику.";
+                        "Не удалось отправить bootstrap моста.";
                 }
                 return;
             }
 
             StatusText.Text =
-                $"Bootstrap отправлен. Ожидание подтверждения моста {_bridgeHost.SessionId[..8]}…";
+                $"Bootstrap отправлен · {_bridgeHost.SessionId[..8]}…";
 
             try
             {
                 await readyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(60));
                 StatusText.Text =
-                    $"Мост готов. Сессия {_bridgeHost.SessionId[..8]}…";
+                    $"Мост готов · {_bridgeHost.SessionId[..8]}…";
             }
             catch (TimeoutException)
             {
                 StatusText.Text =
-                    "Bootstrap отправлен, но ChatGPT не вернул ожидаемое подтверждение READY.";
+                    "Нет подтверждения READY от ChatGPT.";
             }
         }
         catch (Exception ex)
@@ -227,10 +274,10 @@ public partial class MainWindow
         }
     }
 
-    private void ReloadButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
+    private void ReloadButton_OnClick(object sender, RoutedEventArgs e)
         => Browser.Reload();
 
-    private void PermissionsButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
+    private void PermissionsButton_OnClick(object sender, RoutedEventArgs e)
     {
         var path = PermissionPolicy.GetUserPolicyPath();
         var startInfo = new ProcessStartInfo("notepad.exe")
@@ -241,7 +288,7 @@ public partial class MainWindow
         Process.Start(startInfo);
     }
 
-    private async void DiagnosticsButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
+    private async void DiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (Browser.CoreWebView2 is null)
         {
@@ -274,19 +321,19 @@ public partial class MainWindow
                                    webViewElement.ValueKind == JsonValueKind.True;
 
             StatusText.Text =
-                $"Адаптер v{version}: WebView {(webViewAvailable ? "OK" : "ОШИБКА")}, " +
-                $"поле ввода {(composerFound ? "OK" : "НЕ НАЙДЕНО")}, " +
-                $"native input {(nativeInputReady ? "ГОТОВ" : "НЕ ГОТОВ")}.";
+                $"Адаптер v{version} · WebView {(webViewAvailable ? "OK" : "ОШИБКА")} · " +
+                $"поле ввода {(composerFound ? "OK" : "НЕ НАЙДЕНО")} · " +
+                $"native input {(nativeInputReady ? "ГОТОВ" : "НЕ ГОТОВ")}";
 
             var details = JsonSerializer.Serialize(
                 root,
                 new JsonSerializerOptions { WriteIndented = true });
 
-            System.Windows.MessageBox.Show(
+            MessageBox.Show(
                 details,
                 "Диагностика Local Bridge",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Information);
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
