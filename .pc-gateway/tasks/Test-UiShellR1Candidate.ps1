@@ -23,6 +23,24 @@ $oldBrowserArgs = [Environment]::GetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BRO
 $oldSkipRestart = [Environment]::GetEnvironmentVariable('CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART', 'Process')
 $leaveAppRunning = $true
 
+function Decode-Utf8Base64 {
+    param([string]$Value)
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
+
+$UiBridgeButton = Decode-Utf8Base64 '0JzQvtGB0YI='
+$UiBridgeReadyPattern = Decode-Utf8Base64 '0JzQvtGB0YIg0LPQvtGC0L7QsiDCtyAq'
+$UiBridgeAlreadyReadyPattern = Decode-Utf8Base64 '0JzQvtGB0YIg0YPQttC1INCz0L7RgtC+0LIgwrcgKg=='
+$UiBridgeErrorPattern = Decode-Utf8Base64 '0J7RiNC40LHQutCwIExvY2FsIEJyaWRnZToq'
+$UiSendErrorPattern = Decode-Utf8Base64 '0J7RiNC40LHQutCwINC+0YLQv9GA0LDQstC60Lg6Kg=='
+$UiReadyTimeoutPattern = Decode-Utf8Base64 'TG9jYWwgQnJpZGdlOiDQvdC10YIg0L/QvtC00YLQstC10YDQttC00LXQvdC40Y8gUkVBRFkuKg=='
+$UiComposerNotReadyPattern = Decode-Utf8Base64 'TG9jYWwgQnJpZGdlOiDQv9C+0LvQtSDQstCy0L7QtNCwIENoYXRHUFQg0LXRidGRINC90LUg0LPQvtGC0L7QstC+Lio='
+$UiSettings = Decode-Utf8Base64 '0J3QsNGB0YLRgNC+0LnQutC4'
+$UiResetTheme = Decode-Utf8Base64 '0KHQsdGA0L7RgdC40YLRjCDRgtC10LzRgw=='
+$UiFullSetup = Decode-Utf8Base64 '0KHQutCw0YfQsNGC0Ywg0Lgg0LfQsNC/0YPRgdGC0LjRgtGMINC/0L7Qu9C90YvQuSBTZXR1cA=='
+$UiCancel = Decode-Utf8Base64 '0J7RgtC80LXQvdCw'
+$UiNewChat = Decode-Utf8Base64 'KyDQp9Cw0YI='
+
 function Write-ProjectResult {
     param(
         [string]$Status,
@@ -564,7 +582,7 @@ function Wait-BridgeReadyStatus {
         $lastTexts = @(Get-UiTexts -Root $Root)
 
         $ready = @($lastTexts | Where-Object {
-            $_ -like 'Мост готов · *' -or $_ -like 'Мост уже готов · *'
+            $_ -like $UiBridgeReadyPattern -or $_ -like $UiBridgeAlreadyReadyPattern
         } | Select-Object -First 1)
 
         if ($ready.Count -gt 0) {
@@ -572,10 +590,10 @@ function Wait-BridgeReadyStatus {
         }
 
         $failure = @($lastTexts | Where-Object {
-            $_ -like 'Ошибка Local Bridge:*' -or
-            $_ -like 'Ошибка отправки:*' -or
-            $_ -like 'Local Bridge: нет подтверждения READY.*' -or
-            $_ -like 'Local Bridge: поле ввода ChatGPT ещё не готово.*'
+            $_ -like $UiBridgeErrorPattern -or
+            $_ -like $UiSendErrorPattern -or
+            $_ -like $UiReadyTimeoutPattern -or
+            $_ -like $UiComposerNotReadyPattern
         } | Select-Object -First 1)
 
         if ($failure.Count -gt 0) {
@@ -732,15 +750,15 @@ function Test-SettingsUi {
         [int]$ProcessId
     )
 
-    Invoke-UiButton -Root $MainRoot -Name 'Настройки'
-    $settings = Wait-WindowByName -ProcessId $ProcessId -Name 'Настройки' -TimeoutSeconds 12
+    Invoke-UiButton -Root $MainRoot -Name $UiSettings
+    $settings = Wait-WindowByName -ProcessId $ProcessId -Name $UiSettings -TimeoutSeconds 12
     if ($null -eq $settings) {
         throw 'Settings window did not appear.'
     }
 
     $buttons = @(Get-UiButtonNames -Root $settings)
-    $hasReset = $buttons -contains 'Сбросить тему'
-    $hasFullSetup = $buttons -contains 'Скачать и запустить полный Setup'
+    $hasReset = $buttons -contains $UiResetTheme
+    $hasFullSetup = $buttons -contains $UiFullSetup
 
     if (-not $hasReset) {
         throw 'Theme reset button is missing from Settings.'
@@ -750,7 +768,7 @@ function Test-SettingsUi {
         throw 'Full Setup button is missing from Settings -> Updates.'
     }
 
-    Invoke-UiButton -Root $settings -Name 'Отмена'
+    Invoke-UiButton -Root $settings -Name $UiCancel
     Start-Sleep -Milliseconds 500
 
     return @{
@@ -935,7 +953,7 @@ function Test-BackgroundPreload {
     )
 
     $before = Get-ChatPageTargetCount -Port $Port
-    Invoke-UiButton -Root $Root -Name '+ Чат'
+    Invoke-UiButton -Root $Root -Name $UiNewChat
 
     $deadline = [DateTime]::UtcNow.AddSeconds(35)
     $after = $before
@@ -1070,7 +1088,7 @@ try {
     $paintShield = Wait-PaintShieldHidden -Socket $socket -Id ([ref]$cdpId) -TimeoutSeconds 20
     Write-Host 'UI_R1_STAGE=paint-shield-hidden'
 
-    Invoke-UiButton -Root $uiRoot -Name 'Мост'
+    Invoke-UiButton -Root $uiRoot -Name $UiBridgeButton
     Write-Host 'BRIDGE_M1_STAGE=initialize-clicked'
     $bridgeReadyText = Wait-BridgeReadyStatus -Root $uiRoot -TimeoutSeconds 90
     Write-Host ('BRIDGE_M1_STAGE=bridge-ready:' + $bridgeReadyText)
