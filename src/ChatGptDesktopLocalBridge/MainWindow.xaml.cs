@@ -288,10 +288,10 @@ public partial class MainWindow
             return;
         }
 
-        var stopped = _bridgeHost.StopActiveProcesses();
-        StatusText.Text = stopped == 0
-            ? "No local process is currently running."
-            : $"STOP requested for {stopped} local process execution(s).";
+        var stop = _bridgeHost.StopActiveWork();
+        StatusText.Text = !stop.CancellationRequested && stop.StoppedProcesses == 0
+            ? "No local tool execution is currently running."
+            : $"STOP requested. Tool cancellation: {(stop.CancellationRequested ? "yes" : "no")}; process jobs stopped: {stop.StoppedProcesses}.";
     }
 
     private void ReloadButton_OnClick(object sender, System.Windows.RoutedEventArgs e)
