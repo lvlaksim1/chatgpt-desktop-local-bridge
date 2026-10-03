@@ -46,10 +46,10 @@ jobs:
       - name: Set release identity
         shell: pwsh
         run: |
-          $sha = "\${{ github.sha }}"
+          $sha = "${{ github.sha }}"
           $short = $sha.Substring(0, 7)
           $tag = "runtime-ui028-$short"
-          $version = "0.2.\${{ github.run_number }}.0"
+          $version = "0.2.${{ github.run_number }}.0"
           "TARGET_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -60,14 +60,14 @@ jobs:
           [ordered]@{
             schema = "chatgpt-desktop-local-bridge-release-v1"
             tag = $env:TARGET_TAG
-            commit = "\${{ github.sha }}"
+            commit = "${{ github.sha }}"
             appVersion = $env:APP_VERSION
           } | ConvertTo-Json | Set-Content .\publish\win-x64\release-info.json -Encoding UTF8
 
       - name: Create target publish manifest
         shell: pwsh
         run: |
-          .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag $env:TARGET_TAG -Commit "\${{ github.sha }}" -OutputPath .\ChatGptDesktopLocalBridge-PublishManifest.json
+          .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag $env:TARGET_TAG -Commit "${{ github.sha }}" -OutputPath .\ChatGptDesktopLocalBridge-PublishManifest.json
 
       - name: Install Inno Setup
         shell: pwsh
@@ -85,7 +85,7 @@ jobs:
       - name: Download exact 0.2.8 base manifest
         shell: pwsh
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           New-Item -ItemType Directory -Path .\base-manifest -Force | Out-Null
           gh release download $env:BASE_TAG --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir .\base-manifest --clobber
@@ -95,7 +95,7 @@ jobs:
         shell: pwsh
         run: |
           $deltaDir = Join-Path $PWD "delta-ui028"
-          .\scripts\build-delta-update.ps1 -BaseManifestPath .\base-manifest\ChatGptDesktopLocalBridge-PublishManifest.json -CurrentPublishDir .\publish\win-x64 -BaseTag $env:BASE_TAG -TargetTag $env:TARGET_TAG -TargetCommit "\${{ github.sha }}" -OutputPath $deltaDir
+          .\scripts\build-delta-update.ps1 -BaseManifestPath .\base-manifest\ChatGptDesktopLocalBridge-PublishManifest.json -CurrentPublishDir .\publish\win-x64 -BaseTag $env:BASE_TAG -TargetTag $env:TARGET_TAG -TargetCommit "${{ github.sha }}" -OutputPath $deltaDir
           $resolvedDelta = (Resolve-Path $deltaDir).Path
           ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$PWD" "/DBaseTag=$env:BASE_TAG" "/DTargetTag=$env:TARGET_TAG" "/DUpdateVersion=$env:APP_VERSION" ".\installer\DeltaUpdate.iss"
           $expected = ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe"
@@ -104,5 +104,5 @@ jobs:
       - name: Publish runtime-foundation prerelease
         shell: pwsh
         env:
-          GH_TOKEN: \${{ github.token }}
-        run: gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-runtime-foundation-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "\${{ github.sha }}" --prerelease --title "Runtime foundation over 0.2.8 ($env:TARGET_TAG)" --notes "Owner validation candidate built directly from accepted ui-shell-af6ac65 / 0.2.8. Use ChatGptDesktopLocalBridge-Update-from-ui-shell-af6ac65.exe for the normal upgrade path."
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-runtime-foundation-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Runtime foundation over 0.2.8 ($env:TARGET_TAG)" --notes "Owner validation candidate built directly from accepted ui-shell-af6ac65 / 0.2.8. Use ChatGptDesktopLocalBridge-Update-from-ui-shell-af6ac65.exe for the normal upgrade path."
