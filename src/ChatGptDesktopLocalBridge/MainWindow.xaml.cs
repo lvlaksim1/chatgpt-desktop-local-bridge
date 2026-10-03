@@ -15,11 +15,38 @@ public partial class MainWindow
     {
         InitializeComponent();
 
+        VersionText.Text = LoadDisplayVersion();
+
         _appDataRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ChatGptDesktopLocalBridge");
 
         Loaded += async (_, _) => await InitializeWebViewAsync();
+    }
+
+    private static string LoadDisplayVersion()
+    {
+        try
+        {
+            var releaseInfoPath = Path.Combine(AppContext.BaseDirectory, "release-info.json");
+            if (File.Exists(releaseInfoPath))
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(releaseInfoPath));
+                if (document.RootElement.TryGetProperty("appVersion", out var versionElement) &&
+                    versionElement.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(versionElement.GetString()))
+                {
+                    return $"v{versionElement.GetString()}";
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to the assembly version for local/debug builds.
+        }
+
+        var assemblyVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString();
+        return $"v{assemblyVersion ?? "dev"}";
     }
 
     private async Task InitializeWebViewAsync()
@@ -41,14 +68,14 @@ public partial class MainWindow
         await Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(adapterScript);
 
         Browser.Source = new Uri("https://chatgpt.com/");
-        StatusText.Text = "ChatGPT loading…";
+        StatusText.Text = "Загрузка ChatGPT…";
     }
 
     private void Browser_OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         StatusText.Text = e.IsSuccess
-            ? "ChatGPT ready. Sign in if necessary, then initialize the bridge."
-            : $"Navigation failed: {e.WebErrorStatus}";
+            ? "ChatGPT готов. При необходимости войдите в аккаунт, затем инициализируйте мост."
+            : $"Ошибка навигации: {e.WebErrorStatus}";
     }
 
     private void CoreWebView2_OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -57,7 +84,7 @@ public partial class MainWindow
         {
             if (!IsAllowedOrigin(e.Source))
             {
-                StatusText.Text = $"Ignored message from untrusted origin: {e.Source}";
+                StatusText.Text = $"Сообщение из недоверенного источника проигнорировано: {e.Source}";
                 return;
             }
 
@@ -92,7 +119,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Bridge error: {ex.Message}";
+            StatusText.Text = $"Ошибка моста: {ex.Message}";
         }
     }
 
@@ -125,7 +152,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Bridge error: {ex.Message}";
+            StatusText.Text = $"Ошибка моста: {ex.Message}";
         }
     }
 
@@ -162,32 +189,32 @@ public partial class MainWindow
             var sent = await SendTextToChatAsync(bootstrap);
             if (!sent)
             {
-                if (!StatusText.Text.StartsWith("Chat send failed:", StringComparison.Ordinal))
+                if (!StatusText.Text.StartsWith("Ошибка отправки в ChatGPT:", StringComparison.Ordinal))
                 {
                     StatusText.Text =
-                        "Could not send bridge bootstrap. Open a conversation and run Diagnostics.";
+                        "Не удалось отправить bootstrap моста. Откройте диалог и запустите диагностику.";
                 }
                 return;
             }
 
             StatusText.Text =
-                $"Bootstrap sent. Waiting for bridge handshake {_bridgeHost.SessionId[..8]}…";
+                $"Bootstrap отправлен. Ожидание подтверждения моста {_bridgeHost.SessionId[..8]}…";
 
             try
             {
                 await readyCompletion.Task.WaitAsync(TimeSpan.FromSeconds(60));
                 StatusText.Text =
-                    $"Bridge ready. Session {_bridgeHost.SessionId[..8]}…";
+                    $"Мост готов. Сессия {_bridgeHost.SessionId[..8]}…";
             }
             catch (TimeoutException)
             {
                 StatusText.Text =
-                    "Bridge bootstrap was sent, but ChatGPT did not return the expected READY handshake.";
+                    "Bootstrap отправлен, но ChatGPT не вернул ожидаемое подтверждение READY.";
             }
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Bridge initialization failed: {ex.Message}";
+            StatusText.Text = $"Ошибка инициализации моста: {ex.Message}";
         }
         finally
         {
@@ -218,7 +245,7 @@ public partial class MainWindow
     {
         if (Browser.CoreWebView2 is null)
         {
-            StatusText.Text = "Diagnostics unavailable: WebView2 is not ready.";
+            StatusText.Text = "Диагностика недоступна: WebView2 ещё не готов.";
             return;
         }
 
@@ -229,7 +256,7 @@ public partial class MainWindow
 
             if (string.IsNullOrWhiteSpace(raw) || raw == "null")
             {
-                StatusText.Text = "Diagnostics failed: Local Bridge adapter is not injected.";
+                StatusText.Text = "Ошибка диагностики: адаптер Local Bridge не внедрён.";
                 return;
             }
 
@@ -247,9 +274,9 @@ public partial class MainWindow
                                    webViewElement.ValueKind == JsonValueKind.True;
 
             StatusText.Text =
-                $"Adapter v{version}: WebView {(webViewAvailable ? "OK" : "FAIL")}, " +
-                $"composer {(composerFound ? "OK" : "NOT FOUND")}, " +
-                $"native input {(nativeInputReady ? "READY" : "NOT READY")}.";
+                $"Адаптер v{version}: WebView {(webViewAvailable ? "OK" : "ОШИБКА")}, " +
+                $"поле ввода {(composerFound ? "OK" : "НЕ НАЙДЕНО")}, " +
+                $"native input {(nativeInputReady ? "ГОТОВ" : "НЕ ГОТОВ")}.";
 
             var details = JsonSerializer.Serialize(
                 root,
@@ -257,13 +284,13 @@ public partial class MainWindow
 
             System.Windows.MessageBox.Show(
                 details,
-                "Local Bridge diagnostics",
+                "Диагностика Local Bridge",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Diagnostics failed: {ex.Message}";
+            StatusText.Text = $"Ошибка диагностики: {ex.Message}";
         }
     }
 
@@ -293,7 +320,7 @@ public partial class MainWindow
                     ? reasonElement.GetString()
                     : "composer-preflight-failed";
 
-                StatusText.Text = $"Chat send failed: {reason}";
+                StatusText.Text = $"Ошибка отправки в ChatGPT: {reason}";
                 return false;
             }
 
@@ -329,7 +356,7 @@ public partial class MainWindow
 
             if (!inserted)
             {
-                StatusText.Text = "Chat send failed: native-input-not-accepted";
+                StatusText.Text = "Ошибка отправки в ChatGPT: native-input-not-accepted";
                 return false;
             }
 
@@ -350,7 +377,7 @@ public partial class MainWindow
                     ? reasonElement.GetString()
                     : "native-submit-rejected";
 
-                StatusText.Text = $"Chat send failed: {reason}";
+                StatusText.Text = $"Ошибка отправки в ChatGPT: {reason}";
                 return false;
             }
 
@@ -377,14 +404,13 @@ public partial class MainWindow
                 await Task.Delay(100);
             }
 
-            StatusText.Text = "Chat send failed: native-submit-not-confirmed";
+            StatusText.Text = "Ошибка отправки в ChatGPT: native-submit-not-confirmed";
             return false;
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Chat send failed: {ex.Message}";
+            StatusText.Text = $"Ошибка отправки в ChatGPT: {ex.Message}";
             return false;
         }
     }
-
 }
