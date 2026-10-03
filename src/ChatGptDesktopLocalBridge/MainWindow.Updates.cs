@@ -12,7 +12,10 @@ public partial class MainWindow
         _updateTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMinutes(
-                Math.Clamp(_settings.UpdateCheckIntervalMinutes, 5, 1440))
+                Math.Clamp(
+                    _settings.UpdateCheckIntervalMinutes,
+                    5,
+                    1440))
         };
 
         _updateTimer.Tick += async (_, _) =>
@@ -26,7 +29,6 @@ public partial class MainWindow
         try
         {
             var candidate = await UpdateService.CheckAsync();
-
             _availableUpdate = candidate;
 
             await Dispatcher.InvokeAsync(() =>
@@ -43,22 +45,27 @@ public partial class MainWindow
                     return;
                 }
 
-                UpdateButton.Content =
-                    candidate.PackageKind == UpdatePackageKind.Delta
-                        ? "Обновить"
-                        : "Полный Setup";
+                if (candidate.PackageKind != UpdatePackageKind.Delta)
+                {
+                    UpdateButton.Visibility = Visibility.Collapsed;
 
+                    if (!quiet)
+                    {
+                        SetStatus(
+                            "Для этого обновления требуется полный Setup: Настройки → Обновления.");
+                    }
+
+                    return;
+                }
+
+                UpdateButton.Content = "Обновить";
                 UpdateButton.ToolTip =
                     $"{candidate.CurrentTag} → {candidate.TargetTag}\n{candidate.Reason}";
-
                 UpdateButton.Visibility = Visibility.Visible;
 
                 if (!quiet)
                 {
-                    SetStatus(
-                        candidate.PackageKind == UpdatePackageKind.Delta
-                            ? "Доступно обновление."
-                            : "Доступно обновление; требуется полный Setup.");
+                    SetStatus("Доступно delta-обновление.");
                 }
             });
         }
@@ -76,14 +83,64 @@ public partial class MainWindow
         object sender,
         RoutedEventArgs e)
     {
-        if (_availableUpdate is null)
+        if (_availableUpdate is null ||
+            _availableUpdate.PackageKind != UpdatePackageKind.Delta)
         {
             await CheckForUpdatesAsync(quiet: false);
             return;
         }
 
-        var candidate = _availableUpdate;
-        var window = new UpdateWindow(candidate) { Owner = this };
+        await InstallCandidateAsync(
+            _availableUpdate,
+            disableTopUpdateButton: true);
+    }
+
+    private async Task InstallLatestFullSetupFromSettingsAsync()
+    {
+        try
+        {
+            SetStatus("Поиск полного Setup…");
+
+            var candidate =
+                await UpdateService.GetLatestFullSetupAsync();
+
+            if (candidate is null)
+            {
+                SetStatus("Полный Setup не найден.");
+
+                MessageBox.Show(
+                    "В последнем UI-релизе не найден полный Setup.",
+                    "Обновления",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            await InstallCandidateAsync(
+                candidate,
+                disableTopUpdateButton: false);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Ошибка полного Setup: {ex.Message}");
+
+            MessageBox.Show(
+                ex.Message,
+                "Ошибка обновления",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private async Task InstallCandidateAsync(
+        UpdateCandidate candidate,
+        bool disableTopUpdateButton)
+    {
+        var window = new UpdateWindow(candidate)
+        {
+            Owner = this
+        };
 
         if (window.ShowDialog() != true ||
             !window.InstallRequested)
@@ -91,20 +148,33 @@ public partial class MainWindow
             return;
         }
 
-        UpdateButton.IsEnabled = false;
+        if (disableTopUpdateButton)
+        {
+            UpdateButton.IsEnabled = false;
+        }
 
         try
         {
             var progress = new Progress<double>(value =>
             {
-                SetStatus($"Скачивание обновления: {value:P0}");
+                SetStatus(
+                    candidate.PackageKind == UpdatePackageKind.Delta
+                        ? $"Скачивание delta-update: {value:P0}"
+                        : $"Скачивание полного Setup: {value:P0}");
             });
 
             var path = await UpdateService.DownloadAndVerifyAsync(
                 candidate,
                 progress);
 
-            UpdateService.MarkPending(candidate);
+            if (!string.Equals(
+                    candidate.CurrentTag,
+                    candidate.TargetTag,
+                    StringComparison.Ordinal))
+            {
+                UpdateService.MarkPending(candidate);
+            }
+
             SaveRuntimeSettings();
 
             SetStatus(
@@ -117,7 +187,11 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            UpdateButton.IsEnabled = true;
+            if (disableTopUpdateButton)
+            {
+                UpdateButton.IsEnabled = true;
+            }
+
             SetStatus($"Ошибка обновления: {ex.Message}");
 
             MessageBox.Show(

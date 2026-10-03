@@ -204,6 +204,11 @@ public partial class MainWindow
 
         ApplyUnifiedTheme();
         await ApplyUnifiedThemeToAllTabsAsync();
+
+        if (window.FullSetupRequested)
+        {
+            await InstallLatestFullSetupFromSettingsAsync();
+        }
     }
 
     private void ClearActivityButton_OnClick(object sender, RoutedEventArgs e)

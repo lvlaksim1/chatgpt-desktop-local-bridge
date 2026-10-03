@@ -246,6 +246,65 @@ public static class UpdateService
         return null;
     }
 
+    public static async Task<UpdateCandidate?> GetLatestFullSetupAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var identity = LoadInstalledIdentity()
+                       ?? new ReleaseIdentity("unknown", string.Empty, string.Empty);
+
+        using var client = CreateClient();
+        using var response = await client.GetAsync(
+            ReleasesUrl,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream =
+            await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        using var document = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: cancellationToken);
+
+        foreach (var release in document.RootElement.EnumerateArray())
+        {
+            if (!IsUiPrerelease(release))
+            {
+                continue;
+            }
+
+            var targetTag =
+                release.GetProperty("tag_name").GetString();
+
+            if (string.IsNullOrWhiteSpace(targetTag))
+            {
+                continue;
+            }
+
+            var assets = ParseAssets(release);
+            var full = assets.FirstOrDefault(asset =>
+                string.Equals(
+                    asset.Name,
+                    "ChatGptDesktopLocalBridge-ui-shell-Setup.exe",
+                    StringComparison.Ordinal));
+
+            if (full is null)
+            {
+                continue;
+            }
+
+            return new UpdateCandidate(
+                identity.Tag,
+                targetTag,
+                UpdatePackageKind.FullSetup,
+                full,
+                full,
+                "Резервный полный установщик последнего UI-релиза.");
+        }
+
+        return null;
+    }
+
     public static async Task<string> DownloadAndVerifyAsync(
         UpdateCandidate candidate,
         IProgress<double>? progress = null,

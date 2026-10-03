@@ -25,6 +25,7 @@ public partial class SettingsWindow
 
     public string SelectedThemeColor { get; private set; } = AppSettings.DefaultThemeColor;
     public bool SelectedAutoInitializeBridge { get; private set; } = true;
+    public bool FullSetupRequested { get; private set; }
 
     private void TitleBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -84,10 +85,25 @@ public partial class SettingsWindow
         BlueSlider.Value = color.B;
     }
 
-    private void SaveButton_OnClick(object sender, RoutedEventArgs e)
+    private void CaptureSelection()
     {
         SelectedThemeColor = ColorHexText.Text;
-        SelectedAutoInitializeBridge = AutoBridgeCheckBox.IsChecked == true;
+        SelectedAutoInitializeBridge =
+            AutoBridgeCheckBox.IsChecked == true;
+    }
+
+    private void FullSetupButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        CaptureSelection();
+        FullSetupRequested = true;
+        DialogResult = true;
+    }
+
+    private void SaveButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        CaptureSelection();
         DialogResult = true;
     }
 

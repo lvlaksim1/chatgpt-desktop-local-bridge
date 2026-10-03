@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Настройки"
         Width="540"
-        Height="620"
+        Height="660"
         ResizeMode="NoResize"
         WindowStyle="None"
         Background="#181A1C"
@@ -131,6 +131,18 @@
                                FontSize="16"
                                FontWeight="SemiBold"
                                Text="Обновления" />
+
+                    <Button HorizontalAlignment="Left"
+                            Padding="12,7"
+                            Margin="0,0,0,8"
+                            Click="FullSetupButton_OnClick"
+                            Content="Скачать и запустить полный Setup" />
+
+                    <TextBlock Margin="0,0,0,10"
+                               Foreground="#9DA1A6"
+                               TextWrapping="Wrap"
+                               Text="Резервный путь для восстановления или несовместимой базы. Обычные обновления выполняются delta-пакетом из верхней панели." />
+
                     <TextBlock x:Name="UpdateHistoryText"
                                Padding="10"
                                Background="#111315"
