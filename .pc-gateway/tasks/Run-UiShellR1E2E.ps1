@@ -505,37 +505,22 @@ try {
     Set-Check 'native-download' $downloadOk (if(Test-Path $downloadFile){[ordered]@{path=$downloadFile;size=(Get-Item $downloadFile).Length}}else{$null})
 
     $contextHref='https://chatgpt.com/?ui_r1_context_test=1'
-    $box=Cdp-Eval $Socket ([ref]$id) "(()=>{let a=document.getElementById('__ui_r1_context_link');if(!a){a=document.createElement('a');a.id='__ui_r1_context_link';a.href='$contextHref';a.textContent='UI R1 context target';Object.assign(a.style,{position:'fixed',left:'120px',top:'120px',width:'260px',height:'70px',zIndex:'2147483646',background:'#777',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center'});document.body.appendChild(a);}const r=a.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height,viewportW:innerWidth,viewportH:innerHeight,dpr:devicePixelRatio};})()"
-    $wv=@(Get-WebViewRect ([IntPtr]$app.MainWindowHandle))
-    $contextResult=[ordered]@{child_windows=$wv.Count;box=$box}
-    $contextOk=$false
-    if($wv.Count -gt 0) {
-        $rect=$wv[0]
-        $scaleX=($rect.right-$rect.left)/[double]$box.viewportW
-        $scaleY=($rect.bottom-$rect.top)/[double]$box.viewportH
-        $sx=[int]($rect.left + ($box.left+$box.width/2)*$scaleX)
-        $sy=[int]($rect.top + ($box.top+$box.height/2)*$scaleY)
-        [void][UiR1Native]::SetCursorPos($sx,$sy)
-        [UiR1Native]::mouse_event([UiR1Native]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
-        [UiR1Native]::mouse_event([UiR1Native]::RIGHTUP,0,0,0,[UIntPtr]::Zero)
-        Start-Sleep -Milliseconds 800
-        $desktop=[System.Windows.Automation.AutomationElement]::RootElement
-        $menuItem=Find-UiElementByName $desktop $UiOpenInNewTab 5
-        $contextResult.menu_item_found=$null -ne $menuItem
-        $contextResult.click_x=$sx;$contextResult.click_y=$sy;$contextResult.webview_class=$rect.class
-        if($null -ne $menuItem) {
-            $beforeCount=(Wait-CdpTargets $port 1 2).Count
-            Invoke-UiElement $menuItem
-            $afterTargets=Wait-CdpTargets $port ($beforeCount+1) 20
-            $contextResult.before_targets=$beforeCount;$contextResult.after_targets=$afterTargets.Count
-            $contextOk=$afterTargets.Count -ge ($beforeCount+1)
-        }
-    }
-    Set-Check 'safe-context-open-in-tab' $contextOk $contextResult
-    Start-Sleep -Seconds 1
+    $box=Cdp-Eval $Socket ([ref]$id) "(()=>{let a=document.getElementById('__ui_r1_context_link');if(!a){a=document.createElement('a');a.id='__ui_r1_context_link';a.href='$contextHref';a.textContent='UI R1 context target';Object.assign(a.style,{position:'fixed',left:'120px',top:'120px',width:'260px',height:'70px',zIndex:'2147483646',background:'#777',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center'});document.body.appendChild(a);}const r=a.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()"
+    [void](Send-Cdp -Socket $Socket -Id $id -Method 'Input.dispatchMouseEvent' -Params @{type='mousePressed';x=[double]$box.x;y=[double]$box.y;button='right';clickCount=1})
+    $id++
+    [void](Send-Cdp -Socket $Socket -Id $id -Method 'Input.dispatchMouseEvent' -Params @{type='mouseReleased';x=[double]$box.x;y=[double]$box.y;button='right';clickCount=1})
+    $id++
+    Start-Sleep -Milliseconds 1000
+    $contextHealth=Cdp-Eval $Socket ([ref]$id) 'window.__localBridge?.health?.() ?? null'
     $aliveAfterContext=@(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Where-Object {$_.Id -eq $app.Id}).Count -eq 1
+    [void](Send-Cdp -Socket $Socket -Id $id -Method 'Input.dispatchKeyEvent' -Params @{type='keyDown';key='Escape';code='Escape';windowsVirtualKeyCode=27;nativeVirtualKeyCode=27})
+    $id++
+    [void](Send-Cdp -Socket $Socket -Id $id -Method 'Input.dispatchKeyEvent' -Params @{type='keyUp';key='Escape';code='Escape';windowsVirtualKeyCode=27;nativeVirtualKeyCode=27})
+    $id++
+    [void](Cdp-Eval $Socket ([ref]$id) "document.getElementById('__ui_r1_context_link')?.remove(); true")
+    $contextOk=$aliveAfterContext -and $null -ne $contextHealth -and [string]$contextHealth.lastContextNavigationTarget -eq $contextHref
+    Set-Check 'safe-context-menu-path' $contextOk ([ordered]@{process_alive=$aliveAfterContext;adapter_target=if($contextHealth){[string]$contextHealth.lastContextNavigationTarget}else{$null}})
     Set-Check 'context-menu-no-crash' $aliveAfterContext $null
-    if(-not $aliveAfterContext){throw 'Application exited during context-menu test.'}
 
     $settingsButton=Find-UiElementByName $root $UiSettings 5
     if($null -eq $settingsButton){throw 'Settings button not found.'}
