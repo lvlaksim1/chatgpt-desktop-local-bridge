@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -49,6 +50,8 @@ public partial class MainWindow
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
+
+        ApplyNativeBrowserBackground(browser, palette.Base);
 
         var loadingText = new TextBlock
         {
@@ -153,6 +156,9 @@ public partial class MainWindow
             tab.Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
             await tab.Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                BuildVisualBootstrapScript());
+
+            await tab.Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 BuildChatThemeBootstrapScript());
 
             await tab.Browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
@@ -192,10 +198,11 @@ public partial class MainWindow
                 tab.BridgeRetryCts?.Cancel();
                 tab.BridgeRetryCts = null;
                 SetTabState(tab, "loading");
+                tab.LoadingPanel.Visibility = Visibility.Visible;
+                _ = ArmPaintShieldAsync(tab, loading: true);
 
                 if (ReferenceEquals(ActiveTab, tab))
                 {
-                    ShowSelectedTab();
                     SetStatus("Загрузка ChatGPT…");
                 }
             };
@@ -206,39 +213,53 @@ public partial class MainWindow
                 tab.LastUrl = tab.Browser.Source?.AbsoluteUri ?? tab.LastUrl;
                 UpdateTabHeader(tab);
 
-                if (e.IsSuccess)
+                if (!e.IsSuccess)
                 {
-                    await ApplyUnifiedThemeToTabAsync(tab);
-                    await Task.Delay(120);
-                    tab.PageReady = true;
-                    SetTabState(tab, "idle");
+                    tab.PageReady = false;
+                    SetTabState(tab, "error");
+                    tab.LoadingPanel.Visibility = Visibility.Collapsed;
+                    await ReleasePaintShieldAsync(tab);
 
                     if (ReferenceEquals(ActiveTab, tab))
                     {
-                        ShowSelectedTab();
-                        SetStatus("ChatGPT готов");
+                        SetStatus($"Ошибка навигации: {e.WebErrorStatus}");
+                    }
 
-                        if (_settings.AutoInitializeBridge)
-                        {
-                            ScheduleBridgeStart(
-                                tab,
-                                TimeSpan.FromMilliseconds(300));
-                        }
+                    return;
+                }
+
+                await WaitForVisualReadyAsync(
+                    tab,
+                    TimeSpan.FromSeconds(12));
+
+                await ApplyUnifiedThemeToTabAsync(tab);
+                await Task.Delay(80);
+
+                tab.PageReady = true;
+                SetTabState(tab, "idle");
+                tab.LoadingPanel.Visibility = Visibility.Collapsed;
+
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    await ReleasePaintShieldAfterRenderAsync(tab);
+                    SetStatus("ChatGPT готов");
+
+                    if (_settings.AutoInitializeBridge)
+                    {
+                        ScheduleBridgeStart(
+                            tab,
+                            TimeSpan.FromMilliseconds(250));
                     }
                 }
                 else
                 {
-                    tab.PageReady = false;
-                    SetTabState(tab, "error");
-
-                    if (ReferenceEquals(ActiveTab, tab))
-                    {
-                        ShowSelectedTab();
-                        SetStatus($"Ошибка навигации: {e.WebErrorStatus}");
-                    }
+                    await ArmPaintShieldAsync(tab, loading: false);
                 }
             };
 
+            // Keep the real WebView alive and painted. The page-owned paint shield
+            // masks navigation/render transitions without WebView2CompositionControl.
+            tab.Browser.Visibility = Visibility.Visible;
             tab.Browser.Source = new Uri(url);
         }
         catch (Exception ex)
@@ -308,6 +329,233 @@ public partial class MainWindow
         {
             deferral.Complete();
         }
+    }
+
+    private async Task WaitForVisualReadyAsync(
+        ChatTab tab,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        var stableSamples = 0;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                var raw = await tab.Browser.ExecuteScriptAsync(
+                    """
+                    (() => ({
+                      readyState: document.readyState,
+                      body: Boolean(document.body),
+                      width: document.documentElement?.clientWidth ?? 0,
+                      height: document.documentElement?.clientHeight ?? 0,
+                      surface: Boolean(
+                        document.querySelector(
+                          "#prompt-textarea, textarea[data-testid='prompt-textarea'], " +
+                          "div[contenteditable='true'][data-testid='prompt-textarea'], " +
+                          "div[contenteditable='true'][role='textbox'], " +
+                          "main, [role='main'], form"
+                        )
+                      )
+                    }))()
+                    """);
+
+                using var document = JsonDocument.Parse(raw);
+                var root = document.RootElement;
+
+                var complete =
+                    root.TryGetProperty("readyState", out var state) &&
+                    state.ValueKind == JsonValueKind.String &&
+                    string.Equals(
+                        state.GetString(),
+                        "complete",
+                        StringComparison.OrdinalIgnoreCase);
+
+                var body =
+                    root.TryGetProperty("body", out var bodyElement) &&
+                    bodyElement.ValueKind == JsonValueKind.True;
+
+                var surface =
+                    root.TryGetProperty("surface", out var surfaceElement) &&
+                    surfaceElement.ValueKind == JsonValueKind.True;
+
+                var width =
+                    root.TryGetProperty("width", out var widthElement) &&
+                    widthElement.TryGetInt32(out var parsedWidth)
+                        ? parsedWidth
+                        : 0;
+
+                var height =
+                    root.TryGetProperty("height", out var heightElement) &&
+                    heightElement.TryGetInt32(out var parsedHeight)
+                        ? parsedHeight
+                        : 0;
+
+                if (complete && body && surface && width > 100 && height > 100)
+                {
+                    stableSamples++;
+                    if (stableSamples >= 3)
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    stableSamples = 0;
+                }
+            }
+            catch
+            {
+                stableSamples = 0;
+            }
+
+            await Task.Delay(150);
+        }
+    }
+
+    private async Task ArmPaintShieldAsync(
+        ChatTab tab,
+        bool loading)
+    {
+        if (tab.Browser.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await tab.Browser.ExecuteScriptAsync(
+                loading
+                    ? "window.__desktopShellVisual?.show?.('loading')"
+                    : "window.__desktopShellVisual?.show?.('switch')");
+        }
+        catch
+        {
+            // Visual masking is optional and must never affect app survival.
+        }
+    }
+
+    private async Task ReleasePaintShieldAsync(ChatTab tab)
+    {
+        if (tab.Browser.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await tab.Browser.ExecuteScriptAsync(
+                "window.__desktopShellVisual?.hide?.()");
+        }
+        catch
+        {
+            // Visual masking is optional and must never affect app survival.
+        }
+    }
+
+    private async Task ReleasePaintShieldAfterRenderAsync(ChatTab tab)
+    {
+        try
+        {
+            await Dispatcher.Yield(DispatcherPriority.Render);
+            await Task.Delay(40);
+            await ReleasePaintShieldAsync(tab);
+        }
+        catch
+        {
+            // Do not let a visual transition affect tab/navigation reliability.
+        }
+    }
+
+    private string BuildVisualBootstrapScript()
+    {
+        var p = ThemePalette.FromBase(_settings.ThemeColor);
+        var config = JsonSerializer.Serialize(new
+        {
+            background = p.Base,
+            foreground = p.Muted
+        });
+        var configLiteral = JsonSerializer.Serialize(config);
+
+        return """
+        (() => {
+          const cfg = JSON.parse(CONFIG_PLACEHOLDER);
+
+          const ensureStyle = () => {
+            const root = document.documentElement;
+            if (!root) return false;
+
+            root.style.backgroundColor = cfg.background;
+
+            let style = document.getElementById('__desktop_shell_visual_style');
+            if (!style) {
+              style = document.createElement('style');
+              style.id = '__desktop_shell_visual_style';
+              root.appendChild(style);
+            }
+
+            style.textContent =
+              '#__desktop_shell_paint_shield{' +
+              'position:fixed!important;inset:0!important;z-index:2147483647!important;' +
+              'display:flex;align-items:center;justify-content:center;' +
+              'background:var(--desktop-shell-bg)!important;' +
+              'color:var(--desktop-shell-fg)!important;' +
+              'font:600 16px "Segoe UI",sans-serif!important;' +
+              'pointer-events:auto!important;}' +
+              '#__desktop_shell_paint_shield[data-mode="switch"]{font-size:0!important;}';
+
+            root.style.setProperty('--desktop-shell-bg', cfg.background);
+            root.style.setProperty('--desktop-shell-fg', cfg.foreground);
+            return true;
+          };
+
+          const ensureShield = () => {
+            if (!ensureStyle() || !document.body) return null;
+
+            let shield = document.getElementById('__desktop_shell_paint_shield');
+            if (!shield) {
+              shield = document.createElement('div');
+              shield.id = '__desktop_shell_paint_shield';
+              shield.setAttribute('aria-hidden', 'true');
+              document.body.appendChild(shield);
+            }
+            return shield;
+          };
+
+          const show = mode => {
+            const shield = ensureShield();
+            if (!shield) return false;
+            shield.dataset.mode = mode === 'loading' ? 'loading' : 'switch';
+            shield.textContent = mode === 'loading' ? 'Загрузка ChatGPT…' : '';
+            shield.style.display = 'flex';
+            return true;
+          };
+
+          const hide = () => {
+            const shield = document.getElementById('__desktop_shell_paint_shield');
+            if (shield) shield.style.display = 'none';
+            return true;
+          };
+
+          const setTheme = (background, foreground) => {
+            const root = document.documentElement;
+            if (!root) return false;
+            root.style.setProperty('--desktop-shell-bg', background);
+            root.style.setProperty('--desktop-shell-fg', foreground);
+            root.style.backgroundColor = background;
+            return true;
+          };
+
+          window.__desktopShellVisual = { show, hide, setTheme };
+
+          if (!show('loading')) {
+            const observer = new MutationObserver(() => {
+              if (show('loading')) observer.disconnect();
+            });
+            observer.observe(document, { childList: true, subtree: true });
+          }
+        })();
+        """.Replace("CONFIG_PLACEHOLDER", configLiteral);
     }
 
     private void CloseChatTab(ChatTab tab)
@@ -403,24 +651,34 @@ public partial class MainWindow
         foreach (var tab in _tabs)
         {
             var selected = ReferenceEquals(tab, active);
+
+            if (!selected &&
+                tab.Container.Visibility == Visibility.Visible &&
+                tab.PageReady)
+            {
+                _ = ArmPaintShieldAsync(tab, loading: false);
+            }
+
+            // Keep each initialized WebView itself alive/visible. Only its WPF
+            // parent is switched, preserving background preload and warm state.
             tab.Container.Visibility = selected
                 ? Visibility.Visible
                 : Visibility.Hidden;
 
             if (!selected)
             {
-                tab.Browser.Visibility = Visibility.Hidden;
                 continue;
             }
+
+            tab.Browser.Visibility = Visibility.Visible;
 
             if (tab.PageReady)
             {
                 tab.LoadingPanel.Visibility = Visibility.Collapsed;
-                tab.Browser.Visibility = Visibility.Visible;
+                _ = ReleasePaintShieldAfterRenderAsync(tab);
             }
             else
             {
-                tab.Browser.Visibility = Visibility.Hidden;
                 tab.LoadingPanel.Visibility = Visibility.Visible;
             }
         }
@@ -445,6 +703,7 @@ public partial class MainWindow
             var palette = ThemePalette.FromBase(_settings.ThemeColor);
             tab.Container.Background = Brush(palette.Base);
             tab.LoadingPanel.Background = Brush(palette.Base);
+            ApplyNativeBrowserBackground(tab.Browser, palette.Base);
 
             if (tab.LoadingPanel.Child is TextBlock text)
             {
@@ -466,6 +725,12 @@ public partial class MainWindow
         {
             await tab.Browser.ExecuteScriptAsync(
                 BuildChatThemeBootstrapScript());
+
+            var p = ThemePalette.FromBase(_settings.ThemeColor);
+            var background = JsonSerializer.Serialize(p.Base);
+            var foreground = JsonSerializer.Serialize(p.Muted);
+            await tab.Browser.ExecuteScriptAsync(
+                $"window.__desktopShellVisual?.setTheme?.({background}, {foreground})");
         }
         catch
         {
@@ -558,6 +823,26 @@ public partial class MainWindow
           }
         })();
         """.Replace("VALUE_PLACEHOLDER", valuesLiteral);
+    }
+
+    private static void ApplyNativeBrowserBackground(
+        WebView2 browser,
+        string color)
+    {
+        try
+        {
+            var parsed = ThemePalette.Parse(color);
+            browser.DefaultBackgroundColor =
+                System.Drawing.Color.FromArgb(
+                    parsed.A,
+                    parsed.R,
+                    parsed.G,
+                    parsed.B);
+        }
+        catch
+        {
+            // Native background is cosmetic only.
+        }
     }
 
     private static string NormalizeNavigationUrl(string value)
