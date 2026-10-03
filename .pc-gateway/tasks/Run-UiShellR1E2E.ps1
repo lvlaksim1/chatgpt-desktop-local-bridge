@@ -163,6 +163,8 @@ public static class UiR1Native {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+    public const uint LEFTDOWN = 0x0002;
+    public const uint LEFTUP = 0x0004;
     public const uint RIGHTDOWN = 0x0008;
     public const uint RIGHTUP = 0x0010;
 }
@@ -231,6 +233,16 @@ function Invoke-UiElement($Element) {
     $pattern=$null
     if(-not $Element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){throw "Element '$($Element.Current.Name)' is not invokable."}
     ([System.Windows.Automation.InvokePattern]$pattern).Invoke()
+}
+
+function Click-UiElementMouse($Element) {
+    $r=$Element.Current.BoundingRectangle
+    if($r.Width -le 0 -or $r.Height -le 0){throw "Element '$($Element.Current.Name)' has no clickable bounds."}
+    $x=[int]($r.Left + $r.Width/2)
+    $y=[int]($r.Top + $r.Height/2)
+    [void][UiR1Native]::SetCursorPos($x,$y)
+    [UiR1Native]::mouse_event([UiR1Native]::LEFTDOWN,0,0,0,[UIntPtr]::Zero)
+    [UiR1Native]::mouse_event([UiR1Native]::LEFTUP,0,0,0,[UIntPtr]::Zero)
 }
 
 function Get-ProcessWindow([int]$Pid,[string]$Name,[int]$TimeoutSeconds=8) {
@@ -527,7 +539,7 @@ try {
 
     $settingsButton=Find-UiElementByName $root $UiSettings 5
     if($null -eq $settingsButton){throw 'Settings button not found.'}
-    Invoke-UiElement $settingsButton
+    Click-UiElementMouse $settingsButton
     $settingsWin=Get-ProcessWindow $app.Id $UiSettings 8
     $settingsOk=$null -ne $settingsWin
     $settingsDetails=[ordered]@{}
