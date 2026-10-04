@@ -168,6 +168,7 @@ public sealed class ScheduledTaskNetworkProbe : IAsyncDisposable
                 RequestId = requestId,
                 Method = method,
                 Url = ScheduledTaskProbeSanitizer.SanitizeUrl(url!),
+                ReplayUrl = url!,
                 RequestBody = ScheduledTaskProbeSanitizer.SanitizeBody(body)
             };
         }
@@ -343,6 +344,7 @@ public sealed class ScheduledTaskNetworkProbe : IAsyncDisposable
             traffic.RequestId,
             traffic.Method,
             traffic.Url,
+            traffic.ReplayUrl,
             traffic.RequestBody,
             traffic.Status,
             traffic.MimeType,
@@ -389,6 +391,7 @@ public sealed class ScheduledTaskNetworkProbe : IAsyncDisposable
         public required string RequestId { get; init; }
         public required string Method { get; init; }
         public required string Url { get; init; }
+        public required string ReplayUrl { get; init; }
         public string? RequestBody { get; init; }
         public int? Status { get; set; }
         public string? MimeType { get; set; }
