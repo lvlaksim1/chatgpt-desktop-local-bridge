@@ -107,5 +107,7 @@
   "authority": {
     "manager_state_branch": "manager-state",
     "product_branch": "main"
-  }
+  },
+  "context_capsule_version": "1.3.1",
+  "project_manager_version": "2.0.0-dev"
 }

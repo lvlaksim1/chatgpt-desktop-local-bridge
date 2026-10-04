@@ -130,3 +130,5 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Full Setup: `ChatGptDesktopLocalBridge-private-transport-probe-Setup.exe`, 51,636,166 bytes, SHA-256 `4d94fbfcf80ad4ebe64c1434fee441ef21bb2c476b9252099dfb81016d37f8ae`.
 - Production Local Bridge transport and `main` remain unchanged. Next live gate is to validate the endpoint hypotheses against the Owner account, capture exact task mutation bodies, then implement protocol-specific file upload + task mutation E2E.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
