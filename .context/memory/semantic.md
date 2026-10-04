@@ -100,3 +100,16 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 
 - source: legacy-v2-state
 - authority: legacy-unverified
+
+## Scheduled + Library Desktop transport probe v2 admitted 2026-10-04
+
+- Owner-authorized R&D continues from the server-side Scheduled Tasks + Library experiments documented in `chatgpt-desktop-scheduled-file-transport-research.md`.
+- New isolated branch: `exp/scheduled-file-transport-probe-v2`; draft PR #25.
+- Release commit: `6bb827b007111c225ba17cf8c3900ddc86ae4b1a`; prerelease tag `scheduled-file-probe-6bb827b`.
+- The Desktop probe now classifies both Scheduled Tasks and ChatGPT Library backend traffic, records sanitized endpoint metadata plus JSON field/type shapes, and keeps exact captured URL/body only in process memory.
+- Selected captured requests can be replayed through page-context fetch in the already signed-in WebView2 session. Read requests run directly; mutating requests require an explicit human confirmation. This replay is diagnostic UI only and is not exposed as a general model tool.
+- Persistent diagnostic logs do not store query values, request/response bodies, cookies, bearer material, or sensitive headers.
+- Release workflow `37165435366`: PASS, including build, runtime-foundation regression, publish, full Setup, exact delta from `task-probe-49fb895`, and prerelease publication.
+- Incremental updater: `ChatGptDesktopLocalBridge-Update-from-task-probe-49fb895.exe`, size 2,317,646 bytes, SHA-256 `4653b9fb4d95bc9324947644a8729c01a82a54c23213b644a4c315a8a5d6d8c6`.
+- Production Local Bridge transport remains unchanged. The remaining proof is live Owner-side discovery/replay of actual Tasks and Library operations, followed by a protocol-specific minimal E2E implementation if the backend shapes are stable.
+
