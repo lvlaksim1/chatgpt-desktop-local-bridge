@@ -12,7 +12,7 @@ public partial class MainWindow
 
         if (tab?.Browser.CoreWebView2 is null || !tab.PageReady)
         {
-            SetStatus("Tasks Probe: активная вкладка ChatGPT ещё не готова.");
+            SetStatus("Transport Probe: активная вкладка ChatGPT ещё не готова.");
             return;
         }
 
@@ -24,11 +24,11 @@ public partial class MainWindow
             };
 
             window.Show();
-            SetStatus("Scheduled Task Transport Probe открыт.");
+            SetStatus("Scheduled + Library Transport Probe открыт.");
         }
         catch (Exception ex)
         {
-            SetStatus($"Tasks Probe: {ex.Message}");
+            SetStatus($"Transport Probe: {ex.Message}");
         }
     }
 }
