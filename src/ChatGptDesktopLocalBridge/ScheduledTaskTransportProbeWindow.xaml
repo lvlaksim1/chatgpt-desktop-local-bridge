@@ -14,6 +14,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="2*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -84,7 +85,51 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="2">
+        <Border Grid.Row="2"
+                Margin="0,0,0,8"
+                Padding="10"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold"
+                           Text="Known endpoint hypotheses · read-only reproduction" />
+                <TextBlock Margin="0,4,0,7"
+                           Foreground="#AEB2B7"
+                           TextWrapping="Wrap"
+                           Text="Эти операции не угадывают mutation body. Они проверяют только read-only кандидаты из GitHub research через same-origin page-context fetch с document binding до/после запроса." />
+                <WrapPanel>
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Click="ProbeScheduledButton_OnClick"
+                            Content="tasks.list scheduled" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Click="ProbePausedButton_OnClick"
+                            Content="tasks.list paused" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Click="ProbeFinishedButton_OnClick"
+                            Content="tasks.list finished" />
+                    <TextBox x:Name="AutomationIdTextBox"
+                             Width="220"
+                             Margin="10,0,6,6"
+                             Padding="6"
+                             ToolTip="Automation ID для latest_backing_run" />
+                    <Button Margin="0,0,16,6" Padding="9,4"
+                            Click="ProbeLatestRunButton_OnClick"
+                            Content="tasks.latest_run" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Click="ProbeLibraryListButton_OnClick"
+                            Content="library.list" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Click="ProbeLibraryUsageButton_OnClick"
+                            Content="library.storage" />
+                    <Button Margin="10,0,6,6" Padding="9,4"
+                            Click="SafeReadBackButton_OnClick"
+                            Content="Safe read-back" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1.35*" />
                 <ColumnDefinition Width="8" />
@@ -152,7 +197,7 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Margin="0,8,0,8"
                 Padding="10"
                 Background="#202124"
@@ -223,7 +268,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="4"
+        <Border Grid.Row="5"
                 Background="#111315"
                 BorderBrush="#3A3D40"
                 BorderThickness="1">
@@ -247,7 +292,7 @@
             </DockPanel>
         </Border>
 
-        <Border Grid.Row="5"
+        <Border Grid.Row="6"
                 Margin="0,8,0,0"
                 Padding="10"
                 Background="#202124"

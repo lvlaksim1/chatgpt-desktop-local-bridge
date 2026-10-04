@@ -12,6 +12,9 @@ public partial class ScheduledTaskTransportProbeWindow
 {
     private readonly ScheduledTaskMetadataProbe _probe;
     private readonly PageContextBackendReplay _replay;
+    private readonly ChatGptPrivateTransport _privateTransport;
+    private readonly ScheduledTasksClient _tasksClient;
+    private readonly LibraryClient _libraryClient;
     private readonly DispatcherTimer _refreshTimer;
 
     private int _lastSnapshotCount = -1;
@@ -29,6 +32,9 @@ public partial class ScheduledTaskTransportProbeWindow
 
         _probe = new ScheduledTaskMetadataProbe(browser.CoreWebView2);
         _replay = new PageContextBackendReplay(browser);
+        _privateTransport = new ChatGptPrivateTransport(browser);
+        _tasksClient = new ScheduledTasksClient(_privateTransport);
+        _libraryClient = new LibraryClient(_privateTransport);
 
         _refreshTimer = new DispatcherTimer
         {
@@ -161,6 +167,124 @@ public partial class ScheduledTaskTransportProbeWindow
         }
     }
 
+    private async void ProbeScheduledButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+        => await RunKnownProbeAsync(
+            "tasks.list scheduled",
+            () => _tasksClient.ListAsync("scheduled"));
+
+    private async void ProbePausedButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+        => await RunKnownProbeAsync(
+            "tasks.list paused",
+            () => _tasksClient.ListAsync("paused"));
+
+    private async void ProbeFinishedButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+        => await RunKnownProbeAsync(
+            "tasks.list finished",
+            () => _tasksClient.ListAsync("finished"));
+
+    private async void ProbeLatestRunButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var taskId = AutomationIdTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            SetStatus("ERROR", "Для tasks.latest_run укажите Automation ID.");
+            return;
+        }
+
+        await RunKnownProbeAsync(
+            "tasks.latest_run",
+            () => _tasksClient.GetLatestRunAsync(taskId));
+    }
+
+    private async void ProbeLibraryListButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+        => await RunKnownProbeAsync(
+            "library.list",
+            () => _libraryClient.ListAsync());
+
+    private async void ProbeLibraryUsageButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+        => await RunKnownProbeAsync(
+            "library.storage",
+            () => _libraryClient.GetStorageUsageAsync());
+
+    private async void SafeReadBackButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (TrafficList.SelectedItem is not ScheduledTaskTrafficEntry entry)
+        {
+            SetStatus(
+                "READ-BACK",
+                "Выберите captured request, чтобы определить Tasks или Library read-back.");
+            return;
+        }
+
+        if (entry.Kind == BackendProbeKind.Library)
+        {
+            await RunKnownProbeAsync(
+                "read-back library.list",
+                () => _libraryClient.ListAsync());
+            return;
+        }
+
+        var taskId = AutomationIdTextBox.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(taskId))
+        {
+            await RunKnownProbeAsync(
+                "read-back tasks.latest_run",
+                () => _tasksClient.GetLatestRunAsync(taskId));
+        }
+        else
+        {
+            await RunKnownProbeAsync(
+                "read-back tasks.list paused",
+                () => _tasksClient.ListAsync("paused"));
+        }
+    }
+
+    private async Task RunKnownProbeAsync(
+        string name,
+        Func<Task<PrivateTransportResult>> operation)
+    {
+        try
+        {
+            SetStatus("PROBE", name);
+            var result = await operation();
+
+            ReplayResultTextBox.Text =
+                JsonSerializer.Serialize(
+                    result,
+                    new JsonSerializerOptions { WriteIndented = true }) +
+                Environment.NewLine +
+                Environment.NewLine +
+                "=== RESPONSE BODY · MEMORY ONLY / NOT LOGGED ===" +
+                Environment.NewLine +
+                result.ResponseBody;
+
+            SetStatus(
+                result.Outcome == PrivateTransportOutcome.ConfirmedSuccess
+                    ? "CONFIRMED"
+                    : result.Outcome.ToString().ToUpperInvariant(),
+                $"{name} · HTTP {result.Status} · {result.ResponseLength} chars · {result.ElapsedMs} ms");
+        }
+        catch (Exception ex)
+        {
+            ReplayResultTextBox.Text = ex.ToString();
+            SetStatus("ERROR", $"{name} · {ex.Message}");
+        }
+    }
+
     private void KindFilterComboBox_OnSelectionChanged(
         object sender,
         SelectionChangedEventArgs e)
@@ -272,8 +396,8 @@ public partial class ScheduledTaskTransportProbeWindow
                 this,
                 "Будет повторён реально захваченный изменяющий запрос через текущую авторизованную WebView2-сессию.\n\n" +
                 $"Kind: {entry.Kind}\nMethod: {method}\nEndpoint: {entry.Url}\n\n" +
-                "Request body берётся только из памяти и может быть отредактирован в поле окна. " +
-                "Продолжить?",
+                "Если после отправки произойдёт timeout/navigation, результат будет UNKNOWN_OUTCOME и приложение НЕ будет автоматически повторять write. " +
+                "Вместо этого используйте Safe read-back.\n\nПродолжить?",
                 "Experimental backend mutation replay",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -291,7 +415,7 @@ public partial class ScheduledTaskTransportProbeWindow
             ReplayButton.IsEnabled = false;
             SetStatus(
                 "REPLAY",
-                $"{entry.Kind} · {entry.Method} · same-session page-context fetch");
+                $"{entry.Kind} · {entry.Method} · request-bound page-context fetch");
 
             var result = await _replay.ExecuteAsync(
                 entry,
@@ -310,9 +434,20 @@ public partial class ScheduledTaskTransportProbeWindow
                         ? "marker PASS"
                         : "marker FAIL";
 
-            SetStatus(
-                result.Ok ? "PROOF" : "ERROR",
-                $"HTTP {result.Status} · {proof} · response={result.ResponseLength} chars · {result.ElapsedMs} ms");
+            if (result.RequiresReadBack)
+            {
+                SetStatus(
+                    "UNKNOWN_OUTCOME",
+                    $"Write may have happened · {proof} · DO NOT RETRY · use Safe read-back.");
+            }
+            else
+            {
+                SetStatus(
+                    result.Outcome == PrivateTransportOutcome.ConfirmedSuccess
+                        ? "PROOF"
+                        : result.Outcome.ToString().ToUpperInvariant(),
+                    $"HTTP {result.Status} · {proof} · response={result.ResponseLength} chars · {result.ElapsedMs} ms");
+            }
         }
         catch (Exception ex)
         {

@@ -1,12 +1,9 @@
-using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Web.WebView2.Wpf;
 
 namespace ChatGptDesktopLocalBridge.ScheduledTasks;
 
 public sealed record BackendReplayResult(
+    PrivateTransportOutcome Outcome,
     bool Ok,
     int Status,
     string Url,
@@ -15,15 +12,16 @@ public sealed record BackendReplayResult(
     string ResponseSha256,
     bool? ContainsExpected,
     long ElapsedMs,
-    string? Error);
+    string? Error,
+    bool RequiresReadBack);
 
 public sealed class PageContextBackendReplay
 {
-    private readonly WebView2 _browser;
+    private readonly ChatGptPrivateTransport _transport;
 
     public PageContextBackendReplay(WebView2 browser)
     {
-        _browser = browser;
+        _transport = new ChatGptPrivateTransport(browser);
     }
 
     public async Task<BackendReplayResult> ExecuteAsync(
@@ -31,13 +29,8 @@ public sealed class PageContextBackendReplay
         string? requestBodyOverride,
         string? expectedText)
     {
-        if (_browser.CoreWebView2 is null)
-        {
-            throw new InvalidOperationException(
-                "The active ChatGPT WebView is not initialized.");
-        }
-
-        if (!ScheduledTaskTrafficFilter.IsAllowedReplayUrl(entry.ReplayUrl))
+        if (!ScheduledTaskTrafficFilter.IsAllowedReplayUrl(entry.ReplayUrl) ||
+            !Uri.TryCreate(entry.ReplayUrl, UriKind.Absolute, out var uri))
         {
             throw new InvalidOperationException(
                 "Captured endpoint is outside the allowed ChatGPT origin.");
@@ -45,140 +38,49 @@ public sealed class PageContextBackendReplay
 
         var method = entry.Method.Trim().ToUpperInvariant();
         var body = requestBodyOverride ?? entry.RequestBody;
+        var mutation = method is "POST" or "PUT" or "PATCH" or "DELETE";
+
+        PrivateTransportResult result;
 
         if (method is "GET" or "HEAD")
         {
-            body = null;
+            result = await _transport.GetAsync(uri.PathAndQuery);
         }
-        else if (method is not ("POST" or "PUT" or "PATCH" or "DELETE"))
+        else
         {
-            throw new InvalidOperationException(
-                $"Replay method '{method}' is not supported.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(body))
-        {
-            try
-            {
-                using var _ = JsonDocument.Parse(body);
-            }
-            catch
-            {
-                throw new InvalidOperationException(
-                    "Mutation replay is limited to JSON request bodies.");
-            }
-        }
-
-        var payload = JsonSerializer.Serialize(new
-        {
-            url = entry.ReplayUrl,
-            method,
-            body,
-            expected = string.IsNullOrEmpty(expectedText)
-                ? null
-                : expectedText
-        });
-
-        var script = """
-            (async () => {
-              const p = PAYLOAD;
-              const started = performance.now();
-              const options = {
-                method: p.method,
-                credentials: 'include',
-                redirect: 'follow',
-                headers: {
-                  'accept': 'application/json, text/plain, */*'
-                }
-              };
-
-              if (p.body !== null) {
-                options.headers['content-type'] = 'application/json';
-                options.body = p.body;
-              }
-
-              try {
-                const response = await fetch(p.url, options);
-                let text = await response.text();
-                if (text.length > 500000) {
-                  text = text.slice(0, 500000);
-                }
-
-                return {
-                  ok: response.ok,
-                  status: response.status,
-                  url: response.url,
-                  text,
-                  containsExpected: p.expected === null
+            result = await _transport.SendMutationAsync(
+                method,
+                uri.PathAndQuery,
+                string.IsNullOrWhiteSpace(body)
                     ? null
-                    : text.includes(p.expected),
-                  elapsedMs: Math.round(performance.now() - started),
-                  error: null
-                };
-              } catch (error) {
-                return {
-                  ok: false,
-                  status: 0,
-                  url: p.url,
-                  text: '',
-                  containsExpected: null,
-                  elapsedMs: Math.round(performance.now() - started),
-                  error: String(error)
-                };
-              }
-            })()
-            """.Replace("PAYLOAD", payload);
-
-        var raw = await _browser.ExecuteScriptAsync(script);
-
-        ReplayScriptResult? result;
-        try
-        {
-            result = JsonSerializer.Deserialize<ReplayScriptResult>(
-                raw,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"Could not decode page-context replay result: {ex.Message}");
+                    : body);
         }
 
-        if (result is null)
+        bool? containsExpected = null;
+        if (!string.IsNullOrWhiteSpace(expectedText))
         {
-            throw new InvalidOperationException(
-                "Page-context replay returned no result.");
+            containsExpected = result.ResponseBody.Contains(
+                expectedText,
+                StringComparison.Ordinal);
         }
 
-        var responseText = result.Text ?? string.Empty;
-        var hash = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(responseText)))
-            .ToLowerInvariant();
+        var requiresReadBack =
+            mutation &&
+            result.Outcome is
+                PrivateTransportOutcome.UnknownOutcome or
+                PrivateTransportOutcome.ContextInvalidated;
 
         return new BackendReplayResult(
+            result.Outcome,
             result.Ok,
             result.Status,
-            ScheduledTaskTrafficFilter.SanitizeUrl(
-                result.Url ?? entry.ReplayUrl),
-            JsonShape.Describe(responseText),
-            responseText.Length,
-            hash,
-            result.ContainsExpected,
+            result.Endpoint,
+            result.ResponseSchema,
+            result.ResponseLength,
+            result.ResponseSha256,
+            containsExpected,
             result.ElapsedMs,
-            result.Error);
-    }
-
-    private sealed class ReplayScriptResult
-    {
-        public bool Ok { get; set; }
-        public int Status { get; set; }
-        public string? Url { get; set; }
-        public string? Text { get; set; }
-        public bool? ContainsExpected { get; set; }
-        public long ElapsedMs { get; set; }
-        public string? Error { get; set; }
+            result.Error,
+            requiresReadBack);
     }
 }
