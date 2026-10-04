@@ -115,3 +115,18 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 
 - source: legacy-v2-state
 - authority: legacy-unverified
+
+## Private transport probe v3 admitted 2026-10-04
+
+- Owner-authorized implementation based on `chatgpt-desktop-github-private-transport-research.md`.
+- Isolated branch: `exp/private-transport-probe-v3`; draft PR #26.
+- Release commit: `dd472e44077e962ddb4b96e21d65de14ddb4b183`; prerelease tag `private-transport-probe-dd472e4`.
+- Added request/document binding around private backend calls: each operation captures current `https://chatgpt.com` origin plus a per-document token and rejects a response when the WebView document/origin changes mid-flight.
+- Added narrow read-only clients for current observed endpoint hypotheses: Scheduled Tasks list filters, latest backing run, Library listing, and Library storage usage. These use same-origin page-context fetch and are not exposed as a general arbitrary URL tool.
+- Mutation replay now returns explicit `UNKNOWN_OUTCOME` when a write may have been dispatched but no authoritative response is known. The UI instructs not to retry and offers safe read-back via current Scheduled Tasks or Library state.
+- Diagnostic persistence remains schema/metadata only. Exact captured URL/body and read-only response bodies are memory-only; cookies/auth headers/tokens are not written to diagnostic logs.
+- Release workflow `37166164652`: build, runtime regression, publish, full Setup, exact delta from `scheduled-file-probe-6bb827b`, and prerelease publication PASS.
+- Incremental updater: `ChatGptDesktopLocalBridge-Update-from-scheduled-file-probe-6bb827b.exe`, 2,325,075 bytes, SHA-256 `9bee619e8a494fccd8c29a241c91caae53138a94137add8f852635fe2db3ce82`.
+- Full Setup: `ChatGptDesktopLocalBridge-private-transport-probe-Setup.exe`, 51,636,166 bytes, SHA-256 `4d94fbfcf80ad4ebe64c1434fee441ef21bb2c476b9252099dfb81016d37f8ae`.
+- Production Local Bridge transport and `main` remain unchanged. Next live gate is to validate the endpoint hypotheses against the Owner account, capture exact task mutation bodies, then implement protocol-specific file upload + task mutation E2E.
+
