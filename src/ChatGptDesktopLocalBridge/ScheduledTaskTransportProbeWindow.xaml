@@ -1,0 +1,260 @@
+<Window x:Class="ChatGptDesktopLocalBridge.ScheduledTaskTransportProbeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Scheduled Task Transport Probe"
+        Width="1120"
+        Height="820"
+        MinWidth="900"
+        MinHeight="650"
+        WindowStartupLocation="CenterOwner"
+        Background="#181A1C"
+        Foreground="#F0F0F0"
+        FontFamily="Segoe UI">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="2*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="10"
+                Margin="0,0,0,8"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock FontSize="17"
+                           FontWeight="SemiBold"
+                           Text="Scheduled Task Transport Probe · EXPERIMENTAL" />
+                <TextBlock Margin="0,5,0,8"
+                           Foreground="#AEB2B7"
+                           TextWrapping="Wrap"
+                           Text="Диагностика наблюдает backend-запросы Scheduled Tasks внутри уже авторизованной WebView2-сессии. Заголовки авторизации и cookies не сохраняются. Сначала можно один раз изучить протокол через UI ChatGPT, затем кнопки ниже повторяют только выученные same-session запросы без composer и без DOM Scheduled Tasks." />
+                <WrapPanel>
+                    <Button x:Name="CaptureButton"
+                            Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="CaptureButton_OnClick"
+                            Content="Capture: OFF" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="ClearTrafficButton_OnClick"
+                            Content="Очистить" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="OpenLogButton_OnClick"
+                            Content="Открыть лог" />
+                    <TextBlock x:Name="CaptureStatusText"
+                               VerticalAlignment="Center"
+                               Foreground="#AEB2B7"
+                               Text="Ожидание" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.25*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    BorderBrush="#3A3D40"
+                    BorderThickness="1"
+                    Background="#111315">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Margin="8"
+                               FontWeight="SemiBold"
+                               Text="Найденные task/schedule/automation/jawbone запросы" />
+                    <ListBox x:Name="TrafficList"
+                             Margin="6,0,6,6"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             Background="#111315"
+                             Foreground="#E5E7EA"
+                             BorderThickness="0"
+                             DisplayMemberPath="Display"
+                             SelectionChanged="TrafficList_OnSelectionChanged" />
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1"
+                          Width="8"
+                          Background="#34373A"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext" />
+
+            <Border Grid.Column="2"
+                    BorderBrush="#3A3D40"
+                    BorderThickness="1"
+                    Background="#111315">
+                <DockPanel>
+                    <WrapPanel DockPanel.Dock="Top" Margin="8">
+                        <Button Margin="0,0,6,6" Padding="8,4"
+                                Click="LearnListButton_OnClick"
+                                Content="Выучить как LIST" />
+                        <Button Margin="0,0,6,6" Padding="8,4"
+                                Click="LearnGetButton_OnClick"
+                                Content="Выучить как GET" />
+                        <Button Margin="0,0,6,6" Padding="8,4"
+                                Click="LearnUpdateButton_OnClick"
+                                Content="Выучить как UPDATE" />
+                        <Button Margin="0,0,6,6" Padding="8,4"
+                                Click="LearnArmButton_OnClick"
+                                Content="Выучить как ARM" />
+                    </WrapPanel>
+                    <TextBox x:Name="TrafficDetailTextBox"
+                             Margin="8,0,8,8"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             Background="#111315"
+                             Foreground="#E5E7EA"
+                             BorderThickness="0" />
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2"
+                Margin="0,8,0,8"
+                Padding="10"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                           Margin="0,0,8,6"
+                           VerticalAlignment="Center"
+                           Text="Mailbox Task ID" />
+                <TextBox x:Name="MailboxTaskIdTextBox"
+                         Grid.Row="0" Grid.Column="1"
+                         Margin="0,0,14,6"
+                         Padding="6" />
+
+                <TextBlock Grid.Row="0" Grid.Column="2"
+                           Margin="0,0,8,6"
+                           VerticalAlignment="Center"
+                           Text="Worker Task ID" />
+                <TextBox x:Name="WorkerTaskIdTextBox"
+                         Grid.Row="0" Grid.Column="3"
+                         Margin="0,0,14,6"
+                         Padding="6" />
+
+                <TextBlock Grid.Row="0" Grid.Column="4"
+                           Margin="0,0,8,6"
+                           VerticalAlignment="Center"
+                           Text="delay, sec" />
+                <TextBox x:Name="DelaySecondsTextBox"
+                         Grid.Row="0" Grid.Column="5"
+                         Margin="0,0,0,6"
+                         Padding="6"
+                         Text="10" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           Text="Payload" />
+                <TextBox x:Name="PayloadTextBox"
+                         Grid.Row="1" Grid.Column="1"
+                         Margin="0,0,14,0"
+                         Padding="6" />
+
+                <TextBlock Grid.Row="1" Grid.Column="2"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           Text="Seq" />
+                <TextBox x:Name="SeqTextBox"
+                         Grid.Row="1" Grid.Column="3"
+                         Margin="0,0,14,0"
+                         Padding="6"
+                         Text="1" />
+
+                <TextBlock Grid.Row="1" Grid.Column="4"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           Text="Profile" />
+                <TextBlock x:Name="ProfileStatusText"
+                           Grid.Row="1" Grid.Column="5"
+                           VerticalAlignment="Center"
+                           Foreground="#AEB2B7"
+                           Text="—" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0"
+                        Width="190"
+                        Margin="0,0,8,0">
+                <Button Margin="0,0,0,7" Padding="12,7"
+                        Click="ListTasksButton_OnClick"
+                        Content="1. List Scheduled Tasks" />
+                <Button Margin="0,0,0,7" Padding="12,7"
+                        Click="ReadMailboxButton_OnClick"
+                        Content="2. Read Mailbox" />
+                <Button Margin="0,0,0,7" Padding="12,7"
+                        Click="WriteReadyButton_OnClick"
+                        Content="3. Write READY" />
+                <Button Margin="0,0,0,7" Padding="12,7"
+                        Click="ArmWorkerButton_OnClick"
+                        Content="4. Arm Worker Once" />
+                <Button Margin="0,0,0,7" Padding="12,7"
+                        Click="ReadAckButton_OnClick"
+                        Content="5. Read ACK" />
+            </StackPanel>
+
+            <TextBox x:Name="ResultTextBox"
+                     Grid.Column="1"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     Background="#111315"
+                     Foreground="#E5E7EA"
+                     BorderBrush="#3A3D40"
+                     BorderThickness="1"
+                     Padding="8" />
+        </Grid>
+
+        <Border Grid.Row="4"
+                Margin="0,8,0,0"
+                Padding="8"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <TextBlock x:Name="OperationStatusText"
+                       TextWrapping="Wrap"
+                       Foreground="#D9DDE2"
+                       Text="Статус: диагностический режим. Production transport не изменён." />
+        </Border>
+    </Grid>
+</Window>
