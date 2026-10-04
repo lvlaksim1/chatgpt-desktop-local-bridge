@@ -105,4 +105,5 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-task-probe-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Scheduled Task transport probe ($env:TARGET_TAG)" --notes "Experimental metadata-only Scheduled Tasks backend discovery build. Existing Local Bridge transport remains unchanged. Normal upgrade path: ChatGptDesktopLocalBridge-Update-from-runtime-ui028-31e15b5.exe."
+        run: |
+          gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-task-probe-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Scheduled Task transport probe ($env:TARGET_TAG)" --notes "Experimental metadata-only Scheduled Tasks backend discovery build. Existing Local Bridge transport remains unchanged. Normal upgrade path is ChatGptDesktopLocalBridge-Update-from-runtime-ui028-31e15b5.exe."
