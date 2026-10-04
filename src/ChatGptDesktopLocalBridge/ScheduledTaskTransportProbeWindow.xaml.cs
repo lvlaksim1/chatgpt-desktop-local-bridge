@@ -12,6 +12,7 @@ public partial class ScheduledTaskTransportProbeWindow
 {
     private readonly ScheduledTaskMetadataProbe _probe;
     private readonly PageContextBackendReplay _replay;
+    private readonly ChatGptPrivateTransport _privateTransport;
     private readonly DispatcherTimer _refreshTimer;
 
     private int _lastSnapshotCount = -1;
@@ -29,6 +30,7 @@ public partial class ScheduledTaskTransportProbeWindow
 
         _probe = new ScheduledTaskMetadataProbe(browser.CoreWebView2);
         _replay = new PageContextBackendReplay(browser);
+        _privateTransport = new ChatGptPrivateTransport(browser);
 
         _refreshTimer = new DispatcherTimer
         {
@@ -47,6 +49,50 @@ public partial class ScheduledTaskTransportProbeWindow
             _refreshTimer.Stop();
             await _probe.DisposeAsync();
         };
+    }
+
+
+    private async void PrivateReadProofButton_OnClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        try
+        {
+            SetStatus("PRIVATE_READ", "Проверяю Tasks + Library через page-context backend client.");
+
+            var binding = _privateTransport.CaptureBinding();
+            var scheduled = await _privateTransport.ListAutomationsAsync("scheduled");
+            var paused = await _privateTransport.ListAutomationsAsync("paused");
+            var library = await _privateTransport.ListLibraryAsync();
+            var storage = await _privateTransport.LibraryStorageUsageAsync();
+
+            var proof = new
+            {
+                binding = binding.Display,
+                scheduled,
+                paused,
+                library,
+                storage,
+                pass =
+                    scheduled.Ok &&
+                    paused.Ok &&
+                    library.Ok &&
+                    storage.Ok
+            };
+
+            ReplayResultTextBox.Text = JsonSerializer.Serialize(
+                proof,
+                new JsonSerializerOptions { WriteIndented = true });
+
+            SetStatus(
+                proof.pass ? "PRIVATE_READ_PASS" : "PRIVATE_READ_PARTIAL",
+                $"scheduled={scheduled.Status}, paused={paused.Status}, library={library.Status}, storage={storage.Status}");
+        }
+        catch (Exception ex)
+        {
+            ReplayResultTextBox.Text = ex.ToString();
+            SetStatus("PRIVATE_READ_ERROR", ex.Message);
+        }
     }
 
     private async void CaptureButton_OnClick(
@@ -293,26 +339,47 @@ public partial class ScheduledTaskTransportProbeWindow
                 "REPLAY",
                 $"{entry.Kind} · {entry.Method} · same-session page-context fetch");
 
-            var result = await _replay.ExecuteAsync(
-                entry,
-                ReplayBodyTextBox.Text,
-                ExpectedTextBox.Text.Trim());
+            object result;
+            if (isMutation)
+            {
+                result = await _privateTransport.ReplayCapturedMutationAsync(
+                    entry,
+                    ReplayBodyTextBox.Text);
+            }
+            else
+            {
+                result = await _replay.ExecuteAsync(
+                    entry,
+                    ReplayBodyTextBox.Text,
+                    ExpectedTextBox.Text.Trim());
+            }
 
             ReplayResultTextBox.Text = JsonSerializer.Serialize(
                 result,
                 new JsonSerializerOptions { WriteIndented = true });
 
-            var expectedText = ExpectedTextBox.Text.Trim();
-            var proof =
-                string.IsNullOrWhiteSpace(expectedText)
-                    ? "no marker check"
-                    : result.ContainsExpected == true
-                        ? "marker PASS"
-                        : "marker FAIL";
+            if (result is PrivateBackendResult privateResult)
+            {
+                SetStatus(
+                    privateResult.Outcome == PrivateMutationOutcome.Confirmed
+                        ? "MUTATION_PROOF"
+                        : privateResult.Outcome.ToString().ToUpperInvariant(),
+                    $"HTTP {privateResult.Status} · {privateResult.Outcome} · response={privateResult.ResponseLength} chars · {privateResult.ElapsedMs} ms");
+            }
+            else if (result is BackendReplayResult replayResult)
+            {
+                var expectedText = ExpectedTextBox.Text.Trim();
+                var proof =
+                    string.IsNullOrWhiteSpace(expectedText)
+                        ? "no marker check"
+                        : replayResult.ContainsExpected == true
+                            ? "marker PASS"
+                            : "marker FAIL";
 
-            SetStatus(
-                result.Ok ? "PROOF" : "ERROR",
-                $"HTTP {result.Status} · {proof} · response={result.ResponseLength} chars · {result.ElapsedMs} ms");
+                SetStatus(
+                    replayResult.Ok ? "PROOF" : "ERROR",
+                    $"HTTP {replayResult.Status} · {proof} · response={replayResult.ResponseLength} chars · {replayResult.ElapsedMs} ms");
+            }
         }
         catch (Exception ex)
         {
