@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ChatGptDesktopLocalBridge.ScheduledTasks;
 
@@ -8,6 +9,7 @@ public sealed record ScheduledTaskTrafficEntry(
     string RequestId,
     string Method,
     string Url,
+    [property: JsonIgnore] string ReplayUrl,
     string? RequestBody,
     int? Status,
     string? MimeType,
