@@ -1,0 +1,204 @@
+<Window x:Class="ChatGptDesktopLocalBridge.ScheduledTaskTransportProbeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Scheduled Task Transport Probe"
+        Width="1060"
+        Height="760"
+        MinWidth="860"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        Background="#181A1C"
+        Foreground="#F0F0F0"
+        FontFamily="Segoe UI">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="10"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock FontSize="17"
+                           FontWeight="SemiBold"
+                           Text="Scheduled Task Transport Probe · EXPERIMENTAL" />
+                <TextBlock Margin="0,5,0,8"
+                           Foreground="#AEB2B7"
+                           TextWrapping="Wrap"
+                           Text="Первый этап: определить реальный backend protocol Scheduled Tasks. Probe фиксирует только очищенный URL/path, HTTP method, status и MIME type. Query-параметры, request/response bodies и HTTP headers не записываются. Production Local Bridge transport не изменён." />
+                <WrapPanel>
+                    <Button x:Name="CaptureButton"
+                            Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="CaptureButton_OnClick"
+                            Content="Capture: OFF" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="ClearButton_OnClick"
+                            Content="Очистить" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="OpenLogButton_OnClick"
+                            Content="Открыть лог" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="CopySelectedButton_OnClick"
+                            Content="Копировать endpoint" />
+                    <TextBlock x:Name="CaptureStatusText"
+                               VerticalAlignment="Center"
+                               Foreground="#AEB2B7"
+                               Text="Ожидание" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1"
+                Margin="0,8,0,8"
+                Padding="10"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold"
+                           Text="Маркеры действий для корреляции" />
+                <TextBlock Margin="0,4,0,7"
+                           Foreground="#AEB2B7"
+                           TextWrapping="Wrap"
+                           Text="Нажмите маркер непосредственно перед соответствующим действием в интерфейсе Scheduled Tasks. В тот же JSONL будет записана отметка времени, после неё — найденные backend requests." />
+                <WrapPanel>
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Tag="OPEN_TASKS"
+                            Click="MarkerButton_OnClick"
+                            Content="Open Tasks" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Tag="READ_TASK"
+                            Click="MarkerButton_OnClick"
+                            Content="Read task" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Tag="EDIT_PROMPT"
+                            Click="MarkerButton_OnClick"
+                            Content="Edit prompt" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Tag="PAUSE_TASK"
+                            Click="MarkerButton_OnClick"
+                            Content="Pause" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Tag="RESUME_TASK"
+                            Click="MarkerButton_OnClick"
+                            Content="Resume" />
+                    <Button Margin="0,0,6,6" Padding="9,4"
+                            Tag="CHANGE_SCHEDULE"
+                            Click="MarkerButton_OnClick"
+                            Content="Change schedule" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.3*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="#111315"
+                    BorderBrush="#3A3D40"
+                    BorderThickness="1">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Margin="8"
+                               FontWeight="SemiBold"
+                               Text="Scheduled Tasks backend candidates" />
+                    <ListBox x:Name="TrafficList"
+                             Margin="6,0,6,6"
+                             Background="#111315"
+                             Foreground="#E5E7EA"
+                             BorderThickness="0"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             DisplayMemberPath="Display"
+                             SelectionChanged="TrafficList_OnSelectionChanged" />
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1"
+                          Width="8"
+                          Background="#34373A"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext" />
+
+            <Border Grid.Column="2"
+                    Background="#111315"
+                    BorderBrush="#3A3D40"
+                    BorderThickness="1">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Margin="8"
+                               FontWeight="SemiBold"
+                               Text="Selected request metadata" />
+                    <TextBox x:Name="DetailTextBox"
+                             Margin="8,0,8,8"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"
+                             Background="#111315"
+                             Foreground="#E5E7EA"
+                             BorderThickness="0"
+                             FontFamily="Consolas"
+                             FontSize="11" />
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3"
+                Margin="0,8,0,0"
+                Padding="10"
+                Background="#202124"
+                BorderBrush="#3A3D40"
+                BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                           Margin="0,0,8,6"
+                           Text="Mailbox Task ID"
+                           VerticalAlignment="Center" />
+                <TextBox x:Name="MailboxTaskIdTextBox"
+                         Grid.Row="0" Grid.Column="1"
+                         Margin="0,0,14,6"
+                         Padding="6" />
+                <TextBlock Grid.Row="0" Grid.Column="2"
+                           Margin="0,0,8,6"
+                           Text="Worker Task ID"
+                           VerticalAlignment="Center" />
+                <TextBox x:Name="WorkerTaskIdTextBox"
+                         Grid.Row="0" Grid.Column="3"
+                         Margin="0,0,0,6"
+                         Padding="6" />
+
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
+                           x:Name="OperationStatusText"
+                           Foreground="#D9DDE2"
+                           TextWrapping="Wrap"
+                           Text="Статус: DISCOVERY — прямые list/get/update/arm будут включены только после подтверждения фактического backend protocol." />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
