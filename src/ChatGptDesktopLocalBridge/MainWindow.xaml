@@ -217,7 +217,7 @@
                         Margin="5,7,8,7"
                         Style="{StaticResource TopBarButtonStyle}"
                         Click="ScheduledTaskProbeButton_OnClick"
-                        Content="Tasks Probe" />
+                        Content="Transport Probe" />
                 <Button Grid.Column="7"
                         Style="{StaticResource WindowButtonStyle}"
                         Click="MinimizeButton_OnClick"
