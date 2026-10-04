@@ -113,3 +113,5 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Incremental updater: `ChatGptDesktopLocalBridge-Update-from-task-probe-49fb895.exe`, size 2,317,646 bytes, SHA-256 `4653b9fb4d95bc9324947644a8729c01a82a54c23213b644a4c315a8a5d6d8c6`.
 - Production Local Bridge transport remains unchanged. The remaining proof is live Owner-side discovery/replay of actual Tasks and Library operations, followed by a protocol-specific minimal E2E implementation if the backend shapes are stable.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
