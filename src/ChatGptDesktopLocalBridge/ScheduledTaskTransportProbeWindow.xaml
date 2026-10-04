@@ -34,6 +34,10 @@
                            TextWrapping="Wrap"
                            Text="Desktop-side transport research. Persistent log stores only sanitized endpoint metadata and JSON field/type shapes. Query values, bodies, cookies and auth headers are not persisted. Exact URL/body are kept in memory only so a human can replay the selected captured request through the same authenticated WebView2 session." />
                 <WrapPanel>
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            Click="PrivateReadProofButton_OnClick"
+                            Content="Private Read Proof" />
                     <Button x:Name="CaptureButton"
                             Margin="0,0,8,0"
                             Padding="12,6"
@@ -253,10 +257,16 @@
                 Background="#202124"
                 BorderBrush="#3A3D40"
                 BorderThickness="1">
-            <TextBlock x:Name="OperationStatusText"
+            <StackPanel>
+                <TextBlock Margin="0,0,0,5"
+                           Foreground="#AEB2B7"
+                           TextWrapping="Wrap"
+                           Text="Private Read Proof: напрямую проверяет allowlisted Tasks + Library endpoints через текущую WebView2-сессию. Mutation replay остаётся только для захваченного frontend request и требует подтверждения." />
+                <TextBlock x:Name="OperationStatusText"
                        Foreground="#D9DDE2"
                        TextWrapping="Wrap"
-                       Text="Статус: готово к Desktop-side Tasks + Library discovery и same-session replay. Production Local Bridge transport не изменён." />
+                       Text="Статус: готово к narrow private transport proof. Production Local Bridge transport не изменён." />
+            </StackPanel>
         </Border>
     </Grid>
 </Window>
