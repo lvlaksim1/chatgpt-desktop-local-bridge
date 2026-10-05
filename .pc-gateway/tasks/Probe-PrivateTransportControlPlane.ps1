@@ -473,7 +473,9 @@ finally {
 
     try {
         if (Test-Path -LiteralPath $AppExe -PathType Leaf) {
-            Start-Process -FilePath $AppExe | Out-Null
+            # Launch through the interactive shell so the long-lived GUI process
+            # is not a descendant of the gateway's PowerShell process tree.
+            Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $AppExe + '"') | Out-Null
         }
     }
     catch {}
