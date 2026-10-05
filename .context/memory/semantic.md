@@ -132,3 +132,12 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 
 - source: legacy-v2-state
 - authority: legacy-unverified
+
+## Private transport branch reconciliation 2026-10-05
+
+- Chat/repository reconciliation selects draft PR #27 / `exp/chatgpt-private-transport-v3` / `70d3b2900cd72b2892dd4c75d000df4d2938e9be` / prerelease `private-transport-v3-70d3b29` as the current user-facing Private Transport v3 candidate.
+- Draft PR #26 / `exp/private-transport-probe-v3` / `dd472e44077e962ddb4b96e21d65de14ddb4b183` is a divergent alternate implementation from the same v2 base. Preserve it as evidence; do not treat both branches as simultaneous authority or merge them wholesale.
+- `exp/chatgpt-private-transport-v4` currently points to the same commit as PR #27 and has no unique verified work.
+- Product `main` remains unchanged at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`; no private/Scheduled Tasks/Library transport experiment has been promoted to production.
+- Operational coupled state was reconciled to manager generation 20 on 2026-10-05.
+
