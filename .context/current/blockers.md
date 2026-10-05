@@ -1,15 +1,14 @@
 # Current blockers and open risks
 
-Updated: 2026-10-05 17:52 MSK
+Updated: 2026-10-05 19:45 MSK
 
-No blocker remains for read-plane, Pause, Resume, or autonomous runner control of those state transitions.
+No blocker remains for read-plane, Pause/Resume, Schedule mutation, existing-task arm/rearm, prompt mutation, or Library byte/file lifecycle.
 
-Still unproven:
-- Task Schedule mutation contract and safe restoration;
-- one-shot arm/rearm contract;
-- Library/file create-upload-process-read-replace-delete lifecycle;
-- strong account/workspace stale-context fencing for unattended writes;
-- ambiguous write recovery under forced network loss;
-- complete no-DOM E2E and endurance matrix.
+Current proof gap:
+- first actual Scheduled runtime request-file -> result-file execution is in progress;
+- explicit mailbox READY/ACK semantics and fencing remain after that;
+- dedicated new worker creation using target_thread_id currently returns 503;
+- account/workspace stale-context fencing for unattended production writes remains incomplete;
+- forced network-loss UNKNOWN_OUTCOME recovery and endurance remain untested.
 
-Runner scripts must not leave long-lived child GUI processes inside the gateway job tree.
+All runner probes must restore changed task state and clean disposable Library files.

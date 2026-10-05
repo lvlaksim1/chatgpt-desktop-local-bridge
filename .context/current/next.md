@@ -1,10 +1,9 @@
 # Next actions
 
-Updated: 2026-10-05 17:52 MSK
+Updated: 2026-10-05 19:45 MSK
 
-1. Continue without Owner manual steps.
-2. Use PR #30 runner harness to discover Task Schedule mutation/read-back and restore the original schedule.
-3. Discover arm/rearm next.
-4. Discover disposable Library/file write lifecycle and cleanup.
-5. Implement narrow write-plane clients from proven contracts.
-6. Execute first full no-composer/no-DOM-input E2E.
+1. Observe request #240 to terminal state and inspect exact E2E evidence.
+2. Restore ordinary desktop app after the bounded runner probe.
+3. On PASS, add explicit mailbox READY/ACK and generation/seq/message_id fencing.
+4. On FAIL, isolate only the failing Scheduled-runtime/Library boundary and repeat safely.
+5. After full E2E, begin durability/endurance campaign.

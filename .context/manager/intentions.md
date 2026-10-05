@@ -1,23 +1,24 @@
 # Manager intentions and commitments
 
-Manager generation: 25.
-Updated: 2026-10-05 17:52 MSK
+Manager generation: 26.
+Updated: 2026-10-05 19:45 MSK
 
-## Runner operating mode
-- Default to pc-runner-gateway for live Windows tests.
-- Do not ask the Owner to click UI or return screenshots when a bounded runner/CDP/UIAutomation test can collect the same evidence.
-- Keep runner scripts exact-SHA pinned, allowlisted, bounded, state-restoring and evidence-producing.
-- Separate diagnostic app lifecycle from normal app restoration; restore normal GUI through a separate Task Scheduler/InteractiveToken task.
+Current experimentation branch: exp/runner-private-transport-control-plane / draft PR #30.
 
-## Private transport evidence
-- Read-plane PASS on v5.
-- Pause mutation PASS.
-- Runner control-plane cycle #208 PASS proves Resume as well as Pause and original-state restoration.
-- App restore #210 PASS.
+Proven:
+- authenticated read-plane;
+- Pause + Resume;
+- Schedule create/update/remove;
+- arm/rearm on an existing bound task with restoration;
+- prompt mutation with restoration;
+- Library upload/process/exact-download/rename/delete.
 
-## Next
-1. Runner-discover schedule mutation contract.
-2. Runner-discover one-shot arm/rearm contract.
-3. Runner-discover Library/file create-upload-process-read-replace-delete lifecycle.
-4. Implement narrow clients and UNKNOWN_OUTCOME reconciliation.
-5. Execute first full request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E.
+Current active gate:
+- runner request #240 executes the first Desktop Scheduled Tasks + Library E2E using a unique request file, temporary worker prompt/schedule on an existing bound paused task, result-file verification, run observation, cleanup and exact task restoration.
+
+Commitments:
+1. Do not ask Owner for routine manual testing while runner can perform it.
+2. Keep all experiments reversible and clean disposable files/tasks.
+3. Treat failed/ambiguous writes with read-back before retry.
+4. If E2E passes, next add explicit mailbox ACK/fencing and then endurance.
+5. If E2E fails, diagnose the narrow failing boundary without weakening safety or falling back to DOM/composer transport.

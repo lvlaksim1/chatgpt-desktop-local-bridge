@@ -1,16 +1,19 @@
 # Latest handoff
 
-Updated: 2026-10-05 17:52 MSK
+Updated: 2026-10-05 19:45 MSK
 
 Persistent manager: chatgpt-desktop-local-bridge-project-manager.
-Manager generation: 25.
+Manager generation: 26.
 
-Owner explicitly requested that the manager perform live testing autonomously through the runner rather than asking for manual UI actions.
+Autonomous runner campaign has advanced materially:
+- schedule create/update/remove PASS;
+- Library full disposable lifecycle PASS including exact byte-for-byte download;
+- one-shot schedule matrix established integer timing_mode contract;
+- existing bound task arm/rearm PASS with exact restoration;
+- existing bound task prompt mutation PASS with exact restoration.
 
-PC Runner Gateway health request #204 PASS.
+Dedicated new automation binding via target_thread_id returned reproducible 503 and read-back found no created object, so it is not relied on for E2E.
 
-A new runner harness lives on exp/runner-private-transport-control-plane / draft PR #30. Bounded request #208 / run 37326704107 completed SUCCESS: the script selected a safe scheduled/paused non-condition task with lead-time protection, executed both pause and resume through /backend-api/automations/set_status, required authoritative GET read-back for false/true, and restored the original enabled state. This independently proves Resume and autonomous control-plane testing.
+The first real Desktop Scheduled Tasks + Library transport probe is now running as PC Gateway request #240. It creates a unique request JSON file, temporarily turns a safe paused bound task into the worker, arms it, waits for a distinct result JSON with matching message_id/payload/WORKER-ACK, verifies the task run, then restores the original task and deletes transport files.
 
-A process-tree issue was identified: gateway Repo-PowerShell waits long-lived GUI descendants. The probe is therefore bounded and stops its diagnostic app. Normal application restoration is a separate Task Scheduler InteractiveToken task. Request #210 / run 37328012071 completed SUCCESS.
-
-From now on manual Owner interaction is fallback-only. Next: runner-driven Task Schedule, arm/rearm and Library/file write discovery.
+Next decision depends on request #240 terminal evidence.

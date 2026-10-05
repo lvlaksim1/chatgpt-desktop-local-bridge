@@ -1,15 +1,13 @@
 # Manager plans
 
-Manager generation: 25.
-Updated: 2026-10-05 17:52 MSK
+Manager generation: 26.
+Updated: 2026-10-05 19:45 MSK
 
-## Immediate runner-driven plan
-1. Keep PR #30 as the autonomous Windows test harness.
-2. Add bounded network/DOM discovery for Task Schedule without requiring Owner clicks.
-3. Identify schedule write method/path/body and its authoritative read-back, using a disposable/safe task and restoring its original schedule.
-4. Discover one-shot arm/rearm semantics with the same restore-first discipline.
-5. Add runner probes for Library/file lifecycle, using disposable uniquely named transport files and cleanup.
-6. After contracts are proven, implement the minimal ScheduledFileTransport E2E.
-7. Run restart, duplicate, stale-ACK, relogin/navigation, network-loss, large-payload and 100+ sequential round-trip tests.
+## Active
+1. Complete runner request #240: Desktop creates request.json in Library, mutates/arms an existing bound Scheduled Task worker, waits for a distinct result.json, verifies message_id/payload/worker ACK, observes task run, restores task and deletes both files.
+2. If PASS, implement explicit mailbox READY/ACK and generation/seq/message_id fencing.
+3. Then implement narrow production-oriented clients for task state/schedule/prompt and Library file lifecycle.
+4. Run restart, duplicate, stale-ACK, navigation/relogin, network-loss, cleanup and 100+ sequential round-trip campaign.
+5. Classify transport as REJECT / CONTROL-PLANE ONLY / OPTIONAL / DEFAULT only after evidence.
 
-Other tracks remain independent: PR #22 runtime foundation, UI candidate 4c92f81, PR #23 ChatGPT-plan transport.
+Dedicated new-worker creation via target_thread_id remains a separate unresolved convenience path and is not required for first E2E because existing bound task mutation/restoration is proven.

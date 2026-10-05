@@ -1,11 +1,12 @@
 # Manager goals
 
-Manager generation: 25.
-Updated: 2026-10-05 17:52 MSK
+Manager generation: 26.
+Updated: 2026-10-05 19:45 MSK
 
 1. Deliver a reliable signed-in ChatGPT Windows client with policy-controlled native computer access.
 2. Keep production Local Bridge as fallback while server-side transport remains experimental.
-3. Use PC Runner Gateway as the default live Windows validation/execution channel so routine testing does not require Owner interaction.
-4. Prove Scheduled Tasks + Library/files transport incrementally from real backend/frontend contracts.
-5. Promote only narrow observed primitives with authoritative read-back, stale-context protection and bounded recovery.
-6. Require full no-composer/no-DOM-input E2E plus durability/endurance proof before production promotion.
+3. Complete Scheduled Tasks control-plane and Library/files data-plane from live current-frontend contracts.
+4. Prove full no-composer/no-DOM-input request/result transport on the Owner account.
+5. Preserve exact state restoration, read-back reconciliation and cleanup in every mutation experiment.
+6. Promote only narrow capability clients, never arbitrary private fetch.
+7. Run durability/endurance testing before any production promotion.
