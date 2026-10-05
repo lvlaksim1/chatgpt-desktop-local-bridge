@@ -226,7 +226,7 @@ try {
     # The websocket handshake is an explicit network operation too.
     Start-Sleep -Seconds 5
 
-    $script = @"
+    $script = @'
 (async()=>{
   const NETWORK_MIN_GAP_MS = 5000;
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -348,9 +348,9 @@ try {
     };
   }
 
-  const workerId = $workerIdJson;
-  const armedSchedule = $armedScheduleJson;
-  const beforeLastRun = $beforeLastRunJson;
+  const workerId = __WORKER_ID_JSON__;
+  const armedSchedule = __ARMED_SCHEDULE_JSON__;
+  const beforeLastRun = __BEFORE_LAST_RUN_JSON__;
   const api = await makeApi();
 
   const scheduled = await api.get('/backend-api/automations?filter=scheduled');
@@ -458,7 +458,24 @@ try {
     sample
   };
 })()
-"@
+'@
+
+    if ([string]::IsNullOrWhiteSpace($workerIdJson) -or
+        [string]::IsNullOrWhiteSpace($armedScheduleJson) -or
+        [string]::IsNullOrWhiteSpace($beforeLastRunJson)) {
+        throw 'js_json_binding_empty'
+    }
+
+    $script = $script.Replace('__WORKER_ID_JSON__', $workerIdJson)
+    $script = $script.Replace('__ARMED_SCHEDULE_JSON__', $armedScheduleJson)
+    $script = $script.Replace('__BEFORE_LAST_RUN_JSON__', $beforeLastRunJson)
+
+    if ($script.Contains('__WORKER_ID_JSON__') -or
+        $script.Contains('__ARMED_SCHEDULE_JSON__') -or
+        $script.Contains('__BEFORE_LAST_RUN_JSON__')) {
+        throw 'js_json_binding_unresolved'
+    }
+    if ($script -match '=\s*;') { throw 'js_json_binding_invalid_empty_expression' }
 
     $value = Invoke-CdpEval -Socket $socket -Id ([ref]$cdpId) -Expression $script -Stage 'scheduled-timing-paced'
     $json = $value | ConvertTo-Json -Depth 30 -Compress
