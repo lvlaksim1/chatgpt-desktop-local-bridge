@@ -260,14 +260,17 @@ try {
   const candidates = Array.from(urls).filter(value => {
     try {
       const u = new URL(value, location.href);
-      return u.origin === location.origin || u.hostname.endsWith('chatgpt.com');
+      return u.origin === location.origin ||
+        u.hostname.endsWith('chatgpt.com') ||
+        u.hostname === 'oaistatic.com' ||
+        u.hostname.endsWith('.oaistatic.com');
     } catch { return false; }
-  }).slice(0, 140);
+  }).slice(0, 260);
 
   const needles = [
-    '/backend-api/automations/save',
-    '/backend-api/automations/set_status',
-    '/backend-api/automations/remove'
+    'automations/save',
+    'automations/set_status',
+    'automations/remove'
   ];
 
   const matches = [];
