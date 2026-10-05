@@ -298,21 +298,50 @@ try {
     return body;
   }
 
+  function nextCandidateTime(x){
+    const raw=Array.isArray(x?.next_run_times)&&x.next_run_times.length?x.next_run_times[0]:x?.target_time_utc;
+    const t=Date.parse(raw||'');
+    return Number.isFinite(t)?t:NaN;
+  }
+  function recurringAt(ms){
+    const d=new Date(ms);
+    d.setUTCSeconds(0,0);
+    const p=n=>String(n).padStart(2,'0');
+    const stamp=d.getUTCFullYear()+p(d.getUTCMonth()+1)+p(d.getUTCDate())+'T'+p(d.getUTCHours())+p(d.getUTCMinutes())+'00Z';
+    return 'BEGIN:VEVENT\nDTSTART:'+stamp+'\nRRULE:FREQ=DAILY;BYHOUR='+d.getUTCHours()+';BYMINUTE='+d.getUTCMinutes()+'\nEND:VEVENT';
+  }
+
   const list=await api('GET','/backend-api/automations?filter=paused');
   if(!list.ok||!Array.isArray(list.json?.items)) throw new Error('paused_list_http_'+list.status);
-  const candidate=list.json.items.find(x=>
-    x&&typeof x.id==='string'&&x.is_enabled===false&&
-    x.timing_mode==='exact_schedule'&&typeof x.schedule==='string'&&x.schedule.length>0&&
-    typeof x.conversation_id==='string'&&x.conversation_id.length>0
-  );
-  if(!candidate) return {pass:false,code:'no_safe_task'};
+  const candidates=list.json.items.filter(x=>{
+    if(!(x&&typeof x.id==='string'&&x.is_enabled===false&&
+      x.timing_mode==='exact_schedule'&&typeof x.schedule==='string'&&x.schedule.length>0&&
+      typeof x.conversation_id==='string'&&x.conversation_id.length>0)) return false;
+    const t=nextCandidateTime(x);
+    return !Number.isFinite(t)||t-Date.now()>2*60*60*1000;
+  });
+  let candidate=null;
+  for(const item of candidates){
+    const e=await api('POST','/backend-api/automations/set_status',{jawbone_id:item.id,is_enabled:true});
+    if(!e.ok) continue;
+    try{
+      await waitFor(item.id,x=>x.is_enabled===true,'preflight_enable');
+      const d=await api('POST','/backend-api/automations/set_status',{jawbone_id:item.id,is_enabled:false});
+      if(!d.ok) continue;
+      await waitFor(item.id,x=>x.is_enabled===false,'preflight_disable');
+      candidate=item; break;
+    }catch{
+      try{await api('POST','/backend-api/automations/set_status',{jawbone_id:item.id,is_enabled:false})}catch{}
+    }
+  }
+  if(!candidate) return {pass:false,code:'no_toggleable_safe_task'};
 
   const id=candidate.id;
   const original=await read(id);
   const originalSchedule=original.schedule;
   const originalEnabled=original.is_enabled===true;
-  const s2='BEGIN:VEVENT\nDTSTART:20300101T040000Z\nRRULE:FREQ=DAILY;BYHOUR=4;BYMINUTE=0\nEND:VEVENT';
-  const s3='BEGIN:VEVENT\nDTSTART:20300101T050000Z\nRRULE:FREQ=DAILY;BYHOUR=5;BYMINUTE=0\nEND:VEVENT';
+  const s2=recurringAt(Date.now()+24*60*60*1000);
+  const s3=recurringAt(Date.now()+48*60*60*1000);
   const summary={
     pass:false,code:'started',taskId:id,
     armScheduleStatus:0,armScheduleReadback:false,enableStatus:0,enabledReadback:false,
