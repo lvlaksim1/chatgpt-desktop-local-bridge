@@ -384,7 +384,23 @@ try {
     summary.createScheduleReadback = first.schedule === scheduleA;
     if (first.is_enabled !== false) throw new Error('created_probe_not_paused');
 
-    const updateBody = { ...common, schedule: scheduleB, jawbone_id: id };
+    // Mirror the current frontend's edit serializer exactly (function b(e,t)
+    // in the loaded scheduled-task bundle): only mutable fields are sent.
+    const updateBody = {
+      default_timezone: first.default_timezone,
+      email_enabled: first.email_enabled,
+      is_enabled: first.is_enabled,
+      jawbone_id: first.id,
+      notifications_enabled: first.notifications_enabled,
+      prompt: first.prompt,
+      emoji: first.display_emoji,
+      schedule: scheduleB,
+      timing_mode: 0,
+      title: first.title
+    };
+    if (first.model != null) updateBody.model = first.model;
+    if (first.reasoning_effort != null) updateBody.reasoning_effort = first.reasoning_effort;
+
     summary.updateRequestFields = Object.keys(updateBody).sort();
     const updated = await api('POST', '/backend-api/automations/save', updateBody);
     summary.updateStatus = updated.status;
