@@ -471,12 +471,8 @@ finally {
         $oldBrowserArgs,
         'Process')
 
-    try {
-        if (Test-Path -LiteralPath $AppExe -PathType Leaf) {
-            # Launch through the interactive shell so the long-lived GUI process
-            # is not a descendant of the gateway's PowerShell process tree.
-            Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $AppExe + '"') | Out-Null
-        }
-    }
-    catch {}
+    # Intentionally leave the application stopped here. A separate bounded
+    # gateway task may restore the ordinary interactive app after this probe.
+    # Keeping a GUI descendant alive would prevent the gateway wrapper's
+    # Start-Process -Wait from completing reliably.
 }
