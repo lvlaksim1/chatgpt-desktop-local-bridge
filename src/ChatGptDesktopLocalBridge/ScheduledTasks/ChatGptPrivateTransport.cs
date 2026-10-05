@@ -157,21 +157,90 @@ public sealed class ChatGptPrivateTransport
               const started = performance.now();
               const controller = new AbortController();
               const timeout = setTimeout(() => controller.abort(), 20000);
+
+              async function acquireAuthContext() {
+                const response = await fetch('/api/auth/session', {
+                  method: 'GET',
+                  credentials: 'include',
+                  cache: 'no-store',
+                  redirect: 'error',
+                  signal: controller.signal,
+                  headers: { 'accept': 'application/json' }
+                });
+
+                if (!response.ok) {
+                  return {
+                    ok: false,
+                    status: response.status,
+                    error: 'auth_session_http_' + response.status
+                  };
+                }
+
+                const session = await response.json();
+                const accessToken =
+                  typeof session?.accessToken === 'string'
+                    ? session.accessToken
+                    : '';
+                const accountId =
+                  typeof session?.account?.id === 'string'
+                    ? session.account.id
+                    : '';
+
+                if (!accessToken || accessToken.length < 8) {
+                  return {
+                    ok: false,
+                    status: 0,
+                    error: 'auth_session_missing_access_token'
+                  };
+                }
+
+                return {
+                  ok: true,
+                  status: 200,
+                  authorization: 'Bearer ' + accessToken,
+                  accountId
+                };
+              }
+
               try {
+                const auth = await acquireAuthContext();
+                if (!auth.ok) {
+                  return {
+                    ok: false,
+                    status: auth.status || 0,
+                    endpoint: '/api/auth/session',
+                    text: '',
+                    elapsedMs: Math.round(performance.now() - started),
+                    error: auth.error
+                  };
+                }
+
+                const headers = {
+                  'accept': 'application/json, text/plain, */*',
+                  'authorization': auth.authorization
+                };
+
+                if (auth.accountId) {
+                  headers['chatgpt-account-id'] = auth.accountId;
+                }
+
                 const options = {
                   method: p.method,
                   credentials: 'include',
                   redirect: 'follow',
                   signal: controller.signal,
-                  headers: { 'accept': 'application/json, text/plain, */*' }
+                  headers
                 };
+
                 if (p.body !== null) {
-                  options.headers['content-type'] = 'application/json';
+                  headers['content-type'] = 'application/json';
                   options.body = p.body;
                 }
+
                 const response = await fetch(p.path, options);
                 let text = await response.text();
                 if (text.length > 500000) text = text.slice(0, 500000);
+
                 return {
                   ok: response.ok,
                   status: response.status,
