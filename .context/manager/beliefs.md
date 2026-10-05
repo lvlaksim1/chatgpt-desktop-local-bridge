@@ -1,9 +1,9 @@
 # Manager beliefs
 
-Manager generation: 21.
-Updated: 2026-10-05 16:06 MSK
+Manager generation: 22.
+Updated: 2026-10-05 16:20 MSK
 
-## Authority and accepted product state
+## Authority
 - Product repository: `lvlaksim1/chatgpt-desktop-local-bridge`.
 - Product authority remains `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
 - Manager-state authority remains `manager-state`.
@@ -12,30 +12,28 @@ Updated: 2026-10-05 16:06 MSK
 - Production transport remains signed-in ChatGPT WebView2 + injected adapter + in-process native Local Bridge.
 - Standard GitHub connector use is currently Owner-permitted until further notice.
 
-## Runtime foundation
-- Draft PR #22 / `dev/runtime-foundation-v1` / `3f5ff0fdda85165c38a977f2d29c7e893ecf3774` remains the integrated runtime-foundation candidate.
-- It contains durable request/result handling, AUTO/ASK/DENY, Job Object/STOP, Tool Registry, repo/Git verification primitives and opt-in MCP.
-- Owner signed-in runtime validation remains required before promotion.
-- Intermittent result staged-but-not-auto-submitted remains open.
+## Active runtime tracks
+- Runtime foundation: draft PR #22 / `3f5ff0f`; Owner signed-in runtime validation pending.
+- UI recovery candidate: `4c92f81`; Owner runtime validation pending.
+- Official ChatGPT-plan transport: draft PR #23 / `f2a3056`; live OAuth/model/inference pending.
 
 ## Private transport research
-- Scheduled Tasks are the control-plane candidate; ChatGPT Library/files are the data-plane candidate; local DurableRequestLedger remains the local crash-recovery journal.
-- PR #24 = Scheduled Tasks metadata probe.
-- PR #25 = combined Tasks + Library discovery/replay.
-- PR #26 = divergent alternate v3 evidence branch.
-- PR #27 / `private-transport-v3-70d3b29` was the installed user-facing v3 candidate.
-- Owner live test of v3 on 2026-10-05 produced the same signature for scheduled, paused, library and storage: `Ok=false`, `Status=0`, `ElapsedMs=0`, `Error=null`, empty body hash.
-- Root cause is a probe implementation bug, not evidence of backend rejection: WebView2 `ExecuteScriptAsync` returned the async IIFE Promise object before its `fetch` completed; the Promise serialized as `{}`, which deserialized into default C# values.
-- PR #28 / `exp/chatgpt-private-transport-v4` fixes this by using an isolated per-request page-context async result slot and polling only until the Promise reaches a terminal result.
-- The v4 fix applies both to `Private Read Proof` and captured-request replay.
-- v4 head/release commit: `8b2123c5c4cdef4641101da5b325754f5169b4ad`; prerelease `private-transport-v4-8b2123c`.
-- Release workflow `37313985424`: SUCCESS. Earlier Windows Build `37313889244` for the application fix: SUCCESS. A later full branch Windows Build was still running at persistence time and is not required to claim the release pipeline PASS.
-- Exact updater from installed v3: `ChatGptDesktopLocalBridge-Update-from-private-transport-v3-70d3b29.exe`, 2,324,866 bytes, SHA-256 `1ed641e70317729d11fbc60dae939638e0cc49e84ca550f4b42eb010271b14f9`.
+- Scheduled Tasks = control-plane candidate.
+- ChatGPT Library/files = data-plane candidate.
+- Local DurableRequestLedger remains the separate local crash-recovery journal.
+- v3 live proof was invalid because WebView2 `ExecuteScriptAsync` returned a Promise object before fetch completion.
+- v4 fixed Promise-await semantics. Owner live v4 proof then produced real HTTP 401 for scheduled, paused, library and storage routes, with nonzero elapsed time and backend JSON response shapes.
+- Therefore the current blocker is authorization/context, not route reachability and not Promise handling.
+- External working reference confirms the page can call `/api/auth/session`, obtain the current access token in page memory, and use `Authorization: Bearer ...`; Scheduled Tasks also bind to current workspace/account context.
+- PR #29 / `exp/chatgpt-private-transport-v5` adds same-session auth acquisition entirely inside page context. The bearer and account id are never returned to C# and are never persisted.
+- v5 release commit: `95dd011593fd28b570831fc2995d26bef0691f27`.
+- v5 prerelease: `private-transport-v5-95dd011`.
+- Exact updater from installed v4: `ChatGptDesktopLocalBridge-Update-from-private-transport-v4-8b2123c.exe`, 2,325,233 bytes, SHA-256 `7daea13be16f544662926af8aa4e12f45961be371c7deb8be156b75ae47e9b9b`.
 - Production `main` remains unchanged.
 
-## Reliability rules
-- A mutating timeout/connection loss after dispatch is `UNKNOWN_OUTCOME`, never blind retry.
-- Reconcile writes by authoritative read-back before retry.
+## Reliability and security
+- Mutating timeout/connection loss after dispatch is `UNKNOWN_OUTCOME`, never blind retry.
+- Reconcile writes by authoritative read-back.
 - ACK must follow durable result-file write.
-- Do not expose arbitrary private/internal fetch as a model-facing primitive.
-- Do not persist cookies, bearer tokens, OAuth tokens, sensitive headers, or hidden reasoning.
+- Do not expose arbitrary private fetch as a model-facing primitive.
+- Do not persist cookies, bearer tokens, OAuth tokens, sensitive headers or hidden reasoning.

@@ -1,30 +1,27 @@
 # Manager intentions and commitments
 
-Manager generation: 21.
-Updated: 2026-10-05 16:06 MSK
+Manager generation: 22.
+Updated: 2026-10-05 16:20 MSK
 
-## Runtime foundation
-PR #22 remains unmerged. Preserve durable execution, permissions, Job Object/STOP, registry, repo/Git verification and MCP boundaries; require Owner runtime proof before promotion.
-
-## UI shell
-Accepted baseline remains `af6ac653`; candidate `4c92f81` remains Owner-runtime-pending. Do not reintroduce CompositionControl or direct `ContextMenuTarget.LinkUri` without new evidence.
+## Runtime/UI
+- Keep PR #22 unmerged until Owner runtime validation.
+- Keep af6ac653 as accepted UI baseline until 4c92f81 passes Owner validation.
 
 ## Server-side transport R&D
-Current live-test candidate is now PR #28 / `exp/chatgpt-private-transport-v4` / `8b2123c5c4cdef4641101da5b325754f5169b4ad`.
+Current live-test candidate: PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27.
 
 Commitments:
 1. Keep production Local Bridge/DOM transport unchanged.
-2. Treat the v3 `Status=0 / 0 ms / null error` result as invalid probe evidence caused by Promise handling.
-3. Retest the same `Private Read Proof` only after v4 installation.
-4. If v4 returns real HTTP results, use those results to decide whether missing auth/account headers or endpoint drift is the next issue.
-5. Only after read-plane proof capture exact task/file mutation shapes.
-6. Preserve `UNKNOWN_OUTCOME -> read-back -> reconcile` for writes.
-7. Require full `request.json -> READY -> arm -> result.json -> ACK -> Desktop` with no composer/DOM input before promotion.
-8. Run restart/duplicate/stale-ACK/navigation/relogin/network-loss/large-payload/100+ round-trip tests after first E2E.
-9. Do not merge divergent PR #26/#27 wholesale into v4; reuse only individually proven pieces.
+2. Treat v4 HTTP 401 as proof that routes are reachable but cookie-only requests are insufficient.
+3. Keep same-session authorization context inside the authenticated page; do not persist sensitive auth material.
+4. Retest Private Read Proof after v5 install before any mutation.
+5. If v5 reads pass, capture current task and Library/file mutation contracts.
+6. Preserve UNKNOWN_OUTCOME -> read-back -> reconcile for writes.
+7. Require no-composer/no-DOM-input E2E before production consideration.
+8. Run endurance/restart/duplicate/stale-ACK/navigation/relogin/network-loss/large-payload tests after first E2E.
 
 ## ChatGPT-plan transport
 PR #23 remains isolated and Owner-gated.
 
 ## Operating directive
-Standard GitHub connector use remains permitted until further notice. Never store credentials, cookies, tokens or hidden reasoning in Git.
+Standard GitHub connector use remains permitted until further notice.
