@@ -1,14 +1,12 @@
 # Manager goals
 
-Manager generation: 22.
-Updated: 2026-10-05 16:20 MSK
+Manager generation: 23.
+Updated: 2026-10-05 16:31 MSK
 
-1. Deliver a reliable Windows desktop ChatGPT client giving signed-in `chatgpt.com` conversations configurable native computer access without requiring OpenAI Platform API or ChatGPT Work.
-2. Preserve WPF/WebView2 + injected adapter + in-process native Local Bridge unless evidence justifies a different boundary.
-3. Keep local capabilities governed by metadata, AUTO/ASK/DENY, cancellation, bounded execution, audit and containment.
-4. Make transport reliable across DOM changes, restarts, duplicates, stale context, large results and interrupted execution.
-5. Keep exact reproducible GitHub Releases and single-EXE incremental updaters.
-6. Preserve integrity-sealed repository-backed Project Manager continuity.
-7. Research Scheduled Tasks + Library/files as a server-side alternative to composer/DOM message transport while retaining current Local Bridge as fallback until full E2E and endurance proof.
-8. Keep authorization material inside the authenticated WebView/page context wherever possible rather than exporting or persisting it.
-9. Keep official ChatGPT-plan OAuth/Responses transport isolated until live proof and explicit Owner approval.
+1. Deliver a reliable signed-in ChatGPT Windows client with policy-controlled native computer access.
+2. Preserve WPF/WebView2 + in-process Local Bridge as production fallback while alternative transport is still experimental.
+3. Keep capability execution bounded, cancellable, permissioned and auditable.
+4. Preserve exact reproducible release/update packaging.
+5. Prove and harden Scheduled Tasks + Library/files as a no-composer/no-DOM-input server-side transport.
+6. Keep authorization inside the authenticated page context wherever possible.
+7. Require full E2E plus durability/endurance testing before any production promotion.

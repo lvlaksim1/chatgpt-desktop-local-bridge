@@ -1,11 +1,11 @@
 # Next actions
 
-Updated: 2026-10-05 16:20 MSK
+Updated: 2026-10-05 16:31 MSK
 
-1. Install ChatGptDesktopLocalBridge-Update-from-private-transport-v4-8b2123c.exe from private-transport-v5-95dd011.
-2. Open signed-in ChatGPT -> Transport Probe -> Private Read Proof.
-3. Return the complete new proof JSON.
-4. Do not run mutation replay before the v5 read result is understood.
-5. If v5 reads pass, proceed to controlled capture of task and Library/file mutations.
-6. If v5 still returns auth/context failures, inspect only the minimal additional current frontend request context needed, keeping sensitive values memory-only.
-7. Continue toward file+mailbox E2E only after live contracts are proven.
+1. Keep the installed v5 build.
+2. Use Transport Probe capture to observe task pause, resume and schedule changes one at a time with matching markers.
+3. Do not use manual mutation replay yet.
+4. Then capture Library/file create/upload/read/replace/delete operations one at a time.
+5. Return the captured metadata/schema results or probe log for analysis.
+6. After contracts are known, implement narrow write-plane clients and read-back reconciliation.
+7. Then execute first no-composer/no-DOM-input E2E.

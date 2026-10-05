@@ -1,22 +1,18 @@
 # Manager plans
 
-Manager generation: 22.
-Updated: 2026-10-05 16:20 MSK
+Manager generation: 23.
+Updated: 2026-10-05 16:31 MSK
 
-Product authority: main at 6e2a0b54b727c5474bad40ac038f727a39cceb8d.
+## Immediate plan: write-plane discovery
+1. Keep Transport Probe capture ON.
+2. Capture one task pause action with TASK_PAUSE marker.
+3. Capture the matching task resume action with TASK_RESUME marker.
+4. Capture schedule edit with TASK_SCHEDULE marker.
+5. Capture one-shot arm/rearm behavior if the frontend exposes it.
+6. Capture Library/file create/upload, read, replace/update and delete using LIB_* markers.
+7. Record method/path/request schema/response schema and identify authoritative read-back for each write.
+8. Implement narrow write clients only after contracts are confirmed.
+9. Run disposable request.json/result.json file lifecycle.
+10. Execute first full server-side E2E, then durability/endurance matrix.
 
-## Immediate private-transport plan
-1. Owner installs v4->v5 updater from release private-transport-v5-95dd011.
-2. Repeat only Transport Probe -> Private Read Proof.
-3. Inspect real HTTP statuses and schemas.
-4. If read-plane passes, capture current task pause/resume/schedule/arm and Library/file create/upload/process/read/delete contracts.
-5. Implement only narrow observed capabilities.
-6. Execute first Desktop -> request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E without composer/DOM input.
-7. Run durability/endurance matrix before any promotion.
-
-## Other tracks
-- PR #22 runtime foundation: Owner runtime validation pending.
-- UI candidate 4c92f81: Owner runtime validation pending.
-- PR #23 ChatGPT-plan transport: live OAuth/model/inference pending.
-
-Do not combine these promotion tracks.
+Other tracks remain independent: PR #22 runtime foundation, UI candidate 4c92f81, PR #23 ChatGPT-plan transport.

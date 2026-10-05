@@ -1,27 +1,23 @@
 # Manager intentions and commitments
 
-Manager generation: 22.
-Updated: 2026-10-05 16:20 MSK
+Manager generation: 23.
+Updated: 2026-10-05 16:31 MSK
 
-## Runtime/UI
-- Keep PR #22 unmerged until Owner runtime validation.
-- Keep af6ac653 as accepted UI baseline until 4c92f81 passes Owner validation.
+## Private transport
+Current candidate: PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27.
 
-## Server-side transport R&D
-Current live-test candidate: PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27.
+Live evidence:
+- scheduled automations read: HTTP 200
+- paused automations read: HTTP 200
+- Library listing: HTTP 200
+- Library storage usage: HTTP 200
+- overall Private Read Proof: PASS
 
 Commitments:
-1. Keep production Local Bridge/DOM transport unchanged.
-2. Treat v4 HTTP 401 as proof that routes are reachable but cookie-only requests are insufficient.
-3. Keep same-session authorization context inside the authenticated page; do not persist sensitive auth material.
-4. Retest Private Read Proof after v5 install before any mutation.
-5. If v5 reads pass, capture current task and Library/file mutation contracts.
-6. Preserve UNKNOWN_OUTCOME -> read-back -> reconcile for writes.
-7. Require no-composer/no-DOM-input E2E before production consideration.
-8. Run endurance/restart/duplicate/stale-ACK/navigation/relogin/network-loss/large-payload tests after first E2E.
-
-## ChatGPT-plan transport
-PR #23 remains isolated and Owner-gated.
-
-## Operating directive
-Standard GitHub connector use remains permitted until further notice.
+1. Treat read-plane as proven for the current Owner account/session.
+2. Do not mutate through guessed endpoints or bodies.
+3. Use the existing capture probe to observe exact current frontend mutation contracts first.
+4. Promote only narrow task/library/file capabilities after live capture.
+5. Preserve UNKNOWN_OUTCOME -> read-back -> reconcile for writes.
+6. Require full request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E with no composer/DOM input before any promotion.
+7. Keep production Local Bridge/DOM transport unchanged as fallback.
