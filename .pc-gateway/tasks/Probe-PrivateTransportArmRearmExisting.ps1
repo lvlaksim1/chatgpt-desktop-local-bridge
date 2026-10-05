@@ -400,13 +400,25 @@ try {
 
     $result = Invoke-CdpEval -Socket $socket -Id ([ref]$cdpId) -Expression $script -Stage 'arm-rearm-existing' -TimeoutMs 120000
     $safe=[ordered]@{
-        pass=[bool]$result.pass; code=[string]$result.code; marker=[string]$result.marker;
-        create_http=[int]$result.createStatus; arm_schedule_http=[int]$result.armScheduleStatus;
-        enable_http=[int]$result.enableStatus; enabled_readback=[bool]$result.enabledReadback;
-        rearm_http=[int]$result.rearmStatus; rearm_readback=[bool]$result.rearmReadback;
-        next_run_present=[bool]$result.nextRunPresent; disable_http=[int]$result.disableStatus;
-        disabled_readback=[bool]$result.disabledReadback; remove_http=[int]$result.removeStatus;
-        removed_verified=[bool]$result.removedVerified;
+        pass=[bool]$result.pass
+        code=[string]$result.code
+        task_id=[string]$result.taskId
+        arm_schedule_http=[int]$result.armScheduleStatus
+        arm_schedule_readback=[bool]$result.armScheduleReadback
+        enable_http=[int]$result.enableStatus
+        enabled_readback=[bool]$result.enabledReadback
+        first_next_run_present=[bool]$result.firstNextRunPresent
+        first_disable_http=[int]$result.firstDisableStatus
+        first_disabled_readback=[bool]$result.firstDisabledReadback
+        rearm_http=[int]$result.rearmStatus
+        rearm_readback=[bool]$result.rearmReadback
+        rearm_enable_http=[int]$result.rearmEnableStatus
+        rearm_enabled_readback=[bool]$result.rearmEnabledReadback
+        second_next_run_present=[bool]$result.secondNextRunPresent
+        final_disable_http=[int]$result.finalDisableStatus
+        final_disabled_readback=[bool]$result.finalDisabledReadback
+        restore_http=[int]$result.restoreStatus
+        restore_readback=[bool]$result.restoreReadback
         error=if($null-ne$result.PSObject.Properties['error']){[string]$result.error}else{''}
     }
     Write-Host ('ARM_REARM_EXISTING_RESULT='+($safe|ConvertTo-Json -Compress))
