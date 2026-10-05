@@ -152,8 +152,7 @@ public sealed class ChatGptPrivateTransport
             body
         });
 
-        var script = """
-            (async () => {
+        var asyncBody = """
               const p = PAYLOAD;
               const started = performance.now();
               const controller = new AbortController();
@@ -193,22 +192,27 @@ public sealed class ChatGptPrivateTransport
               } finally {
                 clearTimeout(timeout);
               }
-            })()
             """.Replace("PAYLOAD", payload);
 
         ScriptResult? result;
+
         try
         {
-            var raw = await _browser.ExecuteScriptAsync(script);
-            result = JsonSerializer.Deserialize<ScriptResult>(
-                raw,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            result = await PageContextAsyncExecutor.ExecuteAsync<ScriptResult>(
+                _browser,
+                asyncBody,
+                TimeSpan.FromSeconds(25));
         }
         catch (Exception ex)
         {
             return new PrivateBackendResult(
-                false, 0, pathAndQuery.Split('?')[0], "(no response)", 0,
-                Sha256(string.Empty), 0,
+                false,
+                0,
+                pathAndQuery.Split('?')[0],
+                "(no response)",
+                0,
+                Sha256(string.Empty),
+                0,
                 isMutation
                     ? PrivateMutationOutcome.UnknownOutcome
                     : PrivateMutationOutcome.Rejected,
@@ -223,25 +227,14 @@ public sealed class ChatGptPrivateTransport
         {
             return new PrivateBackendResult(
                 false,
-                result?.Status ?? 0,
-                result?.Endpoint ?? pathAndQuery.Split('?')[0],
+                result.Status,
+                result.Endpoint ?? pathAndQuery.Split('?')[0],
                 "(discarded: stale context)",
                 0,
                 Sha256(string.Empty),
-                result?.ElapsedMs ?? 0,
+                result.ElapsedMs,
                 PrivateMutationOutcome.StaleContext,
                 ex.Message);
-        }
-
-        if (result is null)
-        {
-            return new PrivateBackendResult(
-                false, 0, pathAndQuery.Split('?')[0], "(no result)", 0,
-                Sha256(string.Empty), 0,
-                isMutation
-                    ? PrivateMutationOutcome.UnknownOutcome
-                    : PrivateMutationOutcome.Rejected,
-                "No page-context result.");
         }
 
         var text = result.Text ?? string.Empty;
