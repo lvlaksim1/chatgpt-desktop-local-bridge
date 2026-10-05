@@ -204,6 +204,10 @@ function Invoke-CdpEval {
         throw ($Stage + ': missing evaluation result')
     }
 
+    if ($null -ne $response.result.PSObject.Properties['exceptionDetails']) {
+        throw ($Stage + ': JS exception: ' + ($response.result.exceptionDetails | ConvertTo-Json -Depth 10 -Compress))
+    }
+
     $inner = $response.result.result
     if ($null -ne $inner.PSObject.Properties['exceptionDetails']) {
         throw ($Stage + ': JS exception: ' + ($inner.exceptionDetails | ConvertTo-Json -Depth 10 -Compress))
@@ -756,6 +760,17 @@ $pacing
 "@
 
         $mutation = Invoke-CdpEval -Socket $script:socket -Id ([ref]$cdpId) -Expression $mutationScript -Stage 'phase-a-arm' -TimeoutMs 240000
+
+        $mutationProperties = @($mutation.PSObject.Properties.Name)
+        $requiredMutationProperties = @('pass','request_file_id','request_library_id','armed_schedule','enable_http')
+        $missingMutationProperties = @($requiredMutationProperties | Where-Object { $_ -notin $mutationProperties })
+        if ($missingMutationProperties.Count -gt 0) {
+            throw ('Phase A mutation result missing fields: ' + ($missingMutationProperties -join ',') +
+                '; shape=' + ($mutationProperties -join ','))
+        }
+        if (-not [bool]$mutation.pass) {
+            throw 'Phase A mutation result did not report pass=true.'
+        }
 
         Add-OrSetProperty -Object $state -Name 'stage' -Value 'armed'
         Add-OrSetProperty -Object $state -Name 'request_file_id' -Value ([string]$mutation.request_file_id)
