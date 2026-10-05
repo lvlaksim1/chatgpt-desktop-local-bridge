@@ -435,6 +435,19 @@ try {
         throw ('Schedule contract probe failed: ' + ($result | ConvertTo-Json -Depth 20 -Compress))
     }
 
+    Write-Host ('SCHEDULE_PROBE_RESULT=' + ([ordered]@{
+        probe_title = $probeTitle
+        automation_id = $createdId
+        create_http = [int]$result.createStatus
+        create_schedule_readback = [bool]$result.createScheduleReadback
+        update_http = [int]$result.updateStatus
+        update_schedule_readback = [bool]$result.updateScheduleReadback
+        remove_http = [int]$result.removeStatus
+        removed_verified = [bool]$result.removedVerified
+        update_request_fields = @($result.updateRequestFields)
+        update_response_keys = @($result.updateResponseKeys)
+    } | ConvertTo-Json -Depth 8 -Compress))
+
     Write-ProjectResult -Status 'pass' -ExitCode 0 -Extra @{
         installed_tag = $installedTag
         probe_title = $probeTitle
