@@ -1,0 +1,109 @@
+name: ChatGPT Private Transport v5 Release
+
+on:
+  push:
+    branches:
+      - exp/chatgpt-private-transport-v5
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chatgpt-private-transport-v5
+  cancel-in-progress: true
+
+env:
+  BASE_TAG: private-transport-v4-8b2123c
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate bridge adapter
+        run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
+
+      - name: Restore
+        shell: pwsh
+        run: |
+          dotnet restore .\ChatGptDesktopLocalBridge.sln
+          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
+
+      - name: Build
+        run: dotnet build .\ChatGptDesktopLocalBridge.sln --configuration Release --no-restore
+
+      - name: Test runtime foundation
+        run: dotnet run --project .\tests\ChatGptDesktopLocalBridge.LedgerTests\ChatGptDesktopLocalBridge.LedgerTests.csproj --configuration Release --no-build
+
+      - name: Set release identity
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $tag = "private-transport-v5-$short"
+          $version = "0.2.${{ github.run_number }}.0"
+          "TARGET_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish target
+        shell: pwsh
+        run: |
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output .\publish\win-x64
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = $env:TARGET_TAG
+            commit = "${{ github.sha }}"
+            appVersion = $env:APP_VERSION
+          } | ConvertTo-Json | Set-Content .\publish\win-x64\release-info.json -Encoding UTF8
+
+      - name: Create target publish manifest
+        shell: pwsh
+        run: |
+          .\scripts\create-publish-manifest.ps1 -PublishDir .\publish\win-x64 -Tag $env:TARGET_TAG -Commit "${{ github.sha }}" -OutputPath .\ChatGptDesktopLocalBridge-PublishManifest.json
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build full setup
+        shell: pwsh
+        run: |
+          $sourceDir = (Resolve-Path ".\publish\win-x64").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DMyAppVersion=$env:APP_VERSION" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" ".\installer\ChatGptDesktopLocalBridge.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Setup.exe")) { throw "Full setup was not produced." }
+          Move-Item ".\ChatGptDesktopLocalBridge-Setup.exe" ".\ChatGptDesktopLocalBridge-private-transport-v5-Setup.exe" -Force
+
+      - name: Download exact base manifest
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path .\base-manifest -Force | Out-Null
+          gh release download $env:BASE_TAG --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir .\base-manifest --clobber
+          if (-not (Test-Path ".\base-manifest\ChatGptDesktopLocalBridge-PublishManifest.json")) { throw "Base manifest was not downloaded." }
+
+      - name: Build exact incremental updater
+        shell: pwsh
+        run: |
+          $deltaDir = Join-Path $PWD "delta-private-v5"
+          .\scripts\build-delta-update.ps1 -BaseManifestPath .\base-manifest\ChatGptDesktopLocalBridge-PublishManifest.json -CurrentPublishDir .\publish\win-x64 -BaseTag $env:BASE_TAG -TargetTag $env:TARGET_TAG -TargetCommit "${{ github.sha }}" -OutputPath $deltaDir
+          $resolvedDelta = (Resolve-Path $deltaDir).Path
+          ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$PWD" "/DBaseTag=$env:BASE_TAG" "/DTargetTag=$env:TARGET_TAG" "/DUpdateVersion=$env:APP_VERSION" ".\installer\DeltaUpdate.iss"
+          $expected = ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe"
+          if (-not (Test-Path $expected)) { throw "Incremental updater was not produced." }
+
+      - name: Publish prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-private-transport-v5-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "ChatGPT private transport v5 ($env:TARGET_TAG)" --notes "Adds same-session page-context authorization acquisition via /api/auth/session for private backend requests. Authorization and account values stay in JavaScript memory and are never returned to C# or persisted. Production Local Bridge transport remains unchanged."
