@@ -463,14 +463,16 @@ finally {
         try { $socket.Dispose() } catch {}
     }
 
+    try { Stop-BridgeApp } catch {}
+    try { Stop-BridgeWebViewProcesses } catch {}
+
     [Environment]::SetEnvironmentVariable(
         'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
         $oldBrowserArgs,
         'Process')
 
     try {
-        if (-not (Get-Process -Name $ProcessName -ErrorAction SilentlyContinue) -and
-            (Test-Path -LiteralPath $AppExe -PathType Leaf)) {
+        if (Test-Path -LiteralPath $AppExe -PathType Leaf) {
             Start-Process -FilePath $AppExe | Out-Null
         }
     }
