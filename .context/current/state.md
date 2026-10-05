@@ -1,15 +1,15 @@
 # Current state
 
-Updated: 2026-10-05 16:31 MSK
+Updated: 2026-10-05 17:14 MSK
 
-- manager generation: 23
+- manager generation: 24
 - product main: 6e2a0b54b727c5474bad40ac038f727a39cceb8d
-- production Local Bridge transport unchanged
-- current private transport candidate: PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27
-- Private Read Proof on real Owner session: PASS
-- scheduled: HTTP 200
-- paused: HTTP 200
-- library: HTTP 200
-- storage: HTTP 200
-- authenticated page-context read-plane is therefore proven
-- next gate: discover current write contracts through frontend capture before implementing mutations
+- current private transport candidate: PR #29 / exp/chatgpt-private-transport-v5
+- read-plane: PASS
+- first write-plane primitive: Pause captured and proven
+- pause endpoint: POST /backend-api/automations/set_status
+- pause body schema: jawbone_id:string, is_enabled:boolean
+- tested pause value: is_enabled=false
+- pause response: HTTP 201
+- read-back observed: GET /backend-api/automations and GET /backend-api/automation/{id} with HTTP 200
+- next gate: Resume capture

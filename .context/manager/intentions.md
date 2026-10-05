@@ -1,23 +1,22 @@
 # Manager intentions and commitments
 
-Manager generation: 23.
-Updated: 2026-10-05 16:31 MSK
+Manager generation: 24.
+Updated: 2026-10-05 17:14 MSK
 
-## Private transport
-Current candidate: PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27.
+Current private transport candidate remains PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27.
 
 Live evidence:
-- scheduled automations read: HTTP 200
-- paused automations read: HTTP 200
-- Library listing: HTTP 200
-- Library storage usage: HTTP 200
-- overall Private Read Proof: PASS
+- read-plane PASS.
+- Pause mutation contract captured from current frontend:
+  POST /backend-api/automations/set_status
+  body schema: jawbone_id:string, is_enabled:boolean
+  tested value: is_enabled=false
+  response: HTTP 201
+  read-back: GET /backend-api/automations and GET /backend-api/automation/{id}, HTTP 200.
 
 Commitments:
-1. Treat read-plane as proven for the current Owner account/session.
-2. Do not mutate through guessed endpoints or bodies.
-3. Use the existing capture probe to observe exact current frontend mutation contracts first.
-4. Promote only narrow task/library/file capabilities after live capture.
+1. Do not replay or implement unobserved mutations.
+2. Capture Resume next on the same task.
+3. After Resume, capture schedule edit and one-shot arm/rearm behavior.
+4. Then capture Library/file create-upload-read-replace-delete contracts.
 5. Preserve UNKNOWN_OUTCOME -> read-back -> reconcile for writes.
-6. Require full request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E with no composer/DOM input before any promotion.
-7. Keep production Local Bridge/DOM transport unchanged as fallback.

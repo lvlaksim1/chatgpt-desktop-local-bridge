@@ -1,16 +1,17 @@
 # Latest handoff
 
-Updated: 2026-10-05 16:31 MSK
+Updated: 2026-10-05 17:14 MSK
 
 Persistent manager: chatgpt-desktop-local-bridge-project-manager.
-Manager generation: 23.
+Manager generation: 24.
 
-Private Transport v5 live read proof PASSED on the Owner account:
-scheduled=200, paused=200, library=200, storage=200.
+Private Transport v5 read-plane is live-proven.
 
-This proves the authenticated Desktop read-plane through the existing signed-in WebView page context. The v4 401 gap was resolved by same-session page-context authorization acquisition.
+First current-frontend write contract is also captured:
+POST /backend-api/automations/set_status
+body {"jawbone_id":"6ac3ae81a9148191af74770f2ac536b5","is_enabled":false}
+response HTTP 201.
 
-Current branch: exp/chatgpt-private-transport-v5.
-Current release commit: 95dd011593fd28b570831fc2995d26bef0691f27.
+Frontend read-back followed through GET /backend-api/automations and GET /backend-api/automation/6ac3ae81a9148191af74770f2ac536b5 with HTTP 200. Parallel ERR_ABORTED GETs are treated as superseded UI requests, not mutation failure.
 
-Next stage is frontend contract capture for task and Library/file mutations. Do not guess mutation bodies and do not run blind mutation replay. Once contracts are captured, implement narrow write clients, authoritative read-back reconciliation, then the first request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E.
+Next action: capture Resume on the same task. Do not yet infer is_enabled=true until live capture confirms it.

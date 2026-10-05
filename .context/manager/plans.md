@@ -1,18 +1,14 @@
 # Manager plans
 
-Manager generation: 23.
-Updated: 2026-10-05 16:31 MSK
+Manager generation: 24.
+Updated: 2026-10-05 17:14 MSK
 
-## Immediate plan: write-plane discovery
-1. Keep Transport Probe capture ON.
-2. Capture one task pause action with TASK_PAUSE marker.
-3. Capture the matching task resume action with TASK_RESUME marker.
-4. Capture schedule edit with TASK_SCHEDULE marker.
-5. Capture one-shot arm/rearm behavior if the frontend exposes it.
-6. Capture Library/file create/upload, read, replace/update and delete using LIB_* markers.
-7. Record method/path/request schema/response schema and identify authoritative read-back for each write.
-8. Implement narrow write clients only after contracts are confirmed.
-9. Run disposable request.json/result.json file lifecycle.
-10. Execute first full server-side E2E, then durability/endurance matrix.
-
-Other tracks remain independent: PR #22 runtime foundation, UI candidate 4c92f81, PR #23 ChatGPT-plan transport.
+## Immediate write-plane plan
+1. Resume the same paused task using the ordinary ChatGPT UI after pressing Task: Resume marker.
+2. Capture the resulting mutation and read-back requests.
+3. Confirm whether Resume is the same POST /backend-api/automations/set_status with is_enabled=true.
+4. Then capture Task Schedule edit.
+5. Then identify current one-shot arm/rearm contract.
+6. After task control-plane contracts are proven, capture Library/file lifecycle.
+7. Implement narrow clients only from proven contracts.
+8. Execute first request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E.
