@@ -1,15 +1,21 @@
 # Current blockers and open risks
 
-Updated: 2026-10-05 20:02 MSK
+Updated: 2026-10-05 20:13 MSK
 
-No blocker remains for read-plane, Pause/Resume, Schedule mutation, existing-task arm/rearm, prompt mutation or Library file lifecycle.
+No blocker remains for:
+- authenticated read-plane;
+- Pause/Resume;
+- schedule mutation;
+- existing-task arm/rearm;
+- prompt mutation;
+- Library file lifecycle.
 
 Current proof gaps:
 - first complete Scheduled runtime request-file -> result-file execution is not yet proven;
-- the current E2E runner needs shorter independent phases instead of one long WebView diagnostic session;
-- the temporary E2E probe worker is disabled and must stay disabled until its pre-test configuration is safely recovered or the probe is retired;
-- explicit READY/ACK and correlation fencing remain unimplemented;
-- dedicated new-worker creation remains unresolved;
-- unattended-write recovery and endurance remain untested.
+- monolithic runner E2E cannot safely rely on one long-lived CDP/WebSocket session;
+- affected temporary E2E worker must remain disabled until recovered or retired;
+- dedicated new-worker creation is unresolved;
+- READY/ACK and generation/seq/message_id fencing are not yet implemented;
+- forced interruption/network-loss recovery and endurance are untested.
 
-Safety rule: interrupted probes must be reconciled before any affected task is re-enabled.
+Safety rule: persist recovery state before mutation and reconcile interrupted probes before re-enabling any affected task.

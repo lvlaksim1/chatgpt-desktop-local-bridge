@@ -1,27 +1,30 @@
 # Latest handoff
 
-Updated: 2026-10-05 20:02 MSK
+Updated: 2026-10-05 20:13 MSK
 
 Persistent manager: chatgpt-desktop-local-bridge-project-manager.
-Manager generation: 27.
+Manager generation: 28.
 
-Autonomous runner campaign has proved:
-- authenticated read-plane;
-- Pause/Resume;
-- schedule create/update/remove;
+Owner requested autonomous testing through PC Runner Gateway; manual UI is fallback-only.
+
+Current research branch is exp/runner-private-transport-control-plane, draft PR #30, head 198b3ba8f553db78888115ec1d18061fe89a1305.
+
+Autonomous runner campaign has proven:
+- authenticated private read-plane;
+- Pause/Resume with authoritative read-back and restoration;
+- Task Schedule create/update/remove;
 - existing-task arm/rearm with restoration;
 - existing-task prompt mutation with restoration;
-- complete disposable Library lifecycle including exact byte-for-byte read-back and cleanup.
+- full disposable Library lifecycle including exact byte-for-byte read-back and cleanup.
 
-First full Desktop Scheduled Tasks + Library E2E was attempted as gateway request #240 / run 37343267811. The long-lived diagnostic WebSocket closed before terminal evidence was returned, so this is a harness/session failure, not proof of backend rejection.
+Important runs:
+- Schedule: 37336010697 PASS.
+- Library exact data-plane lifecycle: 37336624243 PASS.
+- Existing-task arm/rearm: 37341819835 PASS.
+- Prompt mutation: 37342848518 PASS.
 
-Reconciliation request #241 / run 37344708850 proved:
-- one temporary E2E worker remained;
-- it had been left enabled and was disabled;
-- its run state had not advanced;
-- request file existed and was cleaned;
-- no result file existed.
+First full Desktop Scheduled Tasks + Library E2E: request #240 / run 37343267811. It failed because the long-lived diagnostic WebSocket was closed by the remote side before terminal evidence returned. This is a harness/session failure, not proof of backend rejection.
 
-Ordinary ChatGptDesktopLocalBridge was restored successfully by request #243 / run 37345374055.
+Reconciliation #241 / run 37344708850 PASS: one temporary E2E worker remained, its run state had not advanced, request file existed, result file did not; runner disabled the worker and cleaned the request. Normal desktop restore #243 / run 37345374055 PASS.
 
-Next architecture change: split E2E into short transactional phases with durable recovery metadata before mutation and independent observation/reconciliation sessions.
+The next architecture change is a crash-safe multi-phase E2E with durable recovery snapshot before mutation and fresh short-lived sessions for arm, observation and cleanup. The affected temporary worker stays disabled until safely recovered or retired.

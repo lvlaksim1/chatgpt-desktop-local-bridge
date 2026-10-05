@@ -1,27 +1,27 @@
 # Manager intentions and commitments
 
-Manager generation: 27.
-Updated: 2026-10-05 20:02 MSK
+Manager generation: 28.
+Updated: 2026-10-05 20:13 MSK
 
-Current experimental line: PR #30 / exp/runner-private-transport-control-plane.
+Current experimental line: PR #30 / exp/runner-private-transport-control-plane / 198b3ba8f553db78888115ec1d18061fe89a1305.
 
-Proven milestones:
-- read-plane PASS;
-- Pause/Resume PASS;
-- Schedule create/update/remove PASS;
-- existing-task arm/rearm PASS with restoration;
-- existing-task prompt mutation PASS with restoration;
-- Library disposable lifecycle PASS including exact byte read-back and cleanup.
+Proven:
+- authenticated read-plane;
+- Pause/Resume;
+- Schedule create/update/remove;
+- existing-task arm/rearm with restoration;
+- existing-task prompt mutation with restoration;
+- complete disposable Library lifecycle with exact byte read-back and cleanup.
 
 Current E2E finding:
-- attempt #240 failed at the runner harness/session layer because the diagnostic WebSocket closed before terminal evidence returned;
-- reconciliation #241 found request present, no result, no completed worker run, and disabled/cleaned the temporary state;
-- app restore #243 PASS.
+- request #240 / run 37343267811 failed because the long-lived diagnostic WebSocket closed before terminal evidence;
+- reconciliation #241 / run 37344708850 safely established that the worker had not completed, disabled it and cleaned the request file;
+- app restore #243 / run 37345374055 PASS.
 
 Commitments:
-1. Do not classify #240 as backend rejection.
-2. Keep the affected probe worker disabled until safely recovered or retired.
-3. Redesign E2E into bounded phases with durable recovery state before mutation.
-4. Use fresh short-lived observation/reconciliation sessions rather than one long blocking diagnostic call.
-5. Add READY/ACK and generation/seq/message_id fencing after the first complete request->worker->result cycle.
+1. Do not treat #240 as backend rejection.
+2. Keep the affected E2E worker disabled until safely recovered or retired.
+3. Replace monolithic E2E with short crash-safe phases and persisted recovery snapshot before mutation.
+4. Use fresh independent observation/reconciliation sessions instead of one long-lived WebSocket.
+5. Require authoritative read-back after every write and on every ambiguous outcome.
 6. Keep main unchanged until promotion evidence exists.
