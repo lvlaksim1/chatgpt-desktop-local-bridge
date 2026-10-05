@@ -32,7 +32,7 @@ function Stop-App {
 }
 function Stop-WebView {
     $needle='ChatGptDesktopLocalBridge\WebView2'
-    foreach($p in @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" -ErrorAction SilentlyContinue|Where-Object{[string]$_.CommandLine-like('*'+$needle+'*')})){try{Stop-Process -Id ([int]$p.ProcessId -Force)}catch{}}
+    foreach($p in @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" -ErrorAction SilentlyContinue|Where-Object{[string]$_.CommandLine-like('*'+$needle+'*')})){try{Stop-Process -Id ([int]$p.ProcessId) -Force}catch{}}
 }
 function Wait-App([int]$Timeout=45){
     $d=[DateTime]::UtcNow.AddSeconds($Timeout)
@@ -173,7 +173,7 @@ try{
   return {marker,results,winner_count:winners.length,winners:winners.map(x=>x.name)};
 })()
 "@
-    $resp=Send-Cdp $socket 1 'Runtime.evaluate' @{expression=$script;returnByValue=$true;awaitPromise=$true} 120000
+    $resp=Send-Cdp $socket 2 'Runtime.evaluate' @{expression=$script;returnByValue=$true;awaitPromise=$true} 120000
     if($null-ne$resp.PSObject.Properties['error']){throw'cdp_error'}
     $value=$resp.result.result.value
     $json=$value|ConvertTo-Json -Depth 12 -Compress
