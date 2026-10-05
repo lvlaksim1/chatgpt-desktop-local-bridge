@@ -341,6 +341,7 @@ try {
     createScheduleReadback: false,
     updateStatus: 0,
     updateScheduleReadback: false,
+    updateDetail: null,
     removeStatus: 0,
     removedVerified: false,
     updateRequestFields: null,
@@ -350,6 +351,17 @@ try {
   let id = null;
 
   try {
+    // Clean only stale probes created by this harness.
+    const stale = await api('GET', '/backend-api/automations?filter=paused');
+    if (stale.ok && Array.isArray(stale.json?.items)) {
+      for (const item of stale.json.items) {
+        if (item && typeof item.id === 'string' &&
+            typeof item.title === 'string' &&
+            item.title.startsWith('bridge-schedule-probe-')) {
+          await api('POST', '/backend-api/automations/remove', { automation_id: item.id });
+        }
+      }
+    }
     const createBody = { ...common, schedule: scheduleA, jawbone_id: null };
     const created = await api('POST', '/backend-api/automations/save', createBody);
     summary.createStatus = created.status;
@@ -379,6 +391,13 @@ try {
     summary.updateResponseKeys = updated.json && typeof updated.json === 'object'
       ? Object.keys(updated.json).sort()
       : [];
+    if (updated.json && updated.json.detail != null) {
+      summary.updateDetail = String(
+        typeof updated.json.detail === 'string'
+          ? updated.json.detail
+          : JSON.stringify(updated.json.detail)
+      ).slice(0, 600);
+    }
     if (!updated.ok) throw new Error('update_http_' + updated.status);
 
     const second = await waitSchedule(id, scheduleB);
@@ -419,6 +438,16 @@ try {
       try {
         const removed = await api('POST', '/backend-api/automations/remove', { automation_id: id });
         summary.removeStatus = removed.status;
+        const deadline = Date.now() + 6000;
+        while (Date.now() < deadline) {
+          const paused = await api('GET', '/backend-api/automations?filter=paused');
+          if (paused.ok && Array.isArray(paused.json?.items) &&
+              !paused.json.items.some(x => x && x.id === id)) {
+            summary.removedVerified = true;
+            break;
+          }
+          await delay(250);
+        }
       } catch {}
     }
     return summary;
