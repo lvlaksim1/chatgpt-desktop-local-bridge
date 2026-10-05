@@ -1,53 +1,29 @@
 # Latest handoff
 
-Updated: 2026-10-05 15:42 MSK
+Updated: 2026-10-05 16:06 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 20.
+Manager generation: 21.
 
-## Authority
+Product `main` remains `6e2a0b54b727c5474bad40ac038f727a39cceb8d`; no private transport experiment is production-promoted.
 
-- Product authority: `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
-- Manager-state authority: `manager-state`.
-- Canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
-- Accepted UI baseline: `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`.
-- Production transport remains signed-in ChatGPT WebView2 + in-process Local Bridge.
+## Current private transport event
+Owner installed v3 and ran `Private Read Proof`. All four results had `Ok=false`, `Status=0`, `ElapsedMs=0`, empty response and `Error=null`.
 
-## Runtime foundation
+Repository inspection identified the root cause: v3 used an async IIFE directly as the expression passed to WebView2 `ExecuteScriptAsync`. The API returned the Promise object before `fetch` completed; it serialized as `{}`, then C# deserialized default values. Therefore the v3 live result is not evidence of backend rejection.
 
-Draft PR #22 / `dev/runtime-foundation-v1` / `3f5ff0f`.
-Integrated durable execution, permissions, Job Object/STOP, Tool Registry, repo/Git verification primitives and MCP. CI/regression proof exists; Owner signed-in runtime validation remains pending.
+## v4 fix
+Draft PR #28 / branch `exp/chatgpt-private-transport-v4`.
+Head/release commit: `8b2123c5c4cdef4641101da5b325754f5169b4ad`.
+The fix adds an isolated per-request page-context async result slot and waits for a terminal Promise result before C# deserialization. Applied to Private Read Proof and replay.
 
-## Server-side transport research
+Release `private-transport-v4-8b2123c`.
+Release workflow `37313985424`: PASS.
+Exact updater from installed v3:
+`ChatGptDesktopLocalBridge-Update-from-private-transport-v3-70d3b29.exe`
+2,324,866 bytes
+SHA-256 `1ed641e70317729d11fbc60dae939638e0cc49e84ca550f4b42eb010271b14f9`.
 
-The research direction is now:
-- Scheduled Tasks = control plane;
-- ChatGPT Library/files = data plane;
-- local DurableRequestLedger = separate local crash-recovery journal.
+Next action: install v4, rerun only Private Read Proof, then analyze the real HTTP result before any mutations.
 
-Progression:
-1. PR #24 / `task-probe-49fb895`: Scheduled Tasks metadata discovery.
-2. PR #25 / `scheduled-file-probe-6bb827b`: combined Tasks + Library discovery and same-session replay.
-3. PR #26 / `private-transport-probe-dd472e4`: alternate request-bound v3 implementation.
-4. PR #27 / `private-transport-v3-70d3b29`: current user-facing v3 candidate.
-
-PR #27 head: `70d3b2900cd72b2892dd4c75d000df4d2938e9be`.
-Windows Build `37166260285`: PASS.
-Release workflow `37166255838`: PASS.
-Updater from `scheduled-file-probe-6bb827b`: 2,323,481 bytes, SHA-256 `ccc9f17b560b18df27131184e6b2967782dc3f9b18d4f5adc940f057d3573595`.
-
-PR #27 is not production-approved. The next proof is live current-account validation of Tasks/Library routes, mutating request shapes and read-back semantics, followed by one complete `request.json -> READY -> arm -> result.json -> ACK -> Desktop` cycle with no composer/DOM input.
-
-Mutation reliability rule: timeout after dispatch is `UNKNOWN_OUTCOME`; reconcile by authoritative read-back before retry. ACK must only follow durable result-file write.
-
-PR #26 and PR #27 are divergent alternatives. Do not merge both mechanically. `exp/chatgpt-private-transport-v4` currently points to the same v3 commit and has no independent authority.
-
-## Other active tracks
-
-- UI candidate `4c92f81`: Owner runtime validation pending.
-- Official ChatGPT-plan transport PR #23 / `f2a3056`: CI PASS, live OAuth/model/inference pending.
-- Existing DOM result auto-submit intermittency remains open.
-
-## Operating directive
-
-Standard GitHub connector use is currently permitted until further notice.
+Other active tracks remain PR #22 runtime foundation, UI candidate `4c92f81`, and PR #23 official ChatGPT-plan transport.

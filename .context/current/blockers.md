@@ -1,34 +1,26 @@
 # Current blockers and open risks
 
-Updated: 2026-10-05 15:42 MSK
+Updated: 2026-10-05 16:06 MSK
 
-## Runtime foundation
-PR #22 is CI/regression-proven but still lacks signed-in Owner runtime validation before merge to `main`.
+## Private transport
+The v3 live result cannot be used to judge backend availability because the probe returned the Promise object before fetch completion.
 
-## UI shell
-Candidate `4c92f81` remains Owner-runtime-pending. Ordinary WebView2 remains required; CompositionControl and direct `ContextMenuTarget.LinkUri` remain rejected by prior live failures.
+v4 fixes execution semantics, but the actual backend result is still unproven until Owner reruns `Private Read Proof`.
 
-## Existing DOM/result transport
-Intermittent result staging without automatic submit remains unresolved. This is one reason the server-side transport R&D remains valuable.
+After v4 retest, possible next blockers are:
+- endpoint drift;
+- missing account/auth/device headers required by current ChatGPT frontend;
+- task mutation body/arm semantics;
+- Library/file upload/process/read/delete semantics;
+- account/workspace stale-context fencing;
+- ambiguous write recovery;
+- complete no-DOM E2E and endurance behavior.
 
-## Private Scheduled Tasks + Library transport
-The current v3 candidate is compile/release-proven, not live-backend-proven on the current Owner account/frontend.
+## Existing transport
+Intermittent result staging without auto-submit remains open.
 
-Still unproven:
-- exact current task mutation bodies/semantics for pause/resume/schedule/one-shot arm;
-- stable Library/file create-upload-process-read-delete sequence for transport files;
-- account/workspace stale-context fencing strong enough for unattended writes;
-- complete `request.json -> READY -> arm -> result.json -> ACK -> Desktop` round trip without composer/DOM input;
-- safe recovery after timeout or ambiguous write outcome;
-- restart/duplicate/stale-ACK/relogin/navigation/network-loss/large-payload/endurance behavior.
+## Runtime/UI/MCP
+PR #22 and UI candidate `4c92f81` need Owner runtime validation. MCP stdio child-process containment remains incomplete.
 
-Writes must not use blind timeout retry. Unknown dispatch outcome requires authoritative read-back/reconciliation.
-
-## Divergent v3 branches
-PR #26 and PR #27 diverge from the same v2 base. Do not merge both wholesale. PR #27 is the current user-facing candidate; PR #26 is retained only as alternate evidence.
-
-## MCP
-MCP calls are behind Local Tool Runtime permissions/cancellation, but SDK-owned stdio server processes are not yet proven to share full Windows Job Object containment.
-
-## ChatGPT-plan transport
-PR #23 remains CI-only. Live OAuth/model/inference, protected rotating refresh-token storage, multi-account UX, tool round trip and usage-limit recovery remain unproven.
+## ChatGPT-plan
+PR #23 remains CI-only with live OAuth/model/inference and token lifecycle still unproven.
