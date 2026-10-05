@@ -114,6 +114,9 @@ try{
     $socket=New-Object System.Net.WebSockets.ClientWebSocket
     $socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
 
+    [void](Send-Cdp $socket 1 'Page.navigate' @{url='https://chatgpt.com/' } 60000)
+    Start-Sleep -Seconds 3
+
     $script=@"
 (async () => {
   async function auth() {
