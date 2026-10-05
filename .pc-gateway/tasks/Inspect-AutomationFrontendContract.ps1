@@ -310,7 +310,6 @@ try {
 
     $result = Invoke-CdpEval -Socket $socket -Id ([ref]$cdpId) -Expression $script -Stage 'frontend-contract-inspect' -TimeoutMs 90000
     $count = @($result.matches).Count
-    Write-Host ('AUTOMATION_FRONTEND_CONTRACT=' + ($result | ConvertTo-Json -Depth 8 -Compress))
 
     if ($count -lt 1) {
         Write-ProjectResult -Status 'no_match' -ExitCode 20 -ErrorText 'No automation route snippets found in loaded JavaScript.' -Extra @{
@@ -320,7 +319,27 @@ try {
         }
     }
 
-    Write-ProjectResult -Status 'pass' -ExitCode 0 -Extra @{
+    # Surface a bounded static-code excerpt through the compact gateway error channel.
+    # The snippets come only from public frontend JavaScript assets; no request headers,
+    # cookies, tokens, response bodies, or user data are included.
+    $visible = @()
+    foreach ($match in @($result.matches) | Select-Object -First 4) {
+        $snippet = [string]$match.snippet
+        if ($snippet.Length -gt 3500) { $snippet = $snippet.Substring(0, 3500) }
+        $visible += [ordered]@{
+            file = [string]$match.file
+            needle = [string]$match.needle
+            snippet = $snippet
+        }
+    }
+
+    $evidence = [ordered]@{
+        scanned = [int]$result.scanned
+        matches = $count
+        evidence = $visible
+    } | ConvertTo-Json -Depth 8 -Compress
+
+    Write-ProjectResult -Status 'evidence' -ExitCode 20 -ErrorText $evidence -Extra @{
         installed_tag = $installedTag
         scanned = [int]$result.scanned
         matches = $count
