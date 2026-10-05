@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -79,25 +78,28 @@ public sealed class PageContextBackendReplay
                 : expectedText
         });
 
-        var script = """
-            (async () => {
+        var asyncBody = """
               const p = PAYLOAD;
               const started = performance.now();
-              const options = {
-                method: p.method,
-                credentials: 'include',
-                redirect: 'follow',
-                headers: {
-                  'accept': 'application/json, text/plain, */*'
-                }
-              };
-
-              if (p.body !== null) {
-                options.headers['content-type'] = 'application/json';
-                options.body = p.body;
-              }
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 20000);
 
               try {
+                const options = {
+                  method: p.method,
+                  credentials: 'include',
+                  redirect: 'follow',
+                  signal: controller.signal,
+                  headers: {
+                    'accept': 'application/json, text/plain, */*'
+                  }
+                };
+
+                if (p.body !== null) {
+                  options.headers['content-type'] = 'application/json';
+                  options.body = p.body;
+                }
+
                 const response = await fetch(p.url, options);
                 let text = await response.text();
                 if (text.length > 500000) {
@@ -125,33 +127,15 @@ public sealed class PageContextBackendReplay
                   elapsedMs: Math.round(performance.now() - started),
                   error: String(error)
                 };
+              } finally {
+                clearTimeout(timeout);
               }
-            })()
             """.Replace("PAYLOAD", payload);
 
-        var raw = await _browser.ExecuteScriptAsync(script);
-
-        ReplayScriptResult? result;
-        try
-        {
-            result = JsonSerializer.Deserialize<ReplayScriptResult>(
-                raw,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"Could not decode page-context replay result: {ex.Message}");
-        }
-
-        if (result is null)
-        {
-            throw new InvalidOperationException(
-                "Page-context replay returned no result.");
-        }
+        var result = await PageContextAsyncExecutor.ExecuteAsync<ReplayScriptResult>(
+            _browser,
+            asyncBody,
+            TimeSpan.FromSeconds(25));
 
         var responseText = result.Text ?? string.Empty;
         var hash = Convert.ToHexString(
