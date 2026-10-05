@@ -65,7 +65,7 @@ function Stop-BridgeWebViewProcesses {
     $needle = 'ChatGptDesktopLocalBridge\WebView2'
     foreach ($item in @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" -ErrorAction SilentlyContinue |
         Where-Object { [string]$_.CommandLine -like ('*' + $needle + '*') })) {
-        try { Stop-Process -Id ([int]$item.ProcessId -Force -ErrorAction Stop) } catch {}
+        try { Stop-Process -Id ([int]$item.ProcessId) -Force -ErrorAction Stop } catch {}
     }
     Start-Sleep -Seconds 1
 }
