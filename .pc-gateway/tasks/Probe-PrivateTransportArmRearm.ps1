@@ -326,6 +326,7 @@ try {
       default_timezone:'UTC',
       executor:'cloud',
       is_enabled:false,
+      jawbone_id:null,
       legacy_automation_id:null,
       notification_policy:null,
       notifications_enabled:false,
