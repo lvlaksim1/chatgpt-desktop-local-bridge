@@ -1,19 +1,27 @@
 # Latest handoff
 
-Updated: 2026-10-05 19:45 MSK
+Updated: 2026-10-05 20:02 MSK
 
 Persistent manager: chatgpt-desktop-local-bridge-project-manager.
-Manager generation: 26.
+Manager generation: 27.
 
-Autonomous runner campaign has advanced materially:
-- schedule create/update/remove PASS;
-- Library full disposable lifecycle PASS including exact byte-for-byte download;
-- one-shot schedule matrix established integer timing_mode contract;
-- existing bound task arm/rearm PASS with exact restoration;
-- existing bound task prompt mutation PASS with exact restoration.
+Autonomous runner campaign has proved:
+- authenticated read-plane;
+- Pause/Resume;
+- schedule create/update/remove;
+- existing-task arm/rearm with restoration;
+- existing-task prompt mutation with restoration;
+- complete disposable Library lifecycle including exact byte-for-byte read-back and cleanup.
 
-Dedicated new automation binding via target_thread_id returned reproducible 503 and read-back found no created object, so it is not relied on for E2E.
+First full Desktop Scheduled Tasks + Library E2E was attempted as gateway request #240 / run 37343267811. The long-lived diagnostic WebSocket closed before terminal evidence was returned, so this is a harness/session failure, not proof of backend rejection.
 
-The first real Desktop Scheduled Tasks + Library transport probe is now running as PC Gateway request #240. It creates a unique request JSON file, temporarily turns a safe paused bound task into the worker, arms it, waits for a distinct result JSON with matching message_id/payload/WORKER-ACK, verifies the task run, then restores the original task and deletes transport files.
+Reconciliation request #241 / run 37344708850 proved:
+- one temporary E2E worker remained;
+- it had been left enabled and was disabled;
+- its run state had not advanced;
+- request file existed and was cleaned;
+- no result file existed.
 
-Next decision depends on request #240 terminal evidence.
+Ordinary ChatGptDesktopLocalBridge was restored successfully by request #243 / run 37345374055.
+
+Next architecture change: split E2E into short transactional phases with durable recovery metadata before mutation and independent observation/reconciliation sessions.
