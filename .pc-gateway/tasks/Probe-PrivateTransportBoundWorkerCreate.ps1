@@ -268,15 +268,33 @@ try {
     throw new Error('readback_timeout_'+label);
   }
 
-  const scheduled=await api('GET','/backend-api/automations?filter=scheduled');
-  const paused=await api('GET','/backend-api/automations?filter=paused');
-  const all=[...(Array.isArray(scheduled.json?.items)?scheduled.json.items:[]),...(Array.isArray(paused.json?.items)?paused.json.items:[])];
+  async function listAll(){
+    const scheduled=await api('GET','/backend-api/automations?filter=scheduled');
+    const paused=await api('GET','/backend-api/automations?filter=paused');
+    return [...(Array.isArray(scheduled.json?.items)?scheduled.json.items:[]),...(Array.isArray(paused.json?.items)?paused.json.items:[])];
+  }
+
+  let all=await listAll();
+  for(const stale of all){
+    if(stale&&typeof stale.id==='string'&&typeof stale.title==='string'&&stale.title.startsWith('bridge-bound-worker-')){
+      const rem=await api('POST','/backend-api/automations/remove',{automation_id:stale.id});
+      if(!rem.ok) throw new Error('stale_cleanup_http_'+rem.status);
+    }
+  }
+  if(all.some(x=>x&&typeof x.title==='string'&&x.title.startsWith('bridge-bound-worker-'))){
+    await delay(500);
+    all=await listAll();
+    if(all.some(x=>x&&typeof x.title==='string'&&x.title.startsWith('bridge-bound-worker-'))){
+      throw new Error('stale_cleanup_unconfirmed');
+    }
+  }
+
   const anchor=all.find(x=>x&&typeof x.conversation_id==='string'&&x.conversation_id.length>0);
   if(!anchor) return {pass:false,code:'no_anchor_thread'};
 
   const marker='bridge-bound-worker-'+crypto.randomUUID().replaceAll('-','').slice(0,12);
   const schedule='BEGIN:VEVENT\nDTSTART:20300101T060000Z\nRRULE:FREQ=DAILY;BYHOUR=6;BYMINUTE=0\nEND:VEVENT';
-  const summary={pass:false,code:'started',createStatus:0,createdId:null,boundConversation:false,enableStatus:0,enabledReadback:false,nextRunPresent:false,disableStatus:0,disabledReadback:false,removeStatus:0,removedVerified:false};
+  const summary={pass:false,code:'started',marker,createStatus:0,createReconciled:false,createdId:null,boundConversation:false,enableStatus:0,enabledReadback:false,nextRunPresent:false,disableStatus:0,disabledReadback:false,removeStatus:0,removedVerified:false};
   let id=null;
   try{
     const created=await api('POST','/backend-api/automations/save',{
@@ -295,13 +313,17 @@ try {
       target_thread_id:anchor.conversation_id
     });
     summary.createStatus=created.status;
-    if(!created.ok) throw new Error('create_http_'+created.status);
     id=typeof created.json?.id==='string'?created.json.id:typeof created.json?.jawbone_id==='string'?created.json.jawbone_id:null;
     if(!id){
-      const p=await api('GET','/backend-api/automations?filter=paused');
-      const found=Array.isArray(p.json?.items)?p.json.items.find(x=>x?.title===marker):null;
-      if(typeof found?.id==='string') id=found.id;
+      await delay(350);
+      const rows=await listAll();
+      const found=rows.find(x=>x?.title===marker);
+      if(typeof found?.id==='string'){
+        id=found.id;
+        summary.createReconciled=true;
+      }
     }
+    if(!created.ok && !id) throw new Error('create_http_'+created.status);
     if(!id) throw new Error('created_id_missing');
     summary.createdId=id;
 
@@ -351,7 +373,9 @@ try {
     $safe=[ordered]@{
         pass=[bool]$result.pass
         code=[string]$result.code
+        marker=[string]$result.marker
         create_http=[int]$result.createStatus
+        create_reconciled=[bool]$result.createReconciled
         bound_conversation=[bool]$result.boundConversation
         enable_http=[int]$result.enableStatus
         enabled_readback=[bool]$result.enabledReadback
