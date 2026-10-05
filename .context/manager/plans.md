@@ -1,13 +1,17 @@
 # Manager plans
 
-Manager generation: 26.
-Updated: 2026-10-05 19:45 MSK
+Manager generation: 27.
+Updated: 2026-10-05 20:02 MSK
 
-## Active
-1. Complete runner request #240: Desktop creates request.json in Library, mutates/arms an existing bound Scheduled Task worker, waits for a distinct result.json, verifies message_id/payload/worker ACK, observes task run, restores task and deletes both files.
-2. If PASS, implement explicit mailbox READY/ACK and generation/seq/message_id fencing.
-3. Then implement narrow production-oriented clients for task state/schedule/prompt and Library file lifecycle.
-4. Run restart, duplicate, stale-ACK, navigation/relogin, network-loss, cleanup and 100+ sequential round-trip campaign.
-5. Classify transport as REJECT / CONTROL-PLANE ONLY / OPTIONAL / DEFAULT only after evidence.
+## Active private-transport plan
 
-Dedicated new-worker creation via target_thread_id remains a separate unresolved convenience path and is not required for first E2E because existing bound task mutation/restoration is proven.
+1. Keep the quarantined E2E probe worker disabled; recover its pre-test configuration from a safe source if possible, otherwise explicitly retire it.
+2. Replace the monolithic E2E probe with a crash-safe multi-phase harness:
+   - Phase A: persist recovery snapshot, create request file, mutate/arm worker, verify read-back, exit;
+   - Phase B: observe Scheduled run state and Library result through fresh short-lived sessions;
+   - Phase C: verify correlation/ACK, restore worker from persisted snapshot, delete transport files, verify cleanup.
+3. Retry the same full-file transport E2E under this bounded design.
+4. On E2E PASS, add explicit READY/ACK and generation/seq/message_id fencing.
+5. Implement narrow production-oriented clients from proven primitives.
+6. Run restart, duplicate, stale-ACK, relogin/navigation, forced network-loss, orphan-cleanup and 100+ round-trip campaign.
+7. Classify transport as REJECT / CONTROL-PLANE ONLY / OPTIONAL / DEFAULT only after evidence.
