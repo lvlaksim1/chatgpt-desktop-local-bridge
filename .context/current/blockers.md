@@ -1,14 +1,15 @@
 # Current blockers and open risks
 
-Updated: 2026-10-05 19:45 MSK
+Updated: 2026-10-05 20:02 MSK
 
-No blocker remains for read-plane, Pause/Resume, Schedule mutation, existing-task arm/rearm, prompt mutation, or Library byte/file lifecycle.
+No blocker remains for read-plane, Pause/Resume, Schedule mutation, existing-task arm/rearm, prompt mutation or Library file lifecycle.
 
-Current proof gap:
-- first actual Scheduled runtime request-file -> result-file execution is in progress;
-- explicit mailbox READY/ACK semantics and fencing remain after that;
-- dedicated new worker creation using target_thread_id currently returns 503;
-- account/workspace stale-context fencing for unattended production writes remains incomplete;
-- forced network-loss UNKNOWN_OUTCOME recovery and endurance remain untested.
+Current proof gaps:
+- first complete Scheduled runtime request-file -> result-file execution is not yet proven;
+- the current E2E runner needs shorter independent phases instead of one long WebView diagnostic session;
+- the temporary E2E probe worker is disabled and must stay disabled until its pre-test configuration is safely recovered or the probe is retired;
+- explicit READY/ACK and correlation fencing remain unimplemented;
+- dedicated new-worker creation remains unresolved;
+- unattended-write recovery and endurance remain untested.
 
-All runner probes must restore changed task state and clean disposable Library files.
+Safety rule: interrupted probes must be reconciled before any affected task is re-enabled.
