@@ -1,9 +1,10 @@
 # Next actions
 
-Updated: 2026-10-05 19:45 MSK
+Updated: 2026-10-05 20:02 MSK
 
-1. Observe request #240 to terminal state and inspect exact E2E evidence.
-2. Restore ordinary desktop app after the bounded runner probe.
-3. On PASS, add explicit mailbox READY/ACK and generation/seq/message_id fencing.
-4. On FAIL, isolate only the failing Scheduled-runtime/Library boundary and repeat safely.
-5. After full E2E, begin durability/endurance campaign.
+1. Keep the reconciled E2E probe worker disabled.
+2. Recover its pre-test configuration safely if available; otherwise retire or quarantine it rather than guessing.
+3. Refactor E2E into short crash-safe phases with durable recovery metadata before mutation.
+4. Re-run request file -> arm -> Scheduled runtime -> result file using fresh observation sessions.
+5. On PASS, add READY/ACK and correlation fencing.
+6. Start durability and endurance testing.
