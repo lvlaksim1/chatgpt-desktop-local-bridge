@@ -162,7 +162,9 @@ try{
     $result=Invoke-CdpEval -Socket $socket -Id ([ref]$cdpId) -Expression $script -Stage 'oneshot-shapes' -TimeoutMs 90000
     $json=$result|ConvertTo-Json -Depth 12 -Compress
     Write-Host ('ONESHOT_SHAPES='+$json)
-    Write-ProjectResult -Status 'evidence' -ExitCode 20 -ErrorText $json -Extra @{installed_tag=$installedTag;count=[int]$result.count}
+    $count=0
+    if($null-ne$result -and $null-ne$result.PSObject.Properties['count']){$count=[int]$result.count}
+    Write-ProjectResult -Status 'evidence' -ExitCode 20 -ErrorText $json -Extra @{installed_tag=$installedTag;count=$count}
 }
 catch{
     Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText $_.Exception.Message -Extra @{installed_tag=$installedTag}
