@@ -342,6 +342,8 @@ try {
     processStatus: 0,
     processCompleted: false,
     libraryLocated: false,
+    downloadStatus: 0,
+    downloadExact: false,
     renameStatus: 0,
     renameReadback: false,
     deleteStatus: 0,
@@ -431,6 +433,16 @@ try {
     if (!libId) throw new Error('library_file_id_missing');
     summary.libraryFileId = libId;
 
+    const downloaded = await fetch(
+      '/api/library/files/' + encodeURIComponent(libId) + '/download',
+      { method: 'GET', credentials: 'include', redirect: 'follow', cache: 'no-store' }
+    );
+    summary.downloadStatus = downloaded.status;
+    if (!downloaded.ok) throw new Error('download_http_' + downloaded.status);
+    const downloadedText = await downloaded.text();
+    summary.downloadExact = downloadedText === text;
+    if (!summary.downloadExact) throw new Error('download_content_mismatch');
+
     const renamed = await jsonApi(
       'PATCH',
       '/backend-api/files/library/files/' + encodeURIComponent(libId),
@@ -466,6 +478,7 @@ try {
       summary.uploadStatus >= 200 && summary.uploadStatus < 300 &&
       summary.processCompleted &&
       summary.libraryLocated &&
+      summary.downloadExact &&
       summary.renameReadback &&
       summary.deleteCompleted;
     summary.code = summary.pass ? 'pass' : 'assertion_failed';
@@ -514,6 +527,8 @@ try {
         process_http = [int]$result.processStatus
         process_completed = [bool]$result.processCompleted
         library_located = [bool]$result.libraryLocated
+        download_http = [int]$result.downloadStatus
+        download_exact = [bool]$result.downloadExact
         rename_http = [int]$result.renameStatus
         rename_readback = [bool]$result.renameReadback
         delete_http = [int]$result.deleteStatus
@@ -535,6 +550,8 @@ try {
         process_http = [int]$result.processStatus
         process_completed = [bool]$result.processCompleted
         library_located = [bool]$result.libraryLocated
+        download_http = [int]$result.downloadStatus
+        download_exact = [bool]$result.downloadExact
         rename_http = [int]$result.renameStatus
         rename_readback = [bool]$result.renameReadback
         delete_http = [int]$result.deleteStatus
