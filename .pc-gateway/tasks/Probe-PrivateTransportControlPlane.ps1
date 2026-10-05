@@ -329,18 +329,34 @@ try {
     throw new Error('readback_timeout_' + desired + '_' + String(last?.is_enabled));
   }
 
-  const list = await api('GET', '/backend-api/automations?filter=scheduled');
-  if (!list.ok || !Array.isArray(list.json?.items)) {
-    throw new Error('scheduled_list_http_' + list.status);
+  const scheduled = await api('GET', '/backend-api/automations?filter=scheduled');
+  const pausedList = await api('GET', '/backend-api/automations?filter=paused');
+  if (!scheduled.ok || !Array.isArray(scheduled.json?.items)) {
+    throw new Error('scheduled_list_http_' + scheduled.status);
+  }
+  if (!pausedList.ok || !Array.isArray(pausedList.json?.items)) {
+    throw new Error('paused_list_http_' + pausedList.status);
   }
 
   const now = Date.now();
-  const candidates = list.json.items.filter(item => {
-    if (!item || item.is_enabled !== true) return false;
+  function candidateTime(item) {
+    const raw = Array.isArray(item?.next_run_times) && item.next_run_times.length
+      ? item.next_run_times[0]
+      : item?.target_time_utc;
+    const parsed = Date.parse(raw || '');
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+  const all = [...scheduled.json.items, ...pausedList.json.items];
+  const byId = new Map();
+  for (const item of all) {
+    if (item && typeof item.id === 'string') byId.set(item.id, item);
+  }
+
+  const candidates = Array.from(byId.values()).filter(item => {
+    if (typeof item.is_enabled !== 'boolean') return false;
     if (item.timing_mode === 'condition_watch') return false;
-    const next = Array.isArray(item.next_run_times) && item.next_run_times.length
-      ? Date.parse(item.next_run_times[0])
-      : NaN;
+    const next = candidateTime(item);
     return Number.isFinite(next) && next - now >= minLeadMs;
   });
 
@@ -349,23 +365,26 @@ try {
       pass: false,
       code: 'no_safe_task',
       minLeadMinutes: Math.round(minLeadMs / 60000),
-      scheduledCount: list.json.items.length
+      scheduledCount: scheduled.json.items.length,
+      pausedCount: pausedList.json.items.length
     };
   }
 
-  candidates.sort((a, b) => Date.parse(b.next_run_times[0]) - Date.parse(a.next_run_times[0]));
+  candidates.sort((a, b) => candidateTime(b) - candidateTime(a));
   const task = candidates[0];
   const id = String(task.id || '');
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) throw new Error('invalid_task_id');
 
+  const originalEnabled = task.is_enabled === true;
+  const nextTime = candidateTime(task);
   const summary = {
     pass: false,
     code: 'started',
     taskId: id,
     title: String(task.title || '').slice(0, 120),
     timingMode: String(task.timing_mode || ''),
-    nextRun: String(task.next_run_times?.[0] || ''),
-    originalEnabled: true,
+    nextRun: Number.isFinite(nextTime) ? new Date(nextTime).toISOString() : '',
+    originalEnabled,
     pauseStatus: 0,
     pauseReadback: null,
     resumeStatus: 0,
@@ -373,27 +392,32 @@ try {
     restored: false
   };
 
+  async function setEnabled(desired) {
+    const write = await api('POST', '/backend-api/automations/set_status', {
+      jawbone_id: id,
+      is_enabled: desired
+    });
+    if (desired) summary.resumeStatus = write.status;
+    else summary.pauseStatus = write.status;
+    if (write.status !== 201) {
+      throw new Error((desired ? 'resume_http_' : 'pause_http_') + write.status);
+    }
+    const readback = await waitEnabled(id, desired);
+    if (desired) summary.resumeReadback = readback.is_enabled;
+    else summary.pauseReadback = readback.is_enabled;
+  }
+
   try {
-    const pause = await api('POST', '/backend-api/automations/set_status', {
-      jawbone_id: id,
-      is_enabled: false
-    });
-    summary.pauseStatus = pause.status;
-    if (pause.status !== 201) throw new Error('pause_http_' + pause.status);
+    if (originalEnabled) {
+      await setEnabled(false);
+      await setEnabled(true);
+    } else {
+      await setEnabled(true);
+      await setEnabled(false);
+    }
 
-    const paused = await waitEnabled(id, false);
-    summary.pauseReadback = paused.is_enabled;
-
-    const resume = await api('POST', '/backend-api/automations/set_status', {
-      jawbone_id: id,
-      is_enabled: true
-    });
-    summary.resumeStatus = resume.status;
-    if (resume.status !== 201) throw new Error('resume_http_' + resume.status);
-
-    const resumed = await waitEnabled(id, true);
-    summary.resumeReadback = resumed.is_enabled;
-    summary.restored = resumed.is_enabled === true;
+    const final = await waitEnabled(id, originalEnabled);
+    summary.restored = final.is_enabled === originalEnabled;
     summary.pass =
       summary.pauseStatus === 201 &&
       summary.pauseReadback === false &&
@@ -406,10 +430,10 @@ try {
     try {
       await api('POST', '/backend-api/automations/set_status', {
         jawbone_id: id,
-        is_enabled: true
+        is_enabled: originalEnabled
       });
-      const restored = await waitEnabled(id, true);
-      summary.restored = restored.is_enabled === true;
+      const restored = await waitEnabled(id, originalEnabled);
+      summary.restored = restored.is_enabled === originalEnabled;
     } catch {}
 
     summary.code = 'exception';
@@ -421,17 +445,20 @@ try {
 
     $result = Invoke-CdpEval -Socket $socket -Id ([ref]$cdpId) -Expression $script -Stage 'toggle-cycle' -TimeoutMs 90000
 
-    $selectedTaskId = [string]$result.taskId
-    $selectedTitle = [string]$result.title
-
     if ([string]$result.code -eq 'no_safe_task') {
+        $scheduledCount = if ($null -ne $result.PSObject.Properties['scheduledCount']) { [int]$result.scheduledCount } else { 0 }
+        $pausedCount = if ($null -ne $result.PSObject.Properties['pausedCount']) { [int]$result.pausedCount } else { 0 }
         Write-ProjectResult -Status 'no_safe_task' -ExitCode 20 -ErrorText (
-            "No enabled non-condition task has at least $minLeadMinutes minutes before its next run.") -Extra @{
+            "No scheduled/paused non-condition task has at least $minLeadMinutes minutes before its next/target run. scheduled=$scheduledCount paused=$pausedCount") -Extra @{
             installed_tag = $installedTag
-            scheduled_count = [int]$result.scheduledCount
+            scheduled_count = $scheduledCount
+            paused_count = $pausedCount
             min_lead_minutes = $minLeadMinutes
         }
     }
+
+    if ($null -ne $result.PSObject.Properties['taskId']) { $selectedTaskId = [string]$result.taskId }
+    if ($null -ne $result.PSObject.Properties['title']) { $selectedTitle = [string]$result.title }
 
     if (-not [bool]$result.pass) {
         throw ('Control-plane toggle cycle failed: ' + ($result | ConvertTo-Json -Depth 20 -Compress))
