@@ -1,21 +1,17 @@
 # Current blockers and open risks
 
-Updated: 2026-10-05 20:13 MSK
+Updated: 2026-10-05 23:02 MSK
 
-No blocker remains for:
-- authenticated read-plane;
-- Pause/Resume;
-- schedule mutation;
-- existing-task arm/rearm;
-- prompt mutation;
-- Library file lifecycle.
+No blocker remains for authenticated reads, Pause/Resume, schedule mutation, existing-task arm/rearm mutation, prompt mutation or Library lifecycle.
 
-Current proof gaps:
-- first complete Scheduled runtime request-file -> result-file execution is not yet proven;
-- monolithic runner E2E cannot safely rely on one long-lived CDP/WebSocket session;
-- affected temporary E2E worker must remain disabled until recovered or retired;
-- dedicated new-worker creation is unresolved;
-- READY/ACK and generation/seq/message_id fencing are not yet implemented;
-- forced interruption/network-loss recovery and endurance are untested.
+Current proof gap:
+- a phased worker can be armed and enabled with successful read-back, but in the latest E2E probe its Scheduled run did not advance and no result file appeared;
+- exact next-run scheduling/trigger semantics for the borrowed worker must be compared with known executing tasks;
+- first complete request-file -> Scheduled runtime -> result-file cycle is therefore still unproven;
+- READY/ACK and correlation fencing remain future work;
+- unattended interruption/network-loss recovery and endurance remain untested.
 
-Safety rule: persist recovery state before mutation and reconcile interrupted probes before re-enabling any affected task.
+Safety constraints:
+- every explicit network/API/backend request must have at least 5000 ms separation;
+- no parallel/burst requests;
+- interrupted probes must be reconciled before an affected task is re-enabled.

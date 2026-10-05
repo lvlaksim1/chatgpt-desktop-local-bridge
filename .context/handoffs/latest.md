@@ -1,30 +1,19 @@
 # Latest handoff
 
-Updated: 2026-10-05 20:13 MSK
+Updated: 2026-10-05 23:02 MSK
 
 Persistent manager: chatgpt-desktop-local-bridge-project-manager.
-Manager generation: 28.
+Manager generation: 29.
 
-Owner requested autonomous testing through PC Runner Gateway; manual UI is fallback-only.
+Owner hard safety rule is active: all explicit network/API/backend requests in research/development are serialized with at least 5 seconds of quiet time. No bursts or parallel requests. Policy commit 45e14b348a5d5b6df5cc9fea05a53b55d30ab458; pacing validator run 37363131880 PASS.
 
-Current research branch is exp/runner-private-transport-control-plane, draft PR #30, head 198b3ba8f553db78888115ec1d18061fe89a1305.
+The autonomous runner campaign still has PASS for read-plane, Pause/Resume, Schedule mutation, existing-task arm/rearm, prompt mutation and full disposable Library lifecycle.
 
-Autonomous runner campaign has proven:
-- authenticated private read-plane;
-- Pause/Resume with authoritative read-back and restoration;
-- Task Schedule create/update/remove;
-- existing-task arm/rearm with restoration;
-- existing-task prompt mutation with restoration;
-- full disposable Library lifecycle including exact byte-for-byte read-back and cleanup.
+A crash-safe phased E2E harness now replaces the monolithic WebSocket experiment. Probe bridge-e2e-paced-20261005-2224:
+- Phase A request #249 / run 37363246158 PASS.
+- Phase B #250 / run 37363650201 completed safely but project status pending.
+- Phase B2 #252 / run 37366501806 also pending.
+- Safe local state evidence #254 / run 37366897764 showed worker_enabled=true, run_advanced=false, no last run, latest-run read HTTP 200, result absent and no recorded harness error.
+- Phase C request #255 / run 37367052654 PASS, restoring/cleaning the probe state.
 
-Important runs:
-- Schedule: 37336010697 PASS.
-- Library exact data-plane lifecycle: 37336624243 PASS.
-- Existing-task arm/rearm: 37341819835 PASS.
-- Prompt mutation: 37342848518 PASS.
-
-First full Desktop Scheduled Tasks + Library E2E: request #240 / run 37343267811. It failed because the long-lived diagnostic WebSocket was closed by the remote side before terminal evidence returned. This is a harness/session failure, not proof of backend rejection.
-
-Reconciliation #241 / run 37344708850 PASS: one temporary E2E worker remained, its run state had not advanced, request file existed, result file did not; runner disabled the worker and cleaned the request. Normal desktop restore #243 / run 37345374055 PASS.
-
-The next architecture change is a crash-safe multi-phase E2E with durable recovery snapshot before mutation and fresh short-lived sessions for arm, observation and cleanup. The affected temporary worker stays disabled until safely recovered or retired.
+This sharply narrows the current problem: the proven arm mutation left the worker enabled, but the Scheduled runtime did not actually trigger. Next work is low-rate comparison of timing/next-run semantics against known tasks that do execute, then a fresh phased E2E.

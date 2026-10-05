@@ -1,9 +1,9 @@
 # Manager intentions and commitments
 
-Manager generation: 28.
-Updated: 2026-10-05 20:13 MSK
+Manager generation: 29.
+Updated: 2026-10-05 23:02 MSK
 
-Current experimental line: PR #30 / exp/runner-private-transport-control-plane / 198b3ba8f553db78888115ec1d18061fe89a1305.
+Current experimental line: PR #30 / exp/runner-private-transport-control-plane.
 
 Proven:
 - authenticated read-plane;
@@ -13,15 +13,21 @@ Proven:
 - existing-task prompt mutation with restoration;
 - complete disposable Library lifecycle with exact byte read-back and cleanup.
 
-Current E2E finding:
-- request #240 / run 37343267811 failed because the long-lived diagnostic WebSocket closed before terminal evidence;
-- reconciliation #241 / run 37344708850 safely established that the worker had not completed, disabled it and cleaned the request file;
-- app restore #243 / run 37345374055 PASS.
+Safety:
+- all explicit network/API/backend requests in research and development must be serialized with a minimum 5000 ms quiet interval;
+- no parallel fetches, bursts or sub-5-second polling;
+- retries use at least the same minimum delay and should back off further on errors.
+
+Current phased E2E:
+- Phase A #249 / run 37363246158 PASS;
+- Phase B #250 / run 37363650201 = pending;
+- Phase B2 #252 / run 37366501806 = pending;
+- state evidence #254 / run 37366897764: worker enabled, run_advanced=false, no last run, latest-run read HTTP 200, no result file, no harness error;
+- Phase C #255 / run 37367052654 PASS cleanup/restoration.
 
 Commitments:
-1. Do not treat #240 as backend rejection.
-2. Keep the affected E2E worker disabled until safely recovered or retired.
-3. Replace monolithic E2E with short crash-safe phases and persisted recovery snapshot before mutation.
-4. Use fresh independent observation/reconciliation sessions instead of one long-lived WebSocket.
-5. Require authoritative read-back after every write and on every ambiguous outcome.
-6. Keep main unchanged until promotion evidence exists.
+1. Do not classify pending Phase B as transport/backend failure.
+2. Diagnose Scheduled next-run/trigger semantics using low-rate read-only evidence first.
+3. Do not re-arm or mutate until the previous probe is fully reconciled.
+4. Persist recovery snapshot before any E2E mutation.
+5. Keep main unchanged until promotion evidence exists.
