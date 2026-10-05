@@ -309,10 +309,9 @@ try {
   }
 
   const marker='bridge-arm-recur-probe-'+crypto.randomUUID().replaceAll('-','').slice(0,12);
-  const now=Date.now();
-  const s1=recurringAt(now+24*60*60*1000);
-  const s2=recurringAt(now+25*60*60*1000);
-  const s3=recurringAt(now+26*60*60*1000);
+  const s1='BEGIN:VEVENT\nDTSTART:20300101T030000Z\nRRULE:FREQ=DAILY;BYHOUR=3;BYMINUTE=0\nEND:VEVENT';
+  const s2='BEGIN:VEVENT\nDTSTART:20300101T040000Z\nRRULE:FREQ=DAILY;BYHOUR=4;BYMINUTE=0\nEND:VEVENT';
+  const s3='BEGIN:VEVENT\nDTSTART:20300101T050000Z\nRRULE:FREQ=DAILY;BYHOUR=5;BYMINUTE=0\nEND:VEVENT';
   const summary={
     pass:false,code:'started',marker,createStatus:0,firstReadback:false,
     armScheduleStatus:0,armScheduleReadback:false,enableStatus:0,enabledReadback:false,
