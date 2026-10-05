@@ -152,3 +152,13 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Exact updater from installed v3: `ChatGptDesktopLocalBridge-Update-from-private-transport-v3-70d3b29.exe`, 2,324,866 bytes, SHA-256 `1ed641e70317729d11fbc60dae939638e0cc49e84ca550f4b42eb010271b14f9`.
 - Next live gate is to install v4 and rerun only Private Read Proof. Do not infer backend availability or auth requirements until the corrected probe returns real HTTP results.
 
+## Scheduled+Library autonomous campaign reconciliation 2026-10-05
+
+- Runner-driven live testing became the default mode for this project.
+- Proven milestones: authenticated read-plane; Pause/Resume; Schedule create/update/remove; existing-task arm/rearm with restoration; existing-task prompt mutation with restoration; full disposable Library lifecycle with exact byte read-back and cleanup.
+- First full Desktop Scheduled Tasks + Library E2E attempt (#240 / run 37343267811) ended because the long-lived diagnostic WebSocket closed before terminal evidence returned. Treat this as a harness/session-lifetime failure, not backend rejection.
+- Reconciliation #241 / run 37344708850 found one temporary worker still enabled, request file present, no result file, and no worker run advancement. The runner disabled the worker and removed the request file.
+- Ordinary desktop app restoration #243 / run 37345374055 PASS.
+- The temporary E2E probe worker stays disabled until its pre-test configuration is safely recovered or the probe task is retired.
+- Next design: split E2E into short transactional phases with durable recovery metadata before mutation, independent observation sessions, and explicit cleanup/reconciliation.
+
