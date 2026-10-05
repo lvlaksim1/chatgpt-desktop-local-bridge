@@ -162,3 +162,15 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - The temporary E2E probe worker stays disabled until its pre-test configuration is safely recovered or the probe task is retired.
 - Next design: split E2E into short transactional phases with durable recovery metadata before mutation, independent observation sessions, and explicit cleanup/reconciliation.
 
+## Autonomous private transport campaign milestone 2026-10-05
+
+- Runner research line: draft PR #30 / `exp/runner-private-transport-control-plane` / head `198b3ba8f553db78888115ec1d18061fe89a1305`.
+- Authenticated private read-plane, Pause/Resume, Task Schedule create/update/remove, existing-task arm/rearm with restoration, existing-task prompt mutation with restoration, and the disposable Library lifecycle are live-proven through the PC Runner Gateway.
+- Library proof includes upload allocation, signed byte upload, terminal processing completion, Library discovery, exact byte-for-byte download, rename/read-back, and delete/cleanup.
+- Key PASS runs: Schedule `37336010697`; Library `37336624243`; arm/rearm `37341819835`; prompt mutation `37342848518`.
+- First full Scheduled Tasks + Library E2E request #240 / run `37343267811` failed because the long-lived diagnostic WebSocket closed before terminal evidence. Treat this as runner harness/session failure, not backend rejection.
+- Reconciliation #241 / run `37344708850` PASS: temporary worker found, request file present, result file absent, run state had not advanced; worker disabled and request cleaned. App restore #243 / run `37345374055` PASS.
+- Affected E2E worker remains disabled/quarantined until safely recovered or retired.
+- Next design is a crash-safe multi-phase E2E with durable recovery snapshot before mutation and fresh short-lived sessions for arm, observe and cleanup.
+- Manager coupled state persisted as generation 28.
+
