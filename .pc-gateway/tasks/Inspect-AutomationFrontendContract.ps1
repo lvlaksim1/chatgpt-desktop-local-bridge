@@ -270,12 +270,15 @@ try {
   const needles = [
     'automations/save',
     'automations/set_status',
-    'automations/remove'
+    'automations/remove',
+    'jawbone_id',
+    'legacy_automation_id',
+    'timing_mode'
   ];
 
   const matches = [];
   for (const url of candidates) {
-    if (matches.length >= 12) break;
+    if (matches.length >= 32) break;
     let text = '';
     try {
       const response = await fetch(url, { credentials: 'include', cache: 'force-cache' });
@@ -286,11 +289,11 @@ try {
 
     for (const needle of needles) {
       let start = 0;
-      while (matches.length < 12) {
+      while (matches.length < 32) {
         const index = text.indexOf(needle, start);
         if (index < 0) break;
-        const left = Math.max(0, index - 2200);
-        const right = Math.min(text.length, index + needle.length + 3200);
+        const left = Math.max(0, index - 3200);
+        const right = Math.min(text.length, index + needle.length + 4800);
         matches.push({
           file: new URL(url, location.href).pathname.split('/').pop(),
           needle,
@@ -323,7 +326,7 @@ try {
     # The snippets come only from public frontend JavaScript assets; no request headers,
     # cookies, tokens, response bodies, or user data are included.
     $visible = @()
-    foreach ($match in @($result.matches) | Select-Object -First 4) {
+    foreach ($match in @($result.matches) | Select-Object -First 10) {
         $snippet = [string]$match.snippet
         if ($snippet.Length -gt 3500) { $snippet = $snippet.Substring(0, 3500) }
         $visible += [ordered]@{
