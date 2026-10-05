@@ -155,7 +155,11 @@ function Invoke-CdpEval {
 
     if ($null -ne $response.PSObject.Properties['error']) { throw ($Stage + ': CDP error') }
     if ($null -eq $response.result -or $null -eq $response.result.result) { throw ($Stage + ': missing result') }
-    if ($null -ne $response.result.PSObject.Properties['exceptionDetails']) { throw ($Stage + ': JS exception') }
+    if ($null -ne $response.result.PSObject.Properties['exceptionDetails']) {
+        $detailJson = $response.result.exceptionDetails | ConvertTo-Json -Depth 8 -Compress
+        if ($detailJson.Length -gt 1600) { $detailJson = $detailJson.Substring(0,1600) }
+        throw ($Stage + ': JS exception: ' + $detailJson)
+    }
 
     $inner = $response.result.result
     if ($null -eq $inner.PSObject.Properties['value']) { throw ($Stage + ': missing by-value payload') }
@@ -179,9 +183,9 @@ if ([string]::IsNullOrWhiteSpace($workerId)) {
     Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText 'worker_id_missing'
 }
 
-$workerIdJson = $workerId | ConvertTo-Json -Compress
-$armedScheduleJson = ([string]$state.armed_schedule) | ConvertTo-Json -Compress
-$beforeLastRunJson = $state.before_last_run | ConvertTo-Json -Compress
+$workerIdJson = ConvertTo-Json -InputObject $workerId -Compress
+$armedScheduleJson = ConvertTo-Json -InputObject ([string]$state.armed_schedule) -Compress
+$beforeLastRunJson = ConvertTo-Json -InputObject $state.before_last_run -Compress
 
 $port = Get-Random -Minimum 9400 -Maximum 9999
 $cdpId = 1
