@@ -141,3 +141,14 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Product `main` remains unchanged at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`; no private/Scheduled Tasks/Library transport experiment has been promoted to production.
 - Operational coupled state was reconciled to manager generation 20 on 2026-10-05.
 
+## Private transport v4 Promise-await correction admitted 2026-10-05
+
+- Owner live v3 Private Read Proof returned identical default values for all four reads: `Status=0`, `ElapsedMs=0`, empty response and `Error=null`.
+- Root cause was local probe execution semantics: WebView2 `ExecuteScriptAsync` evaluated an async IIFE and returned its Promise object before `fetch` completed; that Promise serialized as `{}`, producing default C# result fields. The v3 output is therefore invalid backend evidence.
+- Draft PR #28 / `exp/chatgpt-private-transport-v4` fixes the execution layer with an isolated per-request page-context result slot. C# starts the async work, polls only the tagged slot until terminal state, then deserializes the real result and cleans up the slot.
+- The fix applies to both narrow Private Read Proof and captured-request replay.
+- v4 release commit `8b2123c5c4cdef4641101da5b325754f5169b4ad`; prerelease `private-transport-v4-8b2123c`.
+- Release workflow `37313985424` PASS.
+- Exact updater from installed v3: `ChatGptDesktopLocalBridge-Update-from-private-transport-v3-70d3b29.exe`, 2,324,866 bytes, SHA-256 `1ed641e70317729d11fbc60dae939638e0cc49e84ca550f4b42eb010271b14f9`.
+- Next live gate is to install v4 and rerun only Private Read Proof. Do not infer backend availability or auth requirements until the corrected probe returns real HTTP results.
+
