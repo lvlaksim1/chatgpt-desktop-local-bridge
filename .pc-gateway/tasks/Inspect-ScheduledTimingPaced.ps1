@@ -211,8 +211,13 @@ try {
     # opening the diagnostic websocket.
     Start-Sleep -Seconds 10
 
+    $targetItems = @($target)
+    $wsUrl = if ($targetItems.Count -gt 0) { [string]$targetItems[0].webSocketDebuggerUrl } else { '' }
+    if ([string]::IsNullOrWhiteSpace($wsUrl)) { throw 'cdp_websocket_url_missing' }
+    $wsUri = [Uri]$wsUrl
+
     $socket = New-Object Net.WebSockets.ClientWebSocket
-    $socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    $socket.ConnectAsync($wsUri,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
 
     # The websocket handshake is an explicit network operation too.
     Start-Sleep -Seconds 5
