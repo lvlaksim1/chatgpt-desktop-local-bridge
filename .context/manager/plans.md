@@ -1,74 +1,60 @@
 # Manager plans
 
-Manager generation: 18.
-Updated: 2026-10-04 02:23 MSK
+Manager generation: 20.
+Updated: 2026-10-05 15:42 MSK
 
 Product authority: `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
 Canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
 Accepted UI baseline: `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`.
-UI validation candidate: `4c92f81d46b77f964b8e99fe25439058b9b835a1`.
 
-## Runtime-foundation plan
+## 1. Runtime foundation
 
-Development candidate:
-- branch `dev/runtime-foundation-v1`
-- draft PR #22
-- current head `3f5ff0fdda85165c38a977f2d29c7e893ecf3774`
+Candidate: PR #22 / `dev/runtime-foundation-v1` / `3f5ff0f`.
 
-Implemented slices:
-- durable main lineage retained;
-- M4 write/file/process tools reconciled;
-- Windows Job Object kill-on-close and STOP;
-- interactive ASK;
-- 15-tool metadata registry;
-- repo status/diff/map/checkpoint/verify;
-- opt-in MCP stdio via official C# SDK;
-- reduced MCP environment inheritance and ASK on calls;
-- expanded Windows regression tests including a real temporary Git repo.
+Next:
+- perform Owner signed-in runtime validation of bridge restoration, ASK, file mutation, process execution, STOP, repo status/diff/map/checkpoint/verify and representative MCP behavior;
+- reproduce the intermittent staged-but-not-auto-submitted result case;
+- merge only after live proof and explicit promotion decision.
 
-Evidence:
-- run `37160870171`: complete Windows CI, publish, Setup, delta/updater and legacy uninstall E2E PASS for the application source at `b256a0c5`;
-- run `37161576559`: after adding repo runtime coverage, Build PASS and durable/runtime/repo regression PASS at head `3f5ff0f`; later packaging is not needed to prove the test-only cleanup fix changes no application source.
+## 2. UI shell
 
-Validation/promotion:
-1. Keep PR #22 draft.
-2. Produce an installable development candidate when live Owner testing starts.
-3. Validate bridge/permission/process/STOP/repo behavior on the signed-in Windows runtime.
-4. Re-test result auto-submit intermittency.
-5. Only after PASS request/promote merge to `main` under Owner authority.
+Candidate: `4c92f81`.
+Next:
+- independently validate startup/loading, warm tab switching, downloads, safe custom context-menu path, theme/reset, updater placement and bridge auto-restore;
+- preserve `af6ac653` as accepted baseline until PASS.
 
-## Repo-aware follow-on
-The v1 map is deliberately conservative. After live proof, evolve toward:
-- parser-backed definitions/references;
-- dependency graph ranking;
-- explicit editable/read-only/whole-repo context scopes;
-- deterministic token/character budgets;
-- caching keyed by file modification/content state.
+## 3. Scheduled Tasks + Library private transport
 
-## MCP follow-on
-Keep config empty by default. Next proof uses a disposable preconfigured server. Add stronger server-process containment before unattended expansion. Future HTTP/SSE/OAuth transports are optional and must not bypass Local Tool Runtime permissions/audit.
+Research lineage:
+- PR #24 `task-probe-49fb895`: task metadata discovery;
+- PR #25 `scheduled-file-probe-6bb827b`: combined Tasks + Library discovery/replay;
+- PR #26 `private-transport-probe-dd472e4`: alternate request-bound v3 implementation;
+- PR #27 `private-transport-v3-70d3b29`: current user-facing v3 candidate.
 
-## ChatGPT-plan transport experiment
+Current next gate is live Owner testing of PR #27:
+1. validate narrow read proof against the current signed-in account;
+2. capture current frontend request shapes for task pause/resume/schedule/arm and Library/file operations;
+3. verify same-session replay only for captured/allowlisted operations;
+4. for writes, enforce `UNKNOWN_OUTCOME -> read-back -> reconcile`;
+5. implement protocol-specific file create/upload/process/read/delete primitives only after the observed shapes are stable;
+6. implement minimal mailbox control primitives only after current task mutation body/schema is confirmed;
+7. run one complete E2E:
+   `Desktop -> request.json -> Library/files -> mailbox READY -> arm -> Scheduled runtime -> result.json -> ACK -> Desktop read-back`;
+8. verify `generation/seq/message_id` fencing and ACK-after-durable-result ordering;
+9. then perform 100+ sequential round trips plus restart, duplicate, stale-ACK, navigation/relogin, network-loss and large-payload tests;
+10. only after evidence classify the transport as REJECT / CONTROL-PLANE ONLY / OPTIONAL / DEFAULT.
 
-Development candidate:
-- branch `exp/chatgpt-plan-transport`
-- draft PR #23
-- head `f2a3056b917a084c780c07f6f74ae6f3e7991c7b`
-- CI run `37161271895`: PASS
+Do not merge divergent PR #26 and PR #27 together mechanically. Reuse only individually proven ideas.
 
-The probe follows official OpenAI OSS/local-app SIWC: stable host ID, dynamic client registration, system-browser OAuth/OIDC/PKCE, state+nonce validation, ID-token signature/issuer/audience/lifetime validation, required `chatgpt.tokens.use.direct`, account model discovery, and `store:false` + `stream:true` public Responses inference.
+## 4. Official ChatGPT-plan transport
 
-Promotion gates:
-1. Owner live sign-in.
-2. account-specific model discovery.
-3. completed streamed inference.
-4. protected rotating refresh-token persistence and sign-out.
-5. saved/multiple account UX.
-6. Local Tool Runtime function-tool round trip.
-7. usage/limit/revocation recovery.
-8. explicit Owner architecture approval.
-
-The ordinary WebView2 ChatGPT mode remains authoritative throughout the experiment.
+Candidate: PR #23 / `f2a3056`.
+Next:
+- Owner interactive OAuth sign-in;
+- model discovery and one completed streamed inference;
+- if PASS, design protected rotating refresh-token storage, account profiles, Local Tool Runtime function-call round trip and usage/error UX;
+- any product integration remains Owner-gated.
 
 ## Cross-track rule
-Do not combine unvalidated UI, runtime-foundation, and transport changes into one broad promotion. Validate and promote each boundary independently.
+
+Do not combine unvalidated UI-shell, runtime-foundation, private-backend transport and ChatGPT-plan transport into one promotion. Each boundary must be validated and promoted independently.

@@ -1,65 +1,53 @@
 # Latest handoff
 
-Updated: 2026-10-04 02:23 MSK
+Updated: 2026-10-05 15:42 MSK
 
 Persistent manager: `chatgpt-desktop-local-bridge-project-manager`.
-Manager generation: 18.
-Product authority: `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
-Manager-state authority: `manager-state`.
-Canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
-Accepted UI baseline: `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`.
-UI candidate: `4c92f81d46b77f964b8e99fe25439058b9b835a1`, still Owner-runtime-pending.
+Manager generation: 20.
 
-## Owner directive executed
+## Authority
 
-The Owner authorized implementation of:
-durable execution → permissions → Job Object/STOP → Tool Registry → repo-aware tools → Git safety + verification → MCP layer → ChatGPT subscription/plan transport experiment.
+- Product authority: `main` at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`.
+- Manager-state authority: `manager-state`.
+- Canonical live transport baseline: `ea074e06bd4e959106f49f57cad1ac731597dac3`.
+- Accepted UI baseline: `0.2.8.0 / af6ac65306d5e91b84c48bb44fb7bc37da930053`.
+- Production transport remains signed-in ChatGPT WebView2 + in-process Local Bridge.
 
 ## Runtime foundation
 
-Branch: `dev/runtime-foundation-v1`
-Draft PR: #22
-Head: `3f5ff0fdda85165c38a977f2d29c7e893ecf3774`
+Draft PR #22 / `dev/runtime-foundation-v1` / `3f5ff0f`.
+Integrated durable execution, permissions, Job Object/STOP, Tool Registry, repo/Git verification primitives and MCP. CI/regression proof exists; Owner signed-in runtime validation remains pending.
 
-Implemented:
-- reconciled M4 write/process tools into the durable main-derived lineage;
-- `ProcessExecutionManager` with bounded redirected IO, timeout/cancellation, Windows Job Object kill-on-close and tree-kill fallback;
-- interactive WPF ASK confirmation and default safe permission profile;
-- generic STOP cancellation surfaced in the toolbar;
-- metadata-backed registry with 15 tools;
-- `repo.status`, `repo.diff`, bounded `repo.map`, `repo.checkpoint`, `repo.verify`;
-- checkpoint storage under LocalAppData, without mutating the repository;
-- official C# MCP SDK stdio client, empty config by default, server/tool allowlisting, reduced environment inheritance, `mcp.call=ASK`;
-- real Windows regression coverage for process containment plus a temporary Git repository exercising status/diff/map/checkpoint/verify.
+## Server-side transport research
 
-Evidence:
-- `37160870171`: full pipeline PASS for current application source before the later test-only commits;
-- first repo-smoke run exposed only a Windows test-cleanup issue after the suite had already printed PASS;
-- cleanup was hardened in test-only commit `3f5ff0f`;
-- `37161576559`: Build PASS and expanded durable/runtime/repo regression PASS.
+The research direction is now:
+- Scheduled Tasks = control plane;
+- ChatGPT Library/files = data plane;
+- local DurableRequestLedger = separate local crash-recovery journal.
 
-Do not merge to `main` yet. Signed-in Owner runtime proof remains required.
+Progression:
+1. PR #24 / `task-probe-49fb895`: Scheduled Tasks metadata discovery.
+2. PR #25 / `scheduled-file-probe-6bb827b`: combined Tasks + Library discovery and same-session replay.
+3. PR #26 / `private-transport-probe-dd472e4`: alternate request-bound v3 implementation.
+4. PR #27 / `private-transport-v3-70d3b29`: current user-facing v3 candidate.
 
-## ChatGPT-plan transport experiment
+PR #27 head: `70d3b2900cd72b2892dd4c75d000df4d2938e9be`.
+Windows Build `37166260285`: PASS.
+Release workflow `37166255838`: PASS.
+Updater from `scheduled-file-probe-6bb827b`: 2,323,481 bytes, SHA-256 `ccc9f17b560b18df27131184e6b2967782dc3f9b18d4f5adc940f057d3573595`.
 
-Branch: `exp/chatgpt-plan-transport`
-Draft PR: #23
-Head: `f2a3056b917a084c780c07f6f74ae6f3e7991c7b`
-CI: run `37161271895` PASS.
+PR #27 is not production-approved. The next proof is live current-account validation of Tasks/Library routes, mutating request shapes and read-back semantics, followed by one complete `request.json -> READY -> arm -> result.json -> ACK -> Desktop` cycle with no composer/DOM input.
 
-Important discovery: OpenAI now documents an official Sign in with ChatGPT flow for open-source/local apps. It can authorize eligible ChatGPT plan usage without an API key or client secret and uses the public `https://api.openai.com/v1/responses` endpoint. The docs explicitly say not to use ChatGPT private `backend-api` endpoints for this flow.
+Mutation reliability rule: timeout after dispatch is `UNKNOWN_OUTCOME`; reconcile by authoritative read-back before retry. ACK must only follow durable result-file write.
 
-The isolated probe implements OAuth/OIDC/PKCE, dynamic client registration, loopback callback, state/nonce and ID-token validation, required plan scope, model discovery, and streamed `store:false` inference. It persists registration identity only and deliberately does not persist access/refresh/ID tokens yet.
+PR #26 and PR #27 are divergent alternatives. Do not merge both mechanically. `exp/chatgpt-private-transport-v4` currently points to the same v3 commit and has no independent authority.
 
-Live interactive OAuth/model/inference proof is still pending. No product-mode migration is approved.
+## Other active tracks
 
-## Remaining high-value risks
-- intermittent WebView result auto-submit;
-- Owner runtime validation of PR #22;
-- MCP server child-process containment beyond call cancellation;
-- parser/graph-quality repo map;
-- SIWC refresh-token protection, multi-account UX, tool round-trip and usage recovery;
-- independent UI-SHELL-R1 Owner validation.
+- UI candidate `4c92f81`: Owner runtime validation pending.
+- Official ChatGPT-plan transport PR #23 / `f2a3056`: CI PASS, live OAuth/model/inference pending.
+- Existing DOM result auto-submit intermittency remains open.
 
-## Operating note
-The Owner currently permits use of the standard GitHub connector until further notice.
+## Operating directive
+
+Standard GitHub connector use is currently permitted until further notice.

@@ -1,15 +1,15 @@
 # Next actions
 
-Updated: 2026-10-04 02:23 MSK
+Updated: 2026-10-05 15:42 MSK
 
-1. Let the current PR #22 control pipeline finish; Build and the expanded durable/runtime/repo regression stage are already PASS.
-2. Prepare an installable PR #22 development candidate when Owner-side runtime validation is to begin; do not merge it to `main` first.
-3. Validate PR #22 on the Owner Windows machine in this order: bridge restoration, read tools, ASK prompt, file mutation, bounded `process.run`, STOP of a spawned process tree, `repo.status`, `repo.diff`, `repo.map`, `repo.checkpoint`, and `repo.verify`.
-4. Reproduce the prior staged-but-not-auto-submitted result case under the reconciled runtime candidate; harden transport if it still occurs.
-5. Keep MCP opt-in. Add one disposable test server only for live validation, then verify discovery, ASK, call cancellation, and shutdown behavior. Do not broaden MCP process privileges until server containment is stronger.
-6. Upgrade `repo.map` after the v1 runtime proof toward parser-backed definitions/references and dependency ranking; preserve strict output budgets and working-set/read-only distinctions.
-7. Keep Git safety explicit: checkpoint before risky repository mutation and require build/lint/test evidence before a development stage is called complete. Consider an automatic checkpoint/verify orchestration layer only after the primitives are live-proven.
-8. Live-test PR #23 separately using Owner interactive Sign in with ChatGPT. Validate issued client registration, ID-token checks, model discovery, and one completed streamed inference.
-9. If PR #23 live proof passes, design protected rotating refresh-token storage, saved account profiles, function-tool round trips into the Local Tool Runtime, usage/error UX, and a clear WebView/native-mode switch.
-10. Any promotion of the native ChatGPT-plan transport or merge into product-default architecture remains an explicit Owner decision.
-11. UI-SHELL-R1 validation remains independent and must still be completed before changing the accepted UI baseline.
+1. Use PR #27 / `private-transport-v3-70d3b29` as the current private-transport live test candidate; do not advance the no-op v4 branch.
+2. On the Owner signed-in runtime, run the narrow Private Read Proof and capture current Scheduled Tasks + Library backend behavior.
+3. Capture exact current task mutation requests for pause/resume/schedule/arm and identify authoritative read-back routes.
+4. Capture/verify the file/Library transport lifecycle needed for disposable `request.json` and `result.json` objects.
+5. For any mutating timeout or connection loss, enter `UNKNOWN_OUTCOME` and reconcile by read-back; never blind-retry.
+6. Implement only protocol-specific narrow capabilities after live capture. Do not expose arbitrary internal fetch.
+7. Execute the first no-composer/no-DOM-input E2E: Desktop writes request file, sets READY, arms worker, Scheduled runtime writes result file then ACK, Desktop validates fencing and reads result.
+8. If E2E passes, run restart/duplicate/stale-ACK/navigation/relogin/network-loss/large-payload and 100+ sequential round-trip tests before promotion.
+9. Keep production Local Bridge/DOM transport as fallback throughout R&D.
+10. Independently complete PR #22 Owner runtime validation and UI-SHELL-R1 Owner validation; do not combine those promotions with private transport.
+11. Separately live-test official ChatGPT-plan transport PR #23 when desired.
