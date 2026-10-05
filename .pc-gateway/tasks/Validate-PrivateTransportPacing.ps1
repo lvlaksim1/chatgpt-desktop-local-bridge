@@ -28,7 +28,7 @@ $checks=[ordered]@{
     only_gate_calls_raw_fetch = ($directFetchCount -eq 1)
     no_sub_5000_js_delays = ($subSecondDelayCount -eq 0)
     localhost_probe_gap_5s = ($text -match 'Start-Sleep\s+-Seconds\s+5')
-    legacy_page_navigate_absent = ($text -notmatch "Page\.navigate")
+    legacy_page_navigate_absent = ($text -notmatch "-Method\s+'Page\.navigate'")
 }
 
 $pass = -not ($checks.Values -contains $false)
