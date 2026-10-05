@@ -1,22 +1,23 @@
 # Manager intentions and commitments
 
-Manager generation: 24.
-Updated: 2026-10-05 17:14 MSK
+Manager generation: 25.
+Updated: 2026-10-05 17:52 MSK
 
-Current private transport candidate remains PR #29 / exp/chatgpt-private-transport-v5 / 95dd011593fd28b570831fc2995d26bef0691f27.
+## Runner operating mode
+- Default to pc-runner-gateway for live Windows tests.
+- Do not ask the Owner to click UI or return screenshots when a bounded runner/CDP/UIAutomation test can collect the same evidence.
+- Keep runner scripts exact-SHA pinned, allowlisted, bounded, state-restoring and evidence-producing.
+- Separate diagnostic app lifecycle from normal app restoration; restore normal GUI through a separate Task Scheduler/InteractiveToken task.
 
-Live evidence:
-- read-plane PASS.
-- Pause mutation contract captured from current frontend:
-  POST /backend-api/automations/set_status
-  body schema: jawbone_id:string, is_enabled:boolean
-  tested value: is_enabled=false
-  response: HTTP 201
-  read-back: GET /backend-api/automations and GET /backend-api/automation/{id}, HTTP 200.
+## Private transport evidence
+- Read-plane PASS on v5.
+- Pause mutation PASS.
+- Runner control-plane cycle #208 PASS proves Resume as well as Pause and original-state restoration.
+- App restore #210 PASS.
 
-Commitments:
-1. Do not replay or implement unobserved mutations.
-2. Capture Resume next on the same task.
-3. After Resume, capture schedule edit and one-shot arm/rearm behavior.
-4. Then capture Library/file create-upload-read-replace-delete contracts.
-5. Preserve UNKNOWN_OUTCOME -> read-back -> reconcile for writes.
+## Next
+1. Runner-discover schedule mutation contract.
+2. Runner-discover one-shot arm/rearm contract.
+3. Runner-discover Library/file create-upload-process-read-replace-delete lifecycle.
+4. Implement narrow clients and UNKNOWN_OUTCOME reconciliation.
+5. Execute first full request.json -> READY -> arm -> result.json -> ACK -> Desktop E2E.

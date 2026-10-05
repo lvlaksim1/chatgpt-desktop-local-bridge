@@ -1,9 +1,10 @@
 # Next actions
 
-Updated: 2026-10-05 17:14 MSK
+Updated: 2026-10-05 17:52 MSK
 
-1. In Transport Probe press Task: Resume.
-2. Resume the same task in ordinary ChatGPT UI.
-3. Do not use manual replay.
-4. Return the mutation request body/endpoint and the following read-back entries.
-5. If Resume confirms the expected symmetric contract, capture Task Schedule next.
+1. Continue without Owner manual steps.
+2. Use PR #30 runner harness to discover Task Schedule mutation/read-back and restore the original schedule.
+3. Discover arm/rearm next.
+4. Discover disposable Library/file write lifecycle and cleanup.
+5. Implement narrow write-plane clients from proven contracts.
+6. Execute first full no-composer/no-DOM-input E2E.
