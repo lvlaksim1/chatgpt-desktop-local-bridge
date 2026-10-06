@@ -714,6 +714,8 @@ $pacing
 
   const workerPrompt = [
     'PRIVATE TRANSPORT E2E WORKER V3 PACED.',
+    'Probe id: ' + state.probe_id,
+    'Message id: ' + state.message_id,
     'Do not use conversation messages as transport input.',
     'Use ChatGPT Files/Library capabilities.',
     'Find the Library file named exactly: ' + state.request_name,
@@ -724,7 +726,8 @@ $pacing
     'message_id and payload must exactly match the request file.',
     'ack must equal WORKER-ACK- plus the payload.',
     'Make the result file durably available in ChatGPT Library before finishing.',
-    'Final textual response may be only WORKER_DONE.'
+    'Whether successful or blocked, include PROBE_ID=' + state.probe_id + ' and MESSAGE_ID=' + state.message_id + ' in the final textual response.',
+    'On success the final textual response must otherwise be WORKER_DONE.'
   ].join('\n');
 
   const armedSchedule = scheduleAt(Date.now() + 6 * 60 * 1000);
@@ -911,14 +914,42 @@ $pacing
       '/latest_backing_run?include_snapshot=true'
   );
 
+  const latestBody = latest.json;
+  const latestMetadata = latestBody?.metadata && typeof latestBody.metadata === 'object'
+    ? latestBody.metadata
+    : {};
+
   return {
     pass: resultVerified,
     worker_enabled: task.json.is_enabled === true,
     run_advanced:
       !!task.json.last_run_time &&
       task.json.last_run_time !== (state.before_last_run ?? null),
+    before_last_run: state.before_last_run ?? null,
+    last_run_time: task.json.last_run_time ?? null,
     last_run_present: !!task.json.last_run_time,
     latest_run_http: latest.status,
+    latest_run_id: latestBody?.id ?? null,
+    latest_run_created_at: latestBody?.created_at ?? null,
+    latest_run_role: latestBody?.role ?? null,
+    latest_run_kind: latestBody?.kind ?? null,
+    latest_run_channel: latestBody?.channel ?? null,
+    latest_run_content_text:
+      typeof latestBody?.content_text === 'string'
+        ? latestBody.content_text.slice(0, 6000)
+        : null,
+    latest_run_automation_last_backing_run_failed:
+      latestMetadata.automation_last_backing_run_failed ?? null,
+    latest_run_automation_latest_update_is_from_latest_run:
+      latestMetadata.automation_latest_update_is_from_latest_run ?? null,
+    latest_run_turn_exchange_id: latestMetadata.turn_exchange_id ?? null,
+    latest_run_working_turn_id: latestMetadata.working_turn_id ?? null,
+    latest_run_contains_probe_tag:
+      typeof latestBody?.content_text === 'string' &&
+      latestBody.content_text.includes('PROBE_ID=' + state.probe_id),
+    latest_run_contains_message_tag:
+      typeof latestBody?.content_text === 'string' &&
+      latestBody.content_text.includes('MESSAGE_ID=' + state.message_id),
     result_found: !!resultItem,
     result_verified: resultVerified,
     result_library_id: resultLibraryId,
@@ -934,8 +965,22 @@ $pacing
             observed_utc = [DateTime]::UtcNow.ToString('o')
             worker_enabled = [bool]$observation.worker_enabled
             run_advanced = [bool]$observation.run_advanced
+            before_last_run = $observation.before_last_run
+            last_run_time = $observation.last_run_time
             last_run_present = [bool]$observation.last_run_present
             latest_run_http = [int]$observation.latest_run_http
+            latest_run_id = $observation.latest_run_id
+            latest_run_created_at = $observation.latest_run_created_at
+            latest_run_role = $observation.latest_run_role
+            latest_run_kind = $observation.latest_run_kind
+            latest_run_channel = $observation.latest_run_channel
+            latest_run_content_text = $observation.latest_run_content_text
+            latest_run_automation_last_backing_run_failed = $observation.latest_run_automation_last_backing_run_failed
+            latest_run_automation_latest_update_is_from_latest_run = $observation.latest_run_automation_latest_update_is_from_latest_run
+            latest_run_turn_exchange_id = $observation.latest_run_turn_exchange_id
+            latest_run_working_turn_id = $observation.latest_run_working_turn_id
+            latest_run_contains_probe_tag = [bool]$observation.latest_run_contains_probe_tag
+            latest_run_contains_message_tag = [bool]$observation.latest_run_contains_message_tag
             result_found = [bool]$observation.result_found
             result_verified = [bool]$observation.result_verified
             result_download_http = [int]$observation.result_download_http
@@ -960,7 +1005,14 @@ $pacing
             probe_id = $probeId
             stage = [string]$state.stage
             run_advanced = [bool]$observation.run_advanced
+            last_run_time = $observation.last_run_time
             latest_run_http = [int]$observation.latest_run_http
+            latest_run_id = $observation.latest_run_id
+            latest_run_created_at = $observation.latest_run_created_at
+            latest_run_contains_probe_tag = [bool]$observation.latest_run_contains_probe_tag
+            latest_run_contains_message_tag = [bool]$observation.latest_run_contains_message_tag
+            latest_run_automation_last_backing_run_failed = $observation.latest_run_automation_last_backing_run_failed
+            latest_run_automation_latest_update_is_from_latest_run = $observation.latest_run_automation_latest_update_is_from_latest_run
             result_found = [bool]$observation.result_found
             result_verified = [bool]$observation.result_verified
             result_download_http = [int]$observation.result_download_http
