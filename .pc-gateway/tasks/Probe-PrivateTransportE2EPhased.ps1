@@ -808,7 +808,7 @@ $pacing
     latest_run_contains_message_tag:
       typeof latestBody?.content_text === 'string' &&
       latestBody.content_text.includes('MESSAGE_ID=' + state.message_id),
-    result_found: !!resultItem,
+    result_found: false,
     result_verified: resultVerified,
     result_library_id: resultLibraryId,
     result_file_id: resultFileId,
