@@ -170,7 +170,7 @@ try
         "Oversized-result error envelope exceeded the transport bound.");
 
     var definitions = ToolRouter.Definitions;
-    Require(definitions.Count == 15, "Unexpected number of registered bridge tools.");
+    Require(definitions.Count == 17, "Unexpected number of registered bridge tools.");
     Require(
         definitions.Select(definition => definition.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Count,
         "Bridge tool registry contains duplicate names.");
