@@ -49,7 +49,8 @@ $allow=@(
     'latest_run_id','latest_run_created_at','latest_run_contains_probe_tag',
     'latest_run_contains_message_tag','latest_run_automation_last_backing_run_failed',
     'latest_run_automation_latest_update_is_from_latest_run',
-    'result_found','result_verified','result_download_http'
+    'result_found','result_verified','result_download_http',
+    'operation_mode','local_action_executed','local_action_verified','local_action_chars'
 )
 $selected=[ordered]@{}
 foreach($name in $allow){
