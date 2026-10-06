@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using ChatGptDesktopLocalBridge.Bridge;
+using ChatGptDesktopLocalBridge.ScheduledTasks;
 using Microsoft.Web.WebView2.Core;
 
 namespace ChatGptDesktopLocalBridge;
@@ -155,6 +156,8 @@ public partial class MainWindow
 
         tab.BridgeHost?.Dispose();
 
+        var localIntentPlanner = new LocalIntentPlanner(tab.Browser);
+
         if (pendingDeliveries.Count == 1)
         {
             var pending = pendingDeliveries[0];
@@ -164,7 +167,8 @@ public partial class MainWindow
                 statusSink,
                 sessionId: pending.Session,
                 confirmPermission: ConfirmBridgePermissionAsync,
-                activity: activitySink);
+                activity: activitySink,
+                localIntentPlanner: localIntentPlanner.PlanAsync);
 
             tab.BridgeHost = recoveryHost;
             var resultAlreadyVisible =
@@ -196,7 +200,8 @@ public partial class MainWindow
             text => SendTextToChatAsync(tab, text),
             statusSink,
             confirmPermission: ConfirmBridgePermissionAsync,
-            activity: activitySink);
+            activity: activitySink,
+            localIntentPlanner: localIntentPlanner.PlanAsync);
 
         tab.BridgeHost = host;
         tab.BridgeReady = false;
