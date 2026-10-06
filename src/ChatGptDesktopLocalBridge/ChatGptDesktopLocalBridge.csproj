@@ -7,11 +7,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ChatGptDesktopLocalBridge</AssemblyName>
     <RootNamespace>ChatGptDesktopLocalBridge</RootNamespace>
+    <ApplicationIcon>Assets\LocalBridge.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <PackageReference Include="ModelContextProtocol.Core" Version="2.2.0" />
+  </ItemGroup>
+
+  <Target Name="GenerateLocalBridgeIcon" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\generate-local-bridge-icon.ps1&quot; -OutputPath &quot;$(MSBuildProjectDirectory)\Assets\LocalBridge.ico&quot;" />
+  </Target>
+
+  <ItemGroup>
+    <Resource Include="Assets\LocalBridge.ico" />
   </ItemGroup>
 
   <ItemGroup>
