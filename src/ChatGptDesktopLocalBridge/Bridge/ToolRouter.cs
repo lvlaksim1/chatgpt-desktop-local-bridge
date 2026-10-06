@@ -11,6 +11,15 @@ public sealed record BridgeToolDefinition(
     bool IsMutating = false,
     bool IsLongRunning = false);
 
+public sealed record BridgePlannedAction(
+    string Tool,
+    JsonElement Args,
+    string ProbeId,
+    string MessageId,
+    string? RunId,
+    string? RunCreatedAt,
+    long ElapsedMs);
+
 public sealed class ToolRouter : IDisposable
 {
     private const int MaxWriteFileBytes = 1_048_576;
@@ -37,6 +46,19 @@ public sealed class ToolRouter : IDisposable
                 "fs.read_text",
                 "Read a bounded amount of text from a local file.",
                 "{ \"path\": \"C:/some/file.txt\", \"max_chars\": 200000 }"),
+            new(
+                "local.intent",
+                "fs.write_text",
+                "Route one natural-language local-computer request through the server-side ChatGPT task planner, then execute the returned local action.",
+                "{ \"instruction\": \"Read the first line of C:/source.txt and write it to C:/result.txt\" }",
+                IsMutating: true,
+                IsLongRunning: true),
+            new(
+                "fs.copy_first_line",
+                "fs.write_text",
+                "Read the first text line with UTF-8/Windows-1251 detection and atomically write it as UTF-8.",
+                "{ \"source_path\": \"C:/source.txt\", \"destination_path\": \"C:/result.txt\", \"overwrite\": true, \"create_directories\": true }",
+                IsMutating: true),
             new(
                 "fs.write_text",
                 "fs.write_text",
@@ -117,9 +139,12 @@ public sealed class ToolRouter : IDisposable
     private readonly ProcessExecutionManager _processes = new();
     private readonly RepoTools _repoTools;
     private readonly McpManager _mcp = new();
+    private readonly Func<string, CancellationToken, Task<BridgePlannedAction>>? _localIntentPlanner;
 
-    public ToolRouter()
+    public ToolRouter(
+        Func<string, CancellationToken, Task<BridgePlannedAction>>? localIntentPlanner = null)
     {
+        _localIntentPlanner = localIntentPlanner;
         _repoTools = new RepoTools(_processes);
     }
 
@@ -144,6 +169,8 @@ public sealed class ToolRouter : IDisposable
             "system.info" => GetSystemInfo(),
             "fs.list" => ListDirectory(args),
             "fs.read_text" => await ReadTextAsync(args),
+            "local.intent" => await ExecuteLocalIntentAsync(args, cancellationToken),
+            "fs.copy_first_line" => await CopyFirstLineAsync(args),
             "fs.write_text" => await WriteTextAsync(args),
             "fs.append_text" => await AppendTextAsync(args),
             "fs.write_file" => await WriteFileAsync(args),
@@ -230,6 +257,10 @@ public sealed class ToolRouter : IDisposable
         {
             return tool switch
             {
+                "local.intent"
+                    => $"local.intent: {RequiredString(args, "instruction")}",
+                "fs.copy_first_line"
+                    => $"fs.copy_first_line: {RequiredString(args, "source_path")} -> {RequiredString(args, "destination_path")}",
                 "fs.write_text" or "fs.append_text" or "fs.write_file"
                     => $"{tool}: {RequiredString(args, "path")}",
                 "process.run"
@@ -320,6 +351,165 @@ public sealed class ToolRouter : IDisposable
             truncated,
             maxChars
         };
+    }
+
+    private async Task<object?> ExecuteLocalIntentAsync(
+        JsonElement args,
+        CancellationToken cancellationToken)
+    {
+        if (_localIntentPlanner is null)
+        {
+            throw new BridgeToolException(
+                "private_transport_unavailable",
+                "The server-side local intent planner is not attached to this bridge session.");
+        }
+
+        var instruction = RequiredString(args, "instruction");
+        var plan = await _localIntentPlanner(instruction, cancellationToken);
+
+        if (string.Equals(plan.Tool, "local.intent", StringComparison.Ordinal))
+        {
+            throw new BridgeToolException(
+                "private_transport_protocol",
+                "The server-side planner returned a recursive local.intent action.");
+        }
+
+        if (!ToolDefinitionsByName.ContainsKey(plan.Tool))
+        {
+            throw new BridgeToolException(
+                "private_transport_protocol",
+                $"The server-side planner returned an unknown tool: {plan.Tool}");
+        }
+
+        var result = await ExecuteAsync(plan.Tool, plan.Args, cancellationToken);
+
+        return new
+        {
+            instruction,
+            plannedTool = plan.Tool,
+            result,
+            transport = new
+            {
+                probeId = plan.ProbeId,
+                messageId = plan.MessageId,
+                runId = plan.RunId,
+                runCreatedAt = plan.RunCreatedAt,
+                elapsedMs = plan.ElapsedMs
+            }
+        };
+    }
+
+    private static async Task<object> CopyFirstLineAsync(JsonElement args)
+    {
+        var sourcePath = Path.GetFullPath(
+            Environment.ExpandEnvironmentVariables(
+                RequiredString(args, "source_path")));
+        var destinationRaw = RequiredString(args, "destination_path");
+        var overwrite = OptionalBool(args, "overwrite", true);
+        var createDirectories = OptionalBool(args, "create_directories", true);
+
+        if (!File.Exists(sourcePath))
+        {
+            throw new BridgeToolException(
+                "file_not_found",
+                $"Source file does not exist: {sourcePath}");
+        }
+
+        var destinationPath = ResolveWritePath(
+            destinationRaw,
+            createDirectories);
+        var existed = File.Exists(destinationPath);
+
+        if (existed && !overwrite)
+        {
+            throw new BridgeToolException(
+                "file_exists",
+                $"Destination file already exists. Set overwrite=true to replace it: {destinationPath}");
+        }
+
+        var bytes = await File.ReadAllBytesAsync(sourcePath);
+        var (text, sourceEncoding) = DecodeText(bytes);
+        var breakIndex = text.IndexOfAny(['\r', '\n']);
+        var firstLine = breakIndex >= 0
+            ? text[..breakIndex]
+            : text;
+
+        var utf8 = new System.Text.UTF8Encoding(false);
+        await WriteBytesAtomicAsync(
+            destinationPath,
+            utf8.GetBytes(firstLine),
+            overwrite);
+
+        var written = await File.ReadAllTextAsync(
+            destinationPath,
+            System.Text.Encoding.UTF8);
+
+        if (!string.Equals(written, firstLine, StringComparison.Ordinal))
+        {
+            throw new BridgeToolException(
+                "write_verify_failed",
+                "Destination read-back does not match the source first line.");
+        }
+
+        return new
+        {
+            sourcePath,
+            destinationPath,
+            sourceEncoding,
+            destinationEncoding = "utf-8",
+            charsWritten = firstLine.Length,
+            overwritten = existed,
+            verified = true
+        };
+    }
+
+    private static (string Text, string EncodingName) DecodeText(byte[] bytes)
+    {
+        if (bytes.Length >= 3 &&
+            bytes[0] == 0xEF &&
+            bytes[1] == 0xBB &&
+            bytes[2] == 0xBF)
+        {
+            return (
+                System.Text.Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3),
+                "utf-8-bom");
+        }
+
+        if (bytes.Length >= 2 &&
+            bytes[0] == 0xFF &&
+            bytes[1] == 0xFE)
+        {
+            return (
+                System.Text.Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2),
+                "utf-16le");
+        }
+
+        if (bytes.Length >= 2 &&
+            bytes[0] == 0xFE &&
+            bytes[1] == 0xFF)
+        {
+            return (
+                System.Text.Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2),
+                "utf-16be");
+        }
+
+        try
+        {
+            var strictUtf8 = new System.Text.UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true);
+            return (strictUtf8.GetString(bytes), "utf-8");
+        }
+        catch (System.Text.DecoderFallbackException)
+        {
+            System.Text.Encoding.RegisterProvider(
+                System.Text.CodePagesEncodingProvider.Instance);
+            var cp1251 = System.Text.Encoding.GetEncoding(
+                1251,
+                System.Text.EncoderFallback.ExceptionFallback,
+                System.Text.DecoderFallback.ExceptionFallback);
+            return (cp1251.GetString(bytes), "windows-1251");
+        }
     }
 
     private static async Task<object> WriteTextAsync(JsonElement args)
