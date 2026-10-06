@@ -32,6 +32,10 @@ $Stage='start'
 $TestStarted=[DateTimeOffset]::UtcNow
 $SessionPrefix=''
 
+function From-Utf8Base64([string]$Value){
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
+
 function Finish([string]$Status,[int]$Code,[string]$ErrorText='',[hashtable]$Extra=@{}){
     $p=[ordered]@{
         status=$Status
@@ -196,11 +200,11 @@ function Try-ApprovePermission {
     $desktop=[System.Windows.Automation.AutomationElement]::RootElement
     $deadline=[DateTime]::UtcNow.AddSeconds(90)
     while([DateTime]::UtcNow -lt $deadline){
-        foreach($title in @('Разрешение Local Bridge','Local Bridge permission')){
+        foreach($title in @((From-Utf8Base64 '0KDQsNC30YDQtdGI0LXQvdC40LUgTG9jYWwgQnJpZGdl'),'Local Bridge permission')){
             $cond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$title)
             $dialog=$desktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$cond)
             if($null-eq$dialog){continue}
-            foreach($name in @('Да','Yes')){
+            foreach($name in @((From-Utf8Base64 '0JTQsA=='),'Yes')){
                 $bc=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$name)
                 $button=$dialog.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$bc)
                 if($null-ne$button){
@@ -318,7 +322,8 @@ try{
     $bridgeReady=$false
     while([DateTime]::UtcNow -lt $deadline){
         $texts=@(Get-UiTexts $root)
-        $ready=@($texts|Where-Object{$_ -like 'Мост готов*' -or $_ -like 'Bridge ready*'}|Select-Object -Last 1)
+        $readyPrefix=From-Utf8Base64 '0JzQvtGB0YIg0LPQvtGC0L7Qsg=='
+        $ready=@($texts|Where-Object{$_ -like ($readyPrefix+'*') -or $_ -like 'Bridge ready*'}|Select-Object -Last 1)
         if($ready.Count -gt 0){$bridgeReady=$true;break}
         Start-Sleep -Milliseconds 500
     }
@@ -327,7 +332,7 @@ try{
     Start-Sleep -Seconds 5
 
     $Stage='send-natural-command'
-    $command='Возьми файл D:\test\file.txt. Извлеки из него первую строку и создай файл D:\test\file1.txt, содержащий извлечённые данные.'
+    $command=From-Utf8Base64 '0JLQvtC30YzQvNC4INGE0LDQudC7IEQ6XHRlc3RcZmlsZS50eHQuINCY0LfQstC70LXQutC4INC40Lcg0L3QtdCz0L4g0L/QtdGA0LLRg9GOINGB0YLRgNC+0LrRgyDQuCDRgdC+0LfQtNCw0Lkg0YTQsNC50LsgRDpcdGVzdFxmaWxlMS50eHQsINGB0L7QtNC10YDQttCw0YnQuNC5INC40LfQstC70LXRh9GR0L3QvdGL0LUg0LTQsNC90L3Ri9C1Lg=='
     Send-ChatText $Socket ([ref]$id) $command
 
     $permissionTask=[System.Threading.Tasks.Task]::Run([Action]{ [void](Try-ApprovePermission) })
