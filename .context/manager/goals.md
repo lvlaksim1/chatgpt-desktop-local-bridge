@@ -1,7 +1,7 @@
 # Manager goals
 
-Manager generation: 29.
-Updated: 2026-10-05 23:02 MSK
+Manager generation: 30.
+Updated: 2026-10-06 04:30 MSK
 
 1. Deliver a reliable signed-in ChatGPT Windows client with policy-controlled native computer access.
 2. Preserve current Local Bridge as production fallback while the server-side transport remains experimental.
