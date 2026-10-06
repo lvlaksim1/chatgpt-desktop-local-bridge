@@ -445,7 +445,20 @@ if ($phase -notin @('A', 'B', 'C')) {
     Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText 'args.phase must be A, B or C.'
 }
 
-if ($probeId -notmatch '^[A-Za-z0-9_-]{8,96}
+if ($probeId -notmatch '^[A-Za-z0-9_-]{8,96}$') {
+    Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText 'args.probe_id must be 8-96 safe characters.'
+}
+
+if ($operationMode -notin @('echo', 'local_first_line_copy')) {
+    Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText 'Unsupported args.operation_mode.'
+}
+
+if ($operationMode -eq 'local_first_line_copy') {
+    if ($sourcePath -notmatch '^[A-Za-z]:\\' -or $destinationPath -notmatch '^[A-Za-z]:\\') {
+        Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText 'Local file paths must be absolute Windows drive paths.'
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $StateRoot | Out-Null
 $statePath = Join-Path $StateRoot ($probeId + '.json')
 $cdpId = 1
