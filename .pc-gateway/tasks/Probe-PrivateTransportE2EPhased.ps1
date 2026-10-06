@@ -579,7 +579,7 @@ $pacing
     const body = {
       default_timezone: current.default_timezone,
       email_enabled: false,
-      is_enabled: true,
+      is_enabled: false,
       jawbone_id: current.id,
       notifications_enabled: false,
       prompt,
@@ -645,22 +645,34 @@ $pacing
     expectedPromptResult
   ].join('\n');
 
-  // The safety gap applies between requests. Wait the required gap first,
-  // then compute a target exactly five seconds in the future and save enabled
-  // in the same request so a separate enable request cannot consume that window.
+  // Save the task paused, then wait the mandatory five-second network gap
+  // before enabling it. The target is ten seconds from the save moment, so the
+  // enable request occurs roughly five seconds before the target.
   await delay(NETWORK_MIN_GAP_MS);
-  const armedSchedule = scheduleAt(Date.now() + 5 * 1000);
+  const armedSchedule = scheduleAt(Date.now() + 10 * 1000);
   const saved = await api.jsonApi(
     'POST',
     '/backend-api/automations/save',
     saveBody(current, workerPrompt, armedSchedule)
   );
-  if (!saved.ok) throw new Error('worker_save_http_' + saved.status);
+  if (!saved.ok) {
+    throw new Error('worker_save_http_' + saved.status + '_' + String(saved.raw || '').slice(0,500));
+  }
+
+  const enabled = await api.jsonApi(
+    'POST',
+    '/backend-api/automations/set_status',
+    { jawbone_id: state.worker_id, is_enabled: true }
+  );
+  if (!enabled.ok) {
+    throw new Error('worker_enable_http_' + enabled.status + '_' + String(enabled.raw || '').slice(0,500));
+  }
 
   return {
     pass: true,
     armed_schedule: armedSchedule,
     save_http: saved.status,
+    enable_http: enabled.status,
     timing_mode: 'exact_schedule',
     target_time_utc_present: true,
     target_delay_sec: 5
@@ -672,7 +684,7 @@ $pacing
 
         $mutationProperties = @($mutation.PSObject.Properties.Name)
         $requiredMutationProperties = @(
-            'pass','armed_schedule','save_http','timing_mode','target_time_utc_present','target_delay_sec'
+            'pass','armed_schedule','save_http','enable_http','timing_mode','target_time_utc_present','target_delay_sec'
         )
         $missingMutationProperties = @($requiredMutationProperties | Where-Object { $_ -notin $mutationProperties })
         if ($missingMutationProperties.Count -gt 0) {
@@ -705,6 +717,7 @@ $pacing
             request_file_id_present = $false
             request_library_id_present = $false
             save_http = [int]$mutation.save_http
+            enable_http = [int]$mutation.enable_http
             timing_mode = [string]$mutation.timing_mode
             target_time_utc_present = [bool]$mutation.target_time_utc_present
             target_delay_sec = [int]$mutation.target_delay_sec
