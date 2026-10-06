@@ -44,6 +44,20 @@ if($null-ne$project.PSObject.Properties['evidence']){
     }
 }
 
+$allow=@(
+    'phase','probe_id','stage','run_advanced','last_run_time','latest_run_http',
+    'latest_run_id','latest_run_created_at','latest_run_contains_probe_tag',
+    'latest_run_contains_message_tag','latest_run_automation_last_backing_run_failed',
+    'latest_run_automation_latest_update_is_from_latest_run',
+    'result_found','result_verified','result_download_http'
+)
+$selected=[ordered]@{}
+foreach($name in $allow){
+    $prop=$project.PSObject.Properties[$name]
+    if($null-ne$prop){$selected[$name]=$prop.Value}
+}
+if($selected.Count-gt0){$safe.selected=$selected}
+
 $dir=Split-Path -Parent $GatewayResultPath
 if($dir){New-Item -ItemType Directory -Force -Path $dir|Out-Null}
 $out=[ordered]@{
