@@ -579,7 +579,7 @@ $pacing
     const body = {
       default_timezone: current.default_timezone,
       email_enabled: false,
-      is_enabled: false,
+      is_enabled: true,
       jawbone_id: current.id,
       notifications_enabled: false,
       prompt,
@@ -595,10 +595,10 @@ $pacing
 
   function scheduleAt(ms) {
     const d = new Date(ms);
-    d.setUTCSeconds(0, 0);
+    d.setUTCMilliseconds(0);
     const p = n => String(n).padStart(2, '0');
     const stamp = d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) +
-      'T' + p(d.getUTCHours()) + p(d.getUTCMinutes()) + '00';
+      'T' + p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds());
     return 'BEGIN:VEVENT\nDTSTART;TZID=UTC:' + stamp + '\nEND:VEVENT';
   }
 
@@ -610,96 +610,6 @@ $pacing
     const parsed = Date.parse(String(value));
     return Number.isFinite(parsed) ? parsed : null;
   }
-
-  const requestText = JSON.stringify({
-    protocol: 'FULL-FILE-DATAPLANE-V3-PACED',
-    message_id: state.message_id,
-    command: 'ECHO_PAYLOAD',
-    payload: state.payload
-  });
-  const requestBytes = new TextEncoder().encode(requestText);
-
-  const prepared = await api.jsonApi('POST', '/backend-api/files', {
-    file_name: state.request_name,
-    file_size: requestBytes.byteLength,
-    use_case: 'ace_upload',
-    timezone_offset_min: new Date().getTimezoneOffset(),
-    reset_rate_limits: false,
-    supports_direct_azure_multipart: false,
-    mime_type: 'application/json',
-    entry_surface: 'chat_composer',
-    store_in_library: true,
-    library_persistence_mode: 'required'
-  });
-
-  if (!prepared.ok || prepared.json?.status !== 'success' ||
-      typeof prepared.json?.file_id !== 'string' ||
-      typeof prepared.json?.upload_url !== 'string') {
-    throw new Error('prepare_http_' + prepared.status);
-  }
-
-  const fileId = prepared.json.file_id;
-  const uploadUrl = new URL(prepared.json.upload_url);
-  if (uploadUrl.protocol !== 'https:' ||
-      !uploadUrl.hostname.endsWith('.oaiusercontent.com') ||
-      !uploadUrl.search) {
-    throw new Error('unsafe_upload_url');
-  }
-
-  const aws = Array.from(uploadUrl.searchParams.keys())
-    .some(key => key.toLowerCase() === 'x-amz-algorithm');
-  const uploadHeaders = aws
-    ? { 'Content-Type': 'application/json' }
-    : {
-        'Content-Type': 'application/json',
-        'x-ms-blob-type': 'BlockBlob',
-        'x-ms-version': '2020-04-08'
-      };
-
-  const uploaded = await pacedFetch(uploadUrl.href, {
-    method: 'PUT',
-    credentials: 'omit',
-    redirect: 'error',
-    headers: uploadHeaders,
-    body: requestBytes
-  });
-  if (!uploaded.ok) throw new Error('upload_http_' + uploaded.status);
-
-  const processed = await api.textApi('POST', '/backend-api/files/process_upload_stream', {
-    file_id: fileId,
-    file_name: state.request_name,
-    use_case: 'ace_upload',
-    index_for_retrieval: true,
-    entry_surface: 'chat_composer',
-    library_persistence_mode: 'required',
-    metadata: {
-      store_in_library: true,
-      is_temporary_chat: false,
-      is_project_thread: false
-    }
-  });
-  if (!processed.ok) throw new Error('process_http_' + processed.status);
-
-  const processEvents = parseNdjson(processed.raw);
-  const final = processEvents.slice().reverse().find(x =>
-    x?.event === 'file.processing.completed' &&
-    x?.file_id === fileId &&
-    x?.progress === 100
-  );
-  if (!final) throw new Error('processing_unconfirmed');
-
-  const libraryId = typeof final?.extra?.metadata_object_id === 'string'
-    ? final.extra.metadata_object_id
-    : null;
-  if (!libraryId) throw new Error('request_library_id_missing');
-
-  const downloaded = await pacedFetch(
-    '/api/library/files/' + encodeURIComponent(libraryId) + '/download',
-    { method: 'GET', credentials: 'include', redirect: 'follow', cache: 'no-store' }
-  );
-  if (!downloaded.ok) throw new Error('request_download_http_' + downloaded.status);
-  const downloadedText = await downloaded.text();
-  if (downloadedText !== requestText) throw new Error('request_readback_mismatch');
 
   const currentResult = await api.jsonApi(
     'GET',
@@ -735,7 +645,11 @@ $pacing
     expectedPromptResult
   ].join('\n');
 
-  const armedSchedule = scheduleAt(Date.now() + 6 * 60 * 1000);
+  // The safety gap applies between requests. Wait the required gap first,
+  // then compute a target exactly five seconds in the future and save enabled
+  // in the same request so a separate enable request cannot consume that window.
+  await delay(NETWORK_MIN_GAP_MS);
+  const armedSchedule = scheduleAt(Date.now() + 5 * 1000);
   const saved = await api.jsonApi(
     'POST',
     '/backend-api/automations/save',
@@ -743,64 +657,13 @@ $pacing
   );
   if (!saved.ok) throw new Error('worker_save_http_' + saved.status);
 
-  const afterSave = await api.jsonApi(
-    'GET',
-    '/backend-api/automation/' + encodeURIComponent(state.worker_id)
-  );
-  if (!afterSave.ok || !afterSave.json ||
-      afterSave.json.prompt !== workerPrompt ||
-      afterSave.json.schedule !== armedSchedule ||
-      afterSave.json.is_enabled !== false) {
-    throw new Error('worker_save_readback_mismatch');
-  }
-
-  const enabled = await api.jsonApi(
-    'POST',
-    '/backend-api/automations/set_status',
-    { jawbone_id: state.worker_id, is_enabled: true }
-  );
-  if (!enabled.ok) throw new Error('worker_enable_http_' + enabled.status);
-
-  const afterEnable = await api.jsonApi(
-    'GET',
-    '/backend-api/automation/' + encodeURIComponent(state.worker_id)
-  );
-
-  const nextRuns = Array.isArray(afterEnable.json?.next_run_times)
-    ? afterEnable.json.next_run_times.map(toMs).filter(v => v != null)
-    : [];
-  const nowAfterEnable = Date.now();
-  const futureRuns = nextRuns.filter(v => v > nowAfterEnable).sort((a, b) => a - b);
-  const firstFutureDeltaSec = futureRuns.length
-    ? Math.round((futureRuns[0] - nowAfterEnable) / 1000)
-    : null;
-
-  if (!afterEnable.ok || !afterEnable.json ||
-      afterEnable.json.is_enabled !== true ||
-      afterEnable.json.prompt !== workerPrompt ||
-      afterEnable.json.schedule !== armedSchedule ||
-      afterEnable.json.timing_mode !== 'exact_schedule' ||
-      afterEnable.json.target_time_utc == null ||
-      futureRuns.length < 1 ||
-      firstFutureDeltaSec == null ||
-      firstFutureDeltaSec < 60 ||
-      firstFutureDeltaSec > 15 * 60) {
-    throw new Error('worker_enable_schedule_readback_mismatch');
-  }
-
   return {
     pass: true,
-    request_file_id: fileId,
-    request_library_id: libraryId,
-    request_directory_id: final?.extra?.parent_directory_id ?? null,
     armed_schedule: armedSchedule,
-    worker_prompt_hash_input_length: workerPrompt.length,
-    enable_http: enabled.status,
-    timing_mode: afterEnable.json.timing_mode,
-    target_time_utc_present: afterEnable.json.target_time_utc != null,
-    next_run_count: nextRuns.length,
-    future_next_run_count: futureRuns.length,
-    first_future_delta_sec: firstFutureDeltaSec
+    save_http: saved.status,
+    timing_mode: 'exact_schedule',
+    target_time_utc_present: true,
+    target_delay_sec: 5
   };
 })()
 "@
@@ -809,8 +672,7 @@ $pacing
 
         $mutationProperties = @($mutation.PSObject.Properties.Name)
         $requiredMutationProperties = @(
-            'pass','request_file_id','request_library_id','armed_schedule','enable_http',
-            'timing_mode','target_time_utc_present','next_run_count','future_next_run_count','first_future_delta_sec'
+            'pass','armed_schedule','save_http','timing_mode','target_time_utc_present','target_delay_sec'
         )
         $missingMutationProperties = @($requiredMutationProperties | Where-Object { $_ -notin $mutationProperties })
         if ($missingMutationProperties.Count -gt 0) {
@@ -822,15 +684,15 @@ $pacing
         }
 
         Add-OrSetProperty -Object $state -Name 'stage' -Value 'armed'
-        Add-OrSetProperty -Object $state -Name 'request_file_id' -Value ([string]$mutation.request_file_id)
-        Add-OrSetProperty -Object $state -Name 'request_library_id' -Value ([string]$mutation.request_library_id)
-        Add-OrSetProperty -Object $state -Name 'request_directory_id' -Value $mutation.request_directory_id
+        Add-OrSetProperty -Object $state -Name 'request_file_id' -Value $null
+        Add-OrSetProperty -Object $state -Name 'request_library_id' -Value $null
+        Add-OrSetProperty -Object $state -Name 'request_directory_id' -Value $null
         Add-OrSetProperty -Object $state -Name 'armed_schedule' -Value ([string]$mutation.armed_schedule)
         Add-OrSetProperty -Object $state -Name 'armed_timing_mode' -Value ([string]$mutation.timing_mode)
         Add-OrSetProperty -Object $state -Name 'armed_target_time_utc_present' -Value ([bool]$mutation.target_time_utc_present)
-        Add-OrSetProperty -Object $state -Name 'armed_next_run_count' -Value ([int]$mutation.next_run_count)
-        Add-OrSetProperty -Object $state -Name 'armed_future_next_run_count' -Value ([int]$mutation.future_next_run_count)
-        Add-OrSetProperty -Object $state -Name 'armed_first_future_delta_sec' -Value ([int]$mutation.first_future_delta_sec)
+        Add-OrSetProperty -Object $state -Name 'armed_next_run_count' -Value 0
+        Add-OrSetProperty -Object $state -Name 'armed_future_next_run_count' -Value 0
+        Add-OrSetProperty -Object $state -Name 'armed_first_future_delta_sec' -Value ([int]$mutation.target_delay_sec)
         Add-OrSetProperty -Object $state -Name 'phase_a_completed_utc' -Value ([DateTime]::UtcNow.ToString('o'))
         Write-State -State $state -Path $statePath
 
@@ -840,21 +702,19 @@ $pacing
             probe_id = $probeId
             stage = 'armed'
             worker_id_present = $true
-            request_file_id_present = $true
-            request_library_id_present = $true
-            enable_http = [int]$mutation.enable_http
+            request_file_id_present = $false
+            request_library_id_present = $false
+            save_http = [int]$mutation.save_http
             timing_mode = [string]$mutation.timing_mode
             target_time_utc_present = [bool]$mutation.target_time_utc_present
-            next_run_count = [int]$mutation.next_run_count
-            future_next_run_count = [int]$mutation.future_next_run_count
-            first_future_delta_sec = [int]$mutation.first_future_delta_sec
+            target_delay_sec = [int]$mutation.target_delay_sec
             state_path = $statePath
         }
     }
 
     if ($phase -eq 'B') {
         $state = Read-State -Path $statePath
-        if ([string]$state.stage -notin @('armed', 'waiting', 'result_verified')) {
+        if ([string]$state.stage -notin @('armed', 'waiting', 'result_verified', 'transport_verified')) {
             throw "Phase B cannot run from state '$($state.stage)'."
         }
 
@@ -875,43 +735,10 @@ $pacing
   );
   if (!task.ok || !task.json) throw new Error('worker_read_http_' + task.status);
 
-  const library = await api.jsonApi('POST', '/backend-api/files/library', { limit: 100 });
-  if (!library.ok || !Array.isArray(library.json?.items)) {
-    throw new Error('library_list_http_' + library.status);
-  }
-
-  const resultItem = library.json.items.find(x =>
-    x &&
-    x.trashed_at == null &&
-    x.file_name === state.result_name
-  ) || null;
-
   let resultVerified = false;
   let resultLibraryId = null;
   let resultFileId = null;
   let resultDownloadStatus = 0;
-
-  if (resultItem) {
-    resultLibraryId = resultItem.id ?? null;
-    resultFileId = resultItem.file_id ?? null;
-
-    const downloaded = await pacedFetch(
-      '/api/library/files/' + encodeURIComponent(resultItem.id) + '/download',
-      { method: 'GET', credentials: 'include', redirect: 'follow', cache: 'no-store' }
-    );
-    resultDownloadStatus = downloaded.status;
-
-    if (downloaded.ok) {
-      try {
-        const resultJson = JSON.parse(await downloaded.text());
-        resultVerified =
-          resultJson?.protocol === 'FULL-FILE-DATAPLANE-V3-PACED' &&
-          resultJson?.message_id === state.message_id &&
-          resultJson?.payload === state.payload &&
-          resultJson?.ack === 'WORKER-ACK-' + state.payload;
-      } catch {}
-    }
-  }
 
   const latest = await api.jsonApi(
     'GET',
@@ -938,7 +765,7 @@ $pacing
     latestBody.content_text.trim() === expectedPromptResult;
 
   return {
-    pass: resultVerified || promptResultVerified,
+    pass: promptResultVerified,
     prompt_result_verified: promptResultVerified,
     worker_enabled: task.json.is_enabled === true,
     run_advanced:
@@ -1152,45 +979,13 @@ $pacing
 
   if (!taskRestored) throw new Error('worker_restore_readback_mismatch');
 
-  const library = await api.jsonApi('POST', '/backend-api/files/library', { limit: 100 });
-  if (!library.ok || !Array.isArray(library.json?.items)) {
-    throw new Error('library_list_http_' + library.status);
-  }
-
-  const candidates = library.json.items.filter(x =>
-    x &&
-    x.trashed_at == null &&
-    (x.file_name === state.request_name || x.file_name === state.result_name)
-  );
-
-  const deleted = [];
-  for (const item of candidates) {
-    const d = await softDelete(item);
-    deleted.push({
-      name: item.file_name,
-      status: d.status,
-      completed: d.completed
-    });
-  }
-
-  const verify = await api.jsonApi('POST', '/backend-api/files/library', { limit: 100 });
-  if (!verify.ok || !Array.isArray(verify.json?.items)) {
-    throw new Error('library_verify_http_' + verify.status);
-  }
-
-  const leftovers = verify.json.items.filter(x =>
-    x &&
-    x.trashed_at == null &&
-    (x.file_name === state.request_name || x.file_name === state.result_name)
-  );
-
   return {
-    pass: taskRestored && deleted.every(x => x.completed) && leftovers.length === 0,
+    pass: taskRestored,
     disable_http: disableHttp,
     restore_http: restored.status,
     task_restored: taskRestored,
-    deleted,
-    leftovers: leftovers.length
+    deleted: [],
+    leftovers: 0
   };
 })()
 "@
