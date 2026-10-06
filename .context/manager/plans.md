@@ -1,19 +1,19 @@
 # Manager plans
 
-Manager generation: 31.
-Updated: 2026-10-06 05:32 MSK
+Manager generation: 32.
+Updated: 2026-10-06 07:14 MSK
 
 ## Active private-transport plan
 
 1. Keep the five-second serialized network pacing invariant enforced in every probe/harness/client.
-2. Treat #284 as a strong capability lead, not yet as causal proof for the latest one-shot run because its returned `created_at` predates that probe.
-3. Extend the phased E2E evidence contract so Phase B, before cleanup, captures a bounded causal tuple: probe_id, worker_id, scheduled target, observed last_run_time/run advancement, backing-run id/created_at, role/kind/status metadata, and bounded content text.
-4. Start a fresh probe_id with the proven UTC one-shot arm semantics:
-   - Phase A: recovery snapshot -> request file -> one-shot arm -> authoritative read-back -> exit.
-   - Phase B: one independent post-schedule observation; capture the backing-run causal tuple before any restoration; verify result file.
-   - Phase C: restore worker and delete transport files regardless of outcome.
-5. In that fresh run, explicitly determine whether the Scheduled worker can create a Library result directly from in-memory/JSON content.
-6. If direct Library creation is unavailable in Scheduled runtime, identify and test the narrowest first-party ChatGPT return channel that does not require an external file intermediary or composer/DOM input.
-7. On first complete Desktop -> worker -> Desktop PASS, add READY/ACK plus generation/seq/message_id fencing.
-8. Implement production-oriented narrow clients from proven primitives.
+2. Stop spending experiments on Scheduled-trigger diagnosis; UTC one-shot triggering and causal run identification are proven.
+3. Treat the Library-file transport as failed at the inbound worker visibility step for the tested path: a fresh request file was Desktop-readable but absent to the causally matched Scheduled worker.
+4. Implement a minimal prompt transport probe that uses no Library data-plane:
+   - Phase A: snapshot a safe paused worker; encode a small unique request JSON directly in its prompt; arm the proven UTC one-shot schedule; authoritative read-back; exit.
+   - Phase B: one post-schedule observation; require a causally tagged latest_backing_run and exact echoed protocol/message_id/payload/ack in final text.
+   - Phase C: restore the borrowed worker.
+5. If prompt -> Scheduled run -> latest_backing_run passes, repeat it with generation/seq/message_id fencing and duplicate/stale-response checks before adding any larger payload mechanism.
+6. If prompt transport fails, inspect the exact causally matched run and only then evaluate another first-party in-product channel.
+7. Keep Library lifecycle code as a separately proven Desktop-side primitive, but remove it from the transport critical path unless a future worker-side capability is independently proven.
+8. On first complete Desktop -> worker -> Desktop PASS, add READY/ACK plus generation/seq/message_id fencing.
 9. Run forced interruption/restart/duplicate/stale-ACK/relogin/navigation/network-loss/orphan-cleanup tests and 100+ round trips under the same pacing invariant.

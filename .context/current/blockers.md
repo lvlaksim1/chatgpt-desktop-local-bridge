@@ -1,22 +1,19 @@
 # Current blockers and open risks
 
-Updated: 2026-10-06 05:32 MSK
+Updated: 2026-10-06 07:14 MSK
 
-No blocker remains for authenticated reads, Pause/Resume, schedule mutation, existing-task arm/rearm mutation, prompt mutation, Library lifecycle, or UTC one-shot Scheduled runtime triggering.
+No blocker remains for authenticated reads, Pause/Resume, schedule mutation, existing-task arm/rearm mutation, prompt mutation, Desktop-side Library lifecycle, UTC one-shot Scheduled runtime triggering, or causal identification of the resulting backing run.
 
 Current proof gap:
-- a fresh one-shot worker run advances, but the complete request-file -> Scheduled runtime -> result-file cycle is still unproven;
-- #284 exposes a likely capability boundary: a Scheduled/runtime context can read Library inputs but may lack a direct JSON/in-memory -> new Library file creation primitive;
-- #284 cannot yet be treated as causal proof for the latest one-shot run because the returned backing-run created_at predates that probe and the task had already been restored by Phase C;
-- the next run must persist a backing-run identifier/timestamp and bounded body before cleanup;
-- if direct Library result creation is genuinely unavailable, a different first-party return channel must be proven;
-- READY/ACK and correlation fencing remain future work;
-- unattended interruption/network-loss recovery and endurance remain untested.
+- the tested Library-file request path fails inside Scheduled runtime: the causally matched worker reports that the exact freshly created Library request file was not found;
+- therefore the first complete Desktop -> Scheduled runtime -> Desktop transport cycle is still unproven;
+- worker-side Library discovery/read visibility must not be assumed from Desktop-side Library API success;
+- prompt-as-request + latest_backing_run-as-result is not yet tested as the replacement critical path;
+- READY/ACK, generation/seq fencing, duplicate suppression, interruption recovery and endurance remain future work.
 
-Harness note:
-- #284 workflow itself produced valid project evidence; its GitHub issue-completion step failed with HTTP 400, so Action/issue status must not be mistaken for experiment failure.
-
-Safety constraints:
+Safety/interpretation:
+- Action failures for evidence readers are expected when project status is `evidence`/exit 20; do not classify them as experiment failure.
+- #292 issue-completion HTTP 400 is a gateway callback/reporting failure after valid local evidence was already produced, not a backend experiment failure.
 - every explicit network/API/backend request must have at least 5000 ms separation;
 - no parallel/burst requests;
 - interrupted probes must be reconciled before an affected task is re-enabled.

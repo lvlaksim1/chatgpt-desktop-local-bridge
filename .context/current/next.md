@@ -1,12 +1,12 @@
 # Next actions
 
-Updated: 2026-10-06 05:32 MSK
+Updated: 2026-10-06 07:14 MSK
 
-1. Update the phased E2E evidence path to capture the executed backing run before Phase C restoration, including a causal run id/timestamp plus bounded safe content.
-2. Start a fresh probe_id using the already-proven UTC one-shot scheduling semantics.
-3. Run Phase A once; wait without polling; run one Phase B observation.
-4. In Phase B, verify that the captured backing run belongs to the fresh probe and explicitly test whether worker-side direct Library result creation is available.
-5. Run Phase C cleanup/restoration regardless of PASS/pending/failure.
-6. If direct Library write succeeds, complete the result-file path and prove the first full round trip.
-7. If direct Library write is unavailable, evaluate the narrowest first-party ChatGPT return channel without using an external file intermediary or composer/DOM input.
-8. Persist the resulting durable finding immediately and only then proceed to READY/ACK/correlation fencing or the next transport hypothesis.
+1. Implement a fresh crash-safe phased probe for prompt-as-request + latest_backing_run-as-result.
+2. Keep the already-proven UTC one-shot scheduling and five-second network pacing unchanged.
+3. Phase A: snapshot a safe paused worker, place bounded unique JSON request data directly in the worker prompt, arm once, read back, exit.
+4. Phase B: after the scheduled time, perform one observation and require a causally tagged latest backing run whose final text exactly carries protocol, message_id, payload and ack.
+5. Phase C: restore the borrowed task regardless of pass/failure.
+6. If PASS, repeat with generation/seq/message_id fencing and duplicate/stale-response tests; do not reintroduce Library into the critical path.
+7. If FAIL, inspect the causally matched final run and choose the next first-party in-product channel from evidence only.
+8. Persist every durable finding immediately.
