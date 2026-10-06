@@ -712,22 +712,27 @@ $pacing
   const current = currentResult.json;
   if (current.is_enabled !== false) throw new Error('worker_not_paused_before_mutation');
 
+  const expectedPromptResult =
+    'PROBE_ID=' + state.probe_id +
+    ' MESSAGE_ID=' + state.message_id +
+    ' RESULT_JSON=' + JSON.stringify({
+      protocol: 'PROMPT-TRANSPORT-V1',
+      probe_id: state.probe_id,
+      message_id: state.message_id,
+      payload: state.payload,
+      ack: 'WORKER-ACK-' + state.payload
+    });
+
   const workerPrompt = [
-    'PRIVATE TRANSPORT E2E WORKER V3 PACED.',
-    'Probe id: ' + state.probe_id,
-    'Message id: ' + state.message_id,
-    'Do not use conversation messages as transport input.',
-    'Use ChatGPT Files/Library capabilities.',
-    'Find the Library file named exactly: ' + state.request_name,
-    'Read and parse its JSON. Require protocol FULL-FILE-DATAPLANE-V3-PACED and command ECHO_PAYLOAD.',
-    'Create a JSON file named exactly: ' + state.result_name,
-    'The JSON must contain protocol, message_id, payload and ack.',
-    'protocol must be FULL-FILE-DATAPLANE-V3-PACED.',
-    'message_id and payload must exactly match the request file.',
-    'ack must equal WORKER-ACK- plus the payload.',
-    'Make the result file durably available in ChatGPT Library before finishing.',
-    'Whether successful or blocked, include PROBE_ID=' + state.probe_id + ' and MESSAGE_ID=' + state.message_id + ' in the final textual response.',
-    'On success the final textual response must otherwise be WORKER_DONE.'
+    'PRIVATE TRANSPORT PROMPT E2E WORKER V1.',
+    'Do not use ChatGPT Library, files, attachments, conversation history, or external network access.',
+    'The complete transport request is embedded directly in this prompt.',
+    'protocol=PROMPT-TRANSPORT-V1',
+    'probe_id=' + state.probe_id,
+    'message_id=' + state.message_id,
+    'payload=' + state.payload,
+    'Return exactly this single line and nothing else:',
+    expectedPromptResult
   ].join('\n');
 
   const armedSchedule = scheduleAt(Date.now() + 6 * 60 * 1000);
@@ -918,9 +923,23 @@ $pacing
   const latestMetadata = latestBody?.metadata && typeof latestBody.metadata === 'object'
     ? latestBody.metadata
     : {};
+  const expectedPromptResult =
+    'PROBE_ID=' + state.probe_id +
+    ' MESSAGE_ID=' + state.message_id +
+    ' RESULT_JSON=' + JSON.stringify({
+      protocol: 'PROMPT-TRANSPORT-V1',
+      probe_id: state.probe_id,
+      message_id: state.message_id,
+      payload: state.payload,
+      ack: 'WORKER-ACK-' + state.payload
+    });
+  const promptResultVerified =
+    typeof latestBody?.content_text === 'string' &&
+    latestBody.content_text.trim() === expectedPromptResult;
 
   return {
-    pass: resultVerified,
+    pass: resultVerified || promptResultVerified,
+    prompt_result_verified: promptResultVerified,
     worker_enabled: task.json.is_enabled === true,
     run_advanced:
       !!task.json.last_run_time &&
@@ -981,6 +1000,7 @@ $pacing
             latest_run_working_turn_id = $observation.latest_run_working_turn_id
             latest_run_contains_probe_tag = [bool]$observation.latest_run_contains_probe_tag
             latest_run_contains_message_tag = [bool]$observation.latest_run_contains_message_tag
+            prompt_result_verified = [bool]$observation.prompt_result_verified
             result_found = [bool]$observation.result_found
             result_verified = [bool]$observation.result_verified
             result_download_http = [int]$observation.result_download_http
@@ -988,10 +1008,12 @@ $pacing
 
         Add-OrSetProperty -Object $state -Name 'last_observation' -Value $obs
 
-        if ([bool]$observation.result_verified) {
-            Add-OrSetProperty -Object $state -Name 'stage' -Value 'result_verified'
-            Add-OrSetProperty -Object $state -Name 'result_library_id' -Value ([string]$observation.result_library_id)
-            Add-OrSetProperty -Object $state -Name 'result_file_id' -Value ([string]$observation.result_file_id)
+        if ([bool]$observation.pass) {
+            Add-OrSetProperty -Object $state -Name 'stage' -Value 'transport_verified'
+            if ([bool]$observation.result_verified) {
+                Add-OrSetProperty -Object $state -Name 'result_library_id' -Value ([string]$observation.result_library_id)
+                Add-OrSetProperty -Object $state -Name 'result_file_id' -Value ([string]$observation.result_file_id)
+            }
         }
         else {
             Add-OrSetProperty -Object $state -Name 'stage' -Value 'waiting'
@@ -999,7 +1021,7 @@ $pacing
 
         Write-State -State $state -Path $statePath
 
-        Write-ProjectResult -Status ($(if ([bool]$observation.result_verified) { 'pass' } else { 'pending' })) -ExitCode 0 -Extra @{
+        Write-ProjectResult -Status ($(if ([bool]$observation.pass) { 'pass' } else { 'pending' })) -ExitCode 0 -Extra @{
             installed_tag = $installedTag
             phase = 'B'
             probe_id = $probeId
@@ -1013,6 +1035,7 @@ $pacing
             latest_run_contains_message_tag = [bool]$observation.latest_run_contains_message_tag
             latest_run_automation_last_backing_run_failed = $observation.latest_run_automation_last_backing_run_failed
             latest_run_automation_latest_update_is_from_latest_run = $observation.latest_run_automation_latest_update_is_from_latest_run
+            prompt_result_verified = [bool]$observation.prompt_result_verified
             result_found = [bool]$observation.result_found
             result_verified = [bool]$observation.result_verified
             result_download_http = [int]$observation.result_download_http
