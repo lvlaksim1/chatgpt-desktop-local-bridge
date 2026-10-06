@@ -1,12 +1,12 @@
 # Next actions
 
-Updated: 2026-10-06 04:30 MSK
+Updated: 2026-10-06 05:32 MSK
 
-1. Read the latest backing run for the worker used by `bridge-e2e-oneshot-20261006-0323`.
-2. Extract bounded execution evidence only; do not expose or persist credentials/auth material.
-3. Determine why the Scheduled run completed without creating the expected Library result file.
-4. Adjust the worker prompt/contract only from observed evidence; keep the proven UTC one-shot scheduling semantics unchanged.
-5. Start a fresh probe_id for the next phased E2E; never reuse the completed probe state.
-6. Run Phase A, wait without polling, then one Phase B observation.
-7. Run Phase C cleanup after the observation regardless of pass/pending outcome.
-8. If result verifies, add READY/ACK/correlation fencing; otherwise reconcile before the next hypothesis.
+1. Update the phased E2E evidence path to capture the executed backing run before Phase C restoration, including a causal run id/timestamp plus bounded safe content.
+2. Start a fresh probe_id using the already-proven UTC one-shot scheduling semantics.
+3. Run Phase A once; wait without polling; run one Phase B observation.
+4. In Phase B, verify that the captured backing run belongs to the fresh probe and explicitly test whether worker-side direct Library result creation is available.
+5. Run Phase C cleanup/restoration regardless of PASS/pending/failure.
+6. If direct Library write succeeds, complete the result-file path and prove the first full round trip.
+7. If direct Library write is unavailable, evaluate the narrowest first-party ChatGPT return channel without using an external file intermediary or composer/DOM input.
+8. Persist the resulting durable finding immediately and only then proceed to READY/ACK/correlation fencing or the next transport hypothesis.
