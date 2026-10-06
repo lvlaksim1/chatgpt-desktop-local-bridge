@@ -477,6 +477,11 @@ try {
             request_library_id = $null
             request_directory_id = $null
             armed_schedule = $null
+            armed_timing_mode = $null
+            armed_target_time_utc_present = $false
+            armed_next_run_count = 0
+            armed_future_next_run_count = 0
+            armed_first_future_delta_sec = $null
             before_last_run = $null
             result_library_id = $null
             result_file_id = $null
@@ -588,10 +593,17 @@ $pacing
     d.setUTCSeconds(0, 0);
     const p = n => String(n).padStart(2, '0');
     const stamp = d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) +
-      'T' + p(d.getUTCHours()) + p(d.getUTCMinutes()) + '00Z';
-    return 'BEGIN:VEVENT\nDTSTART:' + stamp +
-      '\nRRULE:FREQ=DAILY;BYHOUR=' + d.getUTCHours() + ';BYMINUTE=' + d.getUTCMinutes() +
-      '\nEND:VEVENT';
+      'T' + p(d.getUTCHours()) + p(d.getUTCMinutes()) + '00';
+    return 'BEGIN:VEVENT\nDTSTART;TZID=UTC:' + stamp + '\nEND:VEVENT';
+  }
+
+  function toMs(value) {
+    if (value == null) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value < 1000000000000 ? value * 1000 : value;
+    }
+    const parsed = Date.parse(String(value));
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   const requestText = JSON.stringify({
@@ -710,7 +722,7 @@ $pacing
     'Final textual response may be only WORKER_DONE.'
   ].join('\n');
 
-  const armedSchedule = scheduleAt(Date.now() + 4 * 60 * 1000);
+  const armedSchedule = scheduleAt(Date.now() + 6 * 60 * 1000);
   const saved = await api.jsonApi(
     'POST',
     '/backend-api/automations/save',
@@ -740,11 +752,27 @@ $pacing
     'GET',
     '/backend-api/automation/' + encodeURIComponent(state.worker_id)
   );
+
+  const nextRuns = Array.isArray(afterEnable.json?.next_run_times)
+    ? afterEnable.json.next_run_times.map(toMs).filter(v => v != null)
+    : [];
+  const nowAfterEnable = Date.now();
+  const futureRuns = nextRuns.filter(v => v > nowAfterEnable).sort((a, b) => a - b);
+  const firstFutureDeltaSec = futureRuns.length
+    ? Math.round((futureRuns[0] - nowAfterEnable) / 1000)
+    : null;
+
   if (!afterEnable.ok || !afterEnable.json ||
       afterEnable.json.is_enabled !== true ||
       afterEnable.json.prompt !== workerPrompt ||
-      afterEnable.json.schedule !== armedSchedule) {
-    throw new Error('worker_enable_readback_mismatch');
+      afterEnable.json.schedule !== armedSchedule ||
+      afterEnable.json.timing_mode !== 'exact_schedule' ||
+      afterEnable.json.target_time_utc == null ||
+      futureRuns.length < 1 ||
+      firstFutureDeltaSec == null ||
+      firstFutureDeltaSec < 60 ||
+      firstFutureDeltaSec > 15 * 60) {
+    throw new Error('worker_enable_schedule_readback_mismatch');
   }
 
   return {
@@ -754,7 +782,12 @@ $pacing
     request_directory_id: final?.extra?.parent_directory_id ?? null,
     armed_schedule: armedSchedule,
     worker_prompt_hash_input_length: workerPrompt.length,
-    enable_http: enabled.status
+    enable_http: enabled.status,
+    timing_mode: afterEnable.json.timing_mode,
+    target_time_utc_present: afterEnable.json.target_time_utc != null,
+    next_run_count: nextRuns.length,
+    future_next_run_count: futureRuns.length,
+    first_future_delta_sec: firstFutureDeltaSec
   };
 })()
 "@
@@ -762,7 +795,10 @@ $pacing
         $mutation = Invoke-CdpEval -Socket $script:socket -Id ([ref]$cdpId) -Expression $mutationScript -Stage 'phase-a-arm' -TimeoutMs 240000
 
         $mutationProperties = @($mutation.PSObject.Properties.Name)
-        $requiredMutationProperties = @('pass','request_file_id','request_library_id','armed_schedule','enable_http')
+        $requiredMutationProperties = @(
+            'pass','request_file_id','request_library_id','armed_schedule','enable_http',
+            'timing_mode','target_time_utc_present','next_run_count','future_next_run_count','first_future_delta_sec'
+        )
         $missingMutationProperties = @($requiredMutationProperties | Where-Object { $_ -notin $mutationProperties })
         if ($missingMutationProperties.Count -gt 0) {
             throw ('Phase A mutation result missing fields: ' + ($missingMutationProperties -join ',') +
@@ -777,6 +813,11 @@ $pacing
         Add-OrSetProperty -Object $state -Name 'request_library_id' -Value ([string]$mutation.request_library_id)
         Add-OrSetProperty -Object $state -Name 'request_directory_id' -Value $mutation.request_directory_id
         Add-OrSetProperty -Object $state -Name 'armed_schedule' -Value ([string]$mutation.armed_schedule)
+        Add-OrSetProperty -Object $state -Name 'armed_timing_mode' -Value ([string]$mutation.timing_mode)
+        Add-OrSetProperty -Object $state -Name 'armed_target_time_utc_present' -Value ([bool]$mutation.target_time_utc_present)
+        Add-OrSetProperty -Object $state -Name 'armed_next_run_count' -Value ([int]$mutation.next_run_count)
+        Add-OrSetProperty -Object $state -Name 'armed_future_next_run_count' -Value ([int]$mutation.future_next_run_count)
+        Add-OrSetProperty -Object $state -Name 'armed_first_future_delta_sec' -Value ([int]$mutation.first_future_delta_sec)
         Add-OrSetProperty -Object $state -Name 'phase_a_completed_utc' -Value ([DateTime]::UtcNow.ToString('o'))
         Write-State -State $state -Path $statePath
 
@@ -789,6 +830,11 @@ $pacing
             request_file_id_present = $true
             request_library_id_present = $true
             enable_http = [int]$mutation.enable_http
+            timing_mode = [string]$mutation.timing_mode
+            target_time_utc_present = [bool]$mutation.target_time_utc_present
+            next_run_count = [int]$mutation.next_run_count
+            future_next_run_count = [int]$mutation.future_next_run_count
+            first_future_delta_sec = [int]$mutation.first_future_delta_sec
             state_path = $statePath
         }
     }
