@@ -183,9 +183,9 @@ if ([string]::IsNullOrWhiteSpace($workerId)) {
     Write-ProjectResult -Status 'fail' -ExitCode 31 -ErrorText 'worker_id_missing'
 }
 
-$workerIdJson = ConvertTo-Json -InputObject $workerId -Compress
-$armedScheduleJson = ConvertTo-Json -InputObject ([string]$state.armed_schedule) -Compress
-$beforeLastRunJson = ConvertTo-Json -InputObject $state.before_last_run -Compress
+$workerIdJson = if ($null -eq $workerId) { 'null' } else { ConvertTo-Json -InputObject $workerId -Compress }
+$armedScheduleJson = if ($null -eq $state.armed_schedule) { 'null' } else { ConvertTo-Json -InputObject ([string]$state.armed_schedule) -Compress }
+$beforeLastRunJson = if ($null -eq $state.before_last_run) { 'null' } else { ConvertTo-Json -InputObject $state.before_last_run -Compress }
 
 $port = Get-Random -Minimum 9400 -Maximum 9999
 $cdpId = 1
