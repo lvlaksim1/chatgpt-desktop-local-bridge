@@ -1,24 +1,21 @@
-# Current state
+# Текущее состояние
 
-Updated: 2026-10-06 07:35 MSK
+Обновлено: 2026-10-06 15:27 MSK.
 
-- manager generation: 33
-- product main: 6e2a0b54b727c5474bad40ac038f727a39cceb8d
-- production Local Bridge: unchanged
-- research line: PR #30 / exp/runner-private-transport-control-plane
-- prompt transport test commit: 4e5843209b2b67d12750594256047a62cfc21cf5
-- five-second serialized network pacing: ACTIVE
-- authenticated read-plane: PASS
-- Pause/Resume: PASS
-- schedule mutation: PASS
-- prompt mutation: PASS
-- Desktop-side Library lifecycle: PASS
-- UTC one-shot Scheduled trigger: PROVEN
-- causal run correlation: PROVEN
-- Library request path to Scheduled worker: FAILED for the tested fresh-file discovery path
-- prompt-as-request + latest_backing_run-as-result: FIRST FULL PASS
-- Phase A #294 / run 37413075306: PASS
-- Phase B #295 / run 37413346604: Project PASS
-- Phase C #296 / run 37414107982: PASS cleanup/restoration
-- ledger #297 / run 37414262277: project_status=pass, stage=transport_verified, run_advanced=true, result_found=false, result_verified=false, fresh latest run and both correlation tags present
-- current gate: remove incidental Library work, add generation/seq fencing, and repeat on a pure prompt transport harness
+- Поколение менеджера: 34.
+- Производственный Local Bridge: без изменений.
+- Исследовательская ветка: exp/runner-private-transport-control-plane.
+- Текущий проверенный head: 97df52076d49fb91b8df9e1bfeb38856f436b837.
+- Минимум 5 секунд между последовательными сетевыми запросами: действует.
+- Library в рабочем канале: не используется.
+- Передача команды через текст серверной задачи: доказана.
+- Штатный немедленный запуск задачи: доказан.
+- Получение результата через latest_backing_run: доказано.
+- Полный прикладной цикл "серверная задача -> локальное действие с файлом": доказан на испытательном получателе.
+- Опыт bridge-localfile4-20261006-1516:
+  - #307: отправка и немедленный запуск — PASS;
+  - #308: получение команды и локальное выполнение — PASS;
+  - #309: local_action_executed=true, local_action_verified=true, local_action_chars=27;
+  - #310: восстановление временной задачи — PASS.
+- D:\test\file1.txt создан из первой строки D:\test\file.txt и проверен чтением обратно.
+- Основной оставшийся разрыв: механизм пока находится в исследовательском стенде через PC Runner Gateway, а не внутри обычного установленного Local Bridge.

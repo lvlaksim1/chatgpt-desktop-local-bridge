@@ -1,15 +1,12 @@
-# Manager goals
+# Цели менеджера
 
-Manager generation: 33.
-Updated: 2026-10-06 07:35 MSK
+Поколение: 34.
+Обновлено: 2026-10-06 15:27 MSK.
 
-1. Deliver a reliable signed-in ChatGPT Windows client with policy-controlled native computer access.
-2. Preserve current Local Bridge as production fallback while server-side transport remains experimental.
-3. Build the alternative transport only from live-proven Scheduled Tasks and authenticated in-product backend primitives.
-4. Enforce serialized >=5 second network/API/backend pacing.
-5. Keep authorization material inside the authenticated WebView page context.
-6. Make all writes crash-safe and read-back-reconciled.
-7. Promote the now-proven prompt -> Scheduled runtime -> latest_backing_run primitive into a minimal framed transport.
-8. Add generation/seq/message_id fencing, duplicate suppression and stale-response rejection.
-9. Remove incidental Library operations from the prompt-transport critical path.
-10. Run restart, duplicate, stale-ACK, relogin/navigation, network-loss, orphan-cleanup and 100+ round-trip endurance before any production promotion.
+1. Встроить доказанный канал немедленного запуска серверной задачи в обычный Local Bridge.
+2. Сделать так, чтобы пользователь мог написать в обычном чате команду для компьютера, а клиент сам передал её серверной задаче, получил структурированное действие и выполнил его локально.
+3. Использовать штатный "запустить сейчас", а не искусственные расписания на несколько минут или секунд.
+4. Соблюдать минимум 5 секунд только между последовательными сетевыми запросами.
+5. Первым рабочим набором оставить уже существующие локальные операции чтения и записи файлов и расширять его по мере необходимости.
+6. Сначала построить нормальную рабочую систему. Испытания дублей, старых ответов, обрывов, длительной устойчивости и прочую защиту проводить после этого.
+7. Не переносить исследовательские изменения в main, пока новая схема не оформлена как нормальная часть клиента.

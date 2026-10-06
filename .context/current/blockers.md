@@ -1,23 +1,18 @@
-# Current blockers and open risks
+# Текущие ограничения
 
-Updated: 2026-10-06 07:35 MSK
+Обновлено: 2026-10-06 15:27 MSK.
 
-The first bounded Desktop -> Scheduled runtime -> Desktop round trip is now proven through prompt input and latest_backing_run output.
+Основного исследовательского препятствия для канала больше нет.
 
-Remaining proof gaps:
-- current harness still performs incidental Library operations even though they are not part of the successful transport path;
-- generation/seq fencing is not implemented;
-- stale prior latest_backing_run rejection is not yet proven;
-- duplicate execution/result handling is not yet proven;
-- payload size/encoding limits are not characterized;
-- interruption/relogin/navigation/network-loss recovery and endurance remain untested;
-- production integration into Local Bridge is not approved.
+Остаётся инженерная работа:
+- перенести доказанный немедленный запуск из испытательного PowerShell-стенда в Local Bridge;
+- подключить полученный серверный результат к штатному локальному исполнителю;
+- перестать использовать PC Runner Gateway как промежуточного исполнителя пользовательской команды;
+- оформить постоянную служебную задачу/механизм вместо временного заимствования паузной задачи.
 
-Known failed primitive:
-- a fresh Library request file that Desktop could create and read was not discoverable by the causally matched Scheduled worker.
+Не считать препятствием:
+- короткое расписание +5 секунд: оно больше не нужно;
+- Library: он исключён из рабочего пути;
+- планировщик: для интерактивной команды используется штатный немедленный запуск.
 
-Safety/interpretation:
-- evidence-reader Action failures caused by deliberate exit 20 are not experiment failures;
-- every explicit network/API/backend request must be separated by at least 5000 ms;
-- no parallel/burst requests;
-- interrupted probes must be reconciled before reuse.
+Защитные испытания дублей, старых ответов и длительной устойчивости сознательно отложены до построения нормальной рабочей системы по решению владельца.
