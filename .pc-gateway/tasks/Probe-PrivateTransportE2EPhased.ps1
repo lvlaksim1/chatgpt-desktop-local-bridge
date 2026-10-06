@@ -645,37 +645,36 @@ $pacing
     expectedPromptResult
   ].join('\n');
 
-  // Save the task paused, then wait the mandatory five-second network gap
-  // before enabling it. The target is ten seconds from the save moment, so the
-  // enable request occurs roughly five seconds before the target.
+  // Keep the borrowed task paused and preserve its original schedule.
+  // After the mandatory five-second network gap, invoke the task explicitly
+  // through the same "run now" route used by the ChatGPT UI.
   await delay(NETWORK_MIN_GAP_MS);
-  const armedSchedule = scheduleAt(Date.now() + 10 * 1000);
   const saved = await api.jsonApi(
     'POST',
     '/backend-api/automations/save',
-    saveBody(current, workerPrompt, armedSchedule)
+    saveBody(current, workerPrompt, current.schedule)
   );
   if (!saved.ok) {
     throw new Error('worker_save_http_' + saved.status + '_' + String(saved.raw || '').slice(0,500));
   }
 
-  const enabled = await api.jsonApi(
+  const run = await api.jsonApi(
     'POST',
-    '/backend-api/automations/set_status',
-    { jawbone_id: state.worker_id, is_enabled: true }
+    '/backend-api/automation/' + encodeURIComponent(state.worker_id) + '/run',
+    { idempotency_key: crypto.randomUUID() }
   );
-  if (!enabled.ok) {
-    throw new Error('worker_enable_http_' + enabled.status + '_' + String(enabled.raw || '').slice(0,500));
+  if (!run.ok) {
+    throw new Error('worker_run_http_' + run.status + '_' + String(run.raw || '').slice(0,500));
   }
 
   return {
     pass: true,
-    armed_schedule: armedSchedule,
+    armed_schedule: current.schedule,
     save_http: saved.status,
-    enable_http: enabled.status,
-    timing_mode: 'exact_schedule',
-    target_time_utc_present: true,
-    target_delay_sec: 5
+    run_http: run.status,
+    timing_mode: current.timing_mode ?? 'exact_schedule',
+    target_time_utc_present: false,
+    target_delay_sec: 0
   };
 })()
 "@
@@ -684,7 +683,7 @@ $pacing
 
         $mutationProperties = @($mutation.PSObject.Properties.Name)
         $requiredMutationProperties = @(
-            'pass','armed_schedule','save_http','enable_http','timing_mode','target_time_utc_present','target_delay_sec'
+            'pass','armed_schedule','save_http','run_http','timing_mode','target_time_utc_present','target_delay_sec'
         )
         $missingMutationProperties = @($requiredMutationProperties | Where-Object { $_ -notin $mutationProperties })
         if ($missingMutationProperties.Count -gt 0) {
@@ -717,7 +716,7 @@ $pacing
             request_file_id_present = $false
             request_library_id_present = $false
             save_http = [int]$mutation.save_http
-            enable_http = [int]$mutation.enable_http
+            run_http = [int]$mutation.run_http
             timing_mode = [string]$mutation.timing_mode
             target_time_utc_present = [bool]$mutation.target_time_utc_present
             target_delay_sec = [int]$mutation.target_delay_sec
