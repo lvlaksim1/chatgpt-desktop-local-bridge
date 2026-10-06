@@ -1,12 +1,12 @@
 # Next actions
 
-Updated: 2026-10-06 07:14 MSK
+Updated: 2026-10-06 07:35 MSK
 
-1. Implement a fresh crash-safe phased probe for prompt-as-request + latest_backing_run-as-result.
-2. Keep the already-proven UTC one-shot scheduling and five-second network pacing unchanged.
-3. Phase A: snapshot a safe paused worker, place bounded unique JSON request data directly in the worker prompt, arm once, read back, exit.
-4. Phase B: after the scheduled time, perform one observation and require a causally tagged latest backing run whose final text exactly carries protocol, message_id, payload and ack.
-5. Phase C: restore the borrowed task regardless of pass/failure.
-6. If PASS, repeat with generation/seq/message_id fencing and duplicate/stale-response tests; do not reintroduce Library into the critical path.
-7. If FAIL, inspect the causally matched final run and choose the next first-party in-product channel from evidence only.
-8. Persist every durable finding immediately.
+1. Remove Library creation/list/download/delete from the successful prompt transport harness.
+2. Add protocol generation, seq and message_id fields to request and response framing.
+3. Require exact fresh-run correlation and reject stale/mismatched responses.
+4. Run a fresh pure prompt Phase A -> one post-schedule Phase B -> Phase C cycle.
+5. Repeat Phase B against the same completed run to prove idempotent read behavior.
+6. Start a new generation/seq and verify the previous latest_backing_run is rejected as stale before the new run arrives.
+7. Test controlled duplicate re-arm and result classification.
+8. Persist findings, then proceed to READY/ACK and failure-recovery tests.

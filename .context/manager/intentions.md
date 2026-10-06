@@ -1,33 +1,33 @@
 # Manager intentions and commitments
 
-Manager generation: 32.
-Updated: 2026-10-06 07:14 MSK
+Manager generation: 33.
+Updated: 2026-10-06 07:35 MSK
 
 Current experimental line: PR #30 / exp/runner-private-transport-control-plane.
-Verified live branch head: fe87cab8cddbcb2b3de9befe367eea2220b4ef46.
+Prompt transport test commit: 4e5843209b2b67d12750594256047a62cfc21cf5.
 
 Proven:
 - authenticated private read-plane;
 - Pause/Resume;
-- Schedule create/update/remove;
-- existing-task arm/rearm with restoration;
-- existing-task prompt mutation with restoration;
-- complete disposable Library lifecycle from Desktop with exact byte read-back and cleanup;
-- Scheduled runtime trigger using a UTC one-shot VEVENT;
-- causal identification of a fresh Scheduled backing run using unique PROBE_ID/MESSAGE_ID tags and latest-run metadata.
+- schedule create/update/remove;
+- existing-task arm/rearm and prompt mutation with restoration;
+- Desktop-side Library lifecycle;
+- UTC one-shot Scheduled runtime trigger;
+- causal fresh-run correlation;
+- bounded prompt-as-request + latest_backing_run-as-result round trip.
 
-Fresh causal E2E:
-- Phase A #289 / run 37410888308: PASS;
-- Phase B #290 / run 37411192345: pending/no result file;
-- ledger evidence #291 / run 37412211259: run_advanced=true, last_run_time=2026-10-06T03:58:34.228534Z, latest_run_created_at=2026-10-06T03:58:32.744319Z, probe/message tags both true, latest update confirmed as latest run;
-- latest-run evidence #292 / run 37412287909: the causally matched worker says the exact request file was not found in Library, so it created no result file;
-- Phase C #293 / run 37412472947: PASS cleanup/restoration.
+Prompt transport evidence:
+- Phase A #294 / run 37413075306 PASS;
+- Phase B #295 / run 37413346604 Project PASS;
+- Phase C #296 / run 37414107982 PASS cleanup/restoration;
+- ledger #297 / run 37414262277: stage=transport_verified, run_advanced=true, fresh latest run tagged by probe/message, result_found=false, result_verified=false, project_status=pass.
 
 Commitments:
-1. Treat Scheduled triggering and run correlation as proven; do not reopen those layers without contradictory evidence.
-2. Treat worker-side Library request discovery as the current failed primitive: Desktop can create/read the object, but the Scheduled worker could not find it.
-3. Do not claim that all Library access is impossible; only the tested discovery/read path for this fresh file is disproven.
-4. Test the simpler in-product transport next: request JSON embedded in the task prompt, response JSON encoded in latest_backing_run final text.
-5. Keep the payload bounded and explicitly correlated by probe_id/message_id/generation/seq.
-6. Restore the borrowed task after every experiment and preserve the five-second serialized pacing invariant.
-7. Keep main unchanged until promotion evidence exists.
+1. Treat the prompt transport primitive as proven only for the bounded tested payload and exact one-shot path.
+2. Do not claim production readiness yet.
+3. Remove Library from the transport critical path in the next harness revision.
+4. Add generation, seq and message_id to both request and response framing.
+5. Reject stale/mismatched latest_backing_run responses before accepting a result.
+6. Test duplicate observation and duplicate execution behavior explicitly.
+7. Restore borrowed tasks after every experiment and preserve the five-second serialized pacing invariant.
+8. Keep main unchanged until promotion evidence exists.
