@@ -19,7 +19,7 @@ public sealed class BridgeHost : IDisposable
     private readonly Action<string> _status;
     private readonly Func<BridgePermissionPrompt, Task<bool>>? _confirmPermission;
     private readonly Action<BridgeActivityEvent>? _activity;
-    private readonly ToolRouter _router = new();
+    private readonly ToolRouter _router;
     private readonly DurableRequestLedger _requestLedger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _activeExecutionSync = new();
@@ -32,13 +32,15 @@ public sealed class BridgeHost : IDisposable
         Action<string> status,
         string? sessionId = null,
         Func<BridgePermissionPrompt, Task<bool>>? confirmPermission = null,
-        Action<BridgeActivityEvent>? activity = null)
+        Action<BridgeActivityEvent>? activity = null,
+        Func<string, CancellationToken, Task<BridgePlannedAction>>? localIntentPlanner = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
         _status = status;
         _confirmPermission = confirmPermission;
         _activity = activity;
+        _router = new ToolRouter(localIntentPlanner);
 
         if (sessionId is not null && !IsValidSessionId(sessionId))
         {
@@ -144,6 +146,7 @@ public sealed class BridgeHost : IDisposable
             string.Empty,
             "Rules:",
             "- Use the bridge only when local data/action is needed.",
+            "- For ordinary natural-language requests that require action on the local computer, prefer local.intent and pass the user's instruction verbatim in args.instruction. Use low-level fs.* tools directly only for diagnostics or when the user explicitly asks for a specific low-level operation.",
             "- Never invent a LOCAL_BRIDGE_RESULT.",
             "- In bridge JSON, write Windows paths with forward slashes, for example C:/Windows/win.ini. Do not use backslashes in JSON path strings.",
             "- One request per assistant turn.",
