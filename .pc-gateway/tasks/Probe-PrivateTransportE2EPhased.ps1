@@ -278,8 +278,13 @@ function Open-DiagnosticSession {
     # Give normal page loading time to settle before scripted backend traffic begins.
     Start-Sleep -Seconds 10
 
+    $targetItems = @($target)
+    $wsUrl = if ($targetItems.Count -gt 0) { [string]$targetItems[0].webSocketDebuggerUrl } else { '' }
+    if ([string]::IsNullOrWhiteSpace($wsUrl)) { throw 'cdp_websocket_url_missing' }
+    $wsUri = [Uri]$wsUrl
+
     $s = New-Object System.Net.WebSockets.ClientWebSocket
-    $s.ConnectAsync([Uri]$target.webSocketDebuggerUrl, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    $s.ConnectAsync($wsUri, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
     $SocketRef.Value = $s
     $CdpIdRef.Value = 1
 }
