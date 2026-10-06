@@ -916,7 +916,7 @@ $pacing
                 New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null
             }
 
-            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            $utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
             [System.IO.File]::WriteAllText($actualDestination, $firstLine, $utf8NoBom)
             $written = [System.IO.File]::ReadAllText($actualDestination, [Text.Encoding]::UTF8)
 
