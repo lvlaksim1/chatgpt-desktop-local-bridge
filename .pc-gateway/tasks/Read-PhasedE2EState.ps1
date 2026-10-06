@@ -37,6 +37,21 @@ $safe = [ordered]@{
     run_advanced = if ($null -ne $obs) { [bool]$obs.run_advanced } else { $false }
     last_run_present = if ($null -ne $obs) { [bool]$obs.last_run_present } else { $false }
     latest_run_http = if ($null -ne $obs) { [int]$obs.latest_run_http } else { 0 }
+    before_last_run = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['before_last_run']) { $obs.before_last_run } else { $null }
+    last_run_time = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['last_run_time']) { $obs.last_run_time } else { $null }
+    latest_run_id = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_id']) { $obs.latest_run_id } else { $null }
+    latest_run_created_at = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_created_at']) { $obs.latest_run_created_at } else { $null }
+    latest_run_role = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_role']) { $obs.latest_run_role } else { $null }
+    latest_run_kind = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_kind']) { $obs.latest_run_kind } else { $null }
+    latest_run_channel = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_channel']) { $obs.latest_run_channel } else { $null }
+    latest_run_contains_probe_tag = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_contains_probe_tag']) { [bool]$obs.latest_run_contains_probe_tag } else { $false }
+    latest_run_contains_message_tag = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_contains_message_tag']) { [bool]$obs.latest_run_contains_message_tag } else { $false }
+    latest_run_automation_last_backing_run_failed = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_automation_last_backing_run_failed']) { $obs.latest_run_automation_last_backing_run_failed } else { $null }
+    latest_run_automation_latest_update_is_from_latest_run = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_automation_latest_update_is_from_latest_run']) { $obs.latest_run_automation_latest_update_is_from_latest_run } else { $null }
+    latest_run_content_text = if ($null -ne $obs -and $null -ne $obs.PSObject.Properties['latest_run_content_text']) {
+        $text = [string]$obs.latest_run_content_text
+        if ($text.Length -gt 2500) { $text.Substring(0, 2500) } else { $text }
+    } else { '' }
     result_found = if ($null -ne $obs) { [bool]$obs.result_found } else { $false }
     result_verified = if ($null -ne $obs) { [bool]$obs.result_verified } else { $false }
     result_download_http = if ($null -ne $obs) { [int]$obs.result_download_http } else { 0 }
