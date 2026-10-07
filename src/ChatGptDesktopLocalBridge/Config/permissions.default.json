@@ -7,8 +7,10 @@
     "repo.read": "AUTO",
     "repo.checkpoint": "AUTO",
     "mcp.read": "AUTO",
+    "terminal.io": "AUTO",
 
     "fs.write_text": "ASK",
+    "terminal.open": "ASK",
     "process.start": "ASK",
     "repo.verify": "ASK",
     "mcp.call": "ASK",
