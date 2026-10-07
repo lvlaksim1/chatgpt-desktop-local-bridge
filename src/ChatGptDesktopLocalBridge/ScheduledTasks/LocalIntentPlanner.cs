@@ -18,13 +18,19 @@ public sealed class LocalIntentPlanner
             "fs.copy_first_line"
         };
 
+    private static readonly SemaphoreSlim PlanNetworkGate =
+        new(1, 1);
+    private static DateTimeOffset? LastPlanCompletedUtc;
+
     private readonly WebView2 _browser;
     private readonly RequestBindingGuard _binding;
+    private readonly LocalIntentServiceStateStore _serviceState;
 
     public LocalIntentPlanner(WebView2 browser)
     {
         _browser = browser;
         _binding = new RequestBindingGuard(browser);
+        _serviceState = new LocalIntentServiceStateStore();
     }
 
     public async Task<BridgePlannedAction> PlanAsync(
@@ -45,37 +51,85 @@ public sealed class LocalIntentPlanner
                 "ChatGPT WebView is not initialized.");
         }
 
+        await PlanNetworkGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            if (LastPlanCompletedUtc is DateTimeOffset previous)
+            {
+                var elapsed =
+                    DateTimeOffset.UtcNow - previous;
+                var required =
+                    TimeSpan.FromMilliseconds(
+                        NetworkMinGapMs);
+
+                if (elapsed < required)
+                {
+                    await Task.Delay(
+                        required - elapsed,
+                        cancellationToken);
+                }
+            }
+
+            return await PlanCoreAsync(
+                instruction,
+                cancellationToken);
+        }
+        finally
+        {
+            LastPlanCompletedUtc =
+                DateTimeOffset.UtcNow;
+            PlanNetworkGate.Release();
+        }
+    }
+
+    private async Task<BridgePlannedAction> PlanCoreAsync(
+        string instruction,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
 
         var binding = _binding.Capture();
         var probeId = "lb-" + Guid.NewGuid().ToString("N");
         var messageId = "msg-" + Guid.NewGuid().ToString("N");
+        var serviceAutomationId =
+            _serviceState.LoadAutomationId();
 
         var payload = JsonSerializer.Serialize(new
         {
             instruction,
             probeId,
             messageId,
+            serviceAutomationId,
             networkMinGapMs = NetworkMinGapMs
         });
 
         var asyncBody = """
             const p = PAYLOAD;
             const started = performance.now();
-            const minGapMs = Math.max(5000, Number(p.networkMinGapMs || 5000));
+            const minGapMs = Math.max(
+              5000,
+              Number(p.networkMinGapMs || 5000));
+            const serviceTitle = 'Local Bridge Service Planner';
+            const servicePrefix =
+              'LOCAL BRIDGE SERVICE PLANNER V1.';
+            const serviceSchedule = [
+              'BEGIN:VEVENT',
+              'DTSTART:20991231T235900',
+              'END:VEVENT'
+            ].join('\\n');
+
             let lastRequestCompletedAt = null;
             let authorization = "";
             let accountId = "";
-            let selected = null;
-            let original = null;
-            let mutated = false;
-            let restored = false;
 
-            const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+            const delay =
+              ms => new Promise(resolve => setTimeout(resolve, ms));
 
             async function beforeNetworkRequest() {
               if (lastRequestCompletedAt === null) return;
-              const elapsed = performance.now() - lastRequestCompletedAt;
+              const elapsed =
+                performance.now() - lastRequestCompletedAt;
               const remaining = minGapMs - elapsed;
               if (remaining > 0) await delay(remaining);
             }
@@ -107,20 +161,25 @@ public sealed class LocalIntentPlanner
                 headers: { 'accept': 'application/json' }
               });
 
-              if (!r.ok) throw new Error('auth_session_http_' + r.status);
+              if (!r.ok) {
+                throw new Error(
+                  'auth_session_http_' + r.status);
+              }
 
               const session = JSON.parse(r.text || '{}');
               const accessToken =
                 typeof session?.accessToken === 'string'
                   ? session.accessToken
                   : '';
+
               accountId =
                 typeof session?.account?.id === 'string'
                   ? session.account.id
                   : '';
 
               if (!accessToken || accessToken.length < 8) {
-                throw new Error('auth_session_missing_access_token');
+                throw new Error(
+                  'auth_session_missing_access_token');
               }
 
               authorization = 'Bearer ' + accessToken;
@@ -131,7 +190,10 @@ public sealed class LocalIntentPlanner
                 'accept': 'application/json, text/plain, */*',
                 'authorization': authorization
               };
-              if (accountId) headers['chatgpt-account-id'] = accountId;
+
+              if (accountId) {
+                headers['chatgpt-account-id'] = accountId;
+              }
 
               const options = {
                 method,
@@ -154,44 +216,83 @@ public sealed class LocalIntentPlanner
               return { ...r, json };
             }
 
+            function isServiceTask(value) {
+              return Boolean(
+                value &&
+                value.is_enabled === false &&
+                typeof value.id === 'string' &&
+                value.id.length > 0 &&
+                String(value.title || '') === serviceTitle &&
+                String(value.prompt || '')
+                  .startsWith(servicePrefix));
+            }
+
+            function extractAutomationId(value) {
+              const candidates = [
+                value?.id,
+                value?.jawbone_id,
+                value?.automation?.id,
+                value?.automation?.jawbone_id,
+                value?.task?.id,
+                value?.task?.jawbone_id
+              ];
+
+              for (const candidate of candidates) {
+                if (
+                  typeof candidate === 'string' &&
+                  candidate.length > 0
+                ) {
+                  return candidate;
+                }
+              }
+
+              return '';
+            }
+
+            function createBody(prompt) {
+              return {
+                default_timezone:
+                  Intl.DateTimeFormat()
+                    .resolvedOptions().timeZone || 'UTC',
+                email_enabled: false,
+                is_enabled: false,
+                notifications_enabled: false,
+                prompt,
+                emoji: '🔗',
+                schedule: serviceSchedule,
+                timing_mode: 0,
+                title: serviceTitle
+              };
+            }
+
             function saveBody(current, prompt) {
               const body = {
-                default_timezone: current.default_timezone,
+                default_timezone:
+                  current.default_timezone ||
+                  Intl.DateTimeFormat()
+                    .resolvedOptions().timeZone ||
+                  'UTC',
                 email_enabled: false,
                 is_enabled: false,
                 jawbone_id: current.id,
                 notifications_enabled: false,
                 prompt,
-                emoji: current.display_emoji,
-                schedule: current.schedule,
+                emoji: current.display_emoji || '🔗',
+                schedule:
+                  current.schedule || serviceSchedule,
                 timing_mode: 0,
-                title: current.title
+                title: serviceTitle
               };
-              if (current.model != null) body.model = current.model;
-              if (current.reasoning_effort != null) {
-                body.reasoning_effort = current.reasoning_effort;
-              }
-              return body;
-            }
 
-            function restoreBody(current) {
-              const body = {
-                default_timezone: original.default_timezone,
-                email_enabled: original.email_enabled === true,
-                is_enabled: false,
-                jawbone_id: current.id,
-                notifications_enabled:
-                  original.notifications_enabled === true,
-                prompt: original.prompt,
-                emoji: original.display_emoji,
-                schedule: original.schedule,
-                timing_mode: 0,
-                title: original.title
-              };
-              if (original.model != null) body.model = original.model;
-              if (original.reasoning_effort != null) {
-                body.reasoning_effort = original.reasoning_effort;
+              if (current.model != null) {
+                body.model = current.model;
               }
+
+              if (current.reasoning_effort != null) {
+                body.reasoning_effort =
+                  current.reasoning_effort;
+              }
+
               return body;
             }
 
@@ -201,157 +302,235 @@ public sealed class LocalIntentPlanner
                 : '';
             }
 
+            const marker =
+              'PROBE_ID=' + p.probeId +
+              ' MESSAGE_ID=' + p.messageId +
+              ' ACTION_JSON=';
+
+            const plannerPrompt = [
+              servicePrefix,
+              'You are planning exactly one local-computer action.',
+              'You do not have access to the local computer. Do not claim that you executed anything.',
+              'User instruction:',
+              p.instruction,
+              '',
+              'Allowed tools and exact argument shapes:',
+              '1. fs.copy_first_line {"source_path":"C:/path/source.txt","destination_path":"C:/path/destination.txt","overwrite":true,"create_directories":true}',
+              '2. fs.read_text {"path":"C:/path/file.txt","max_chars":200000}',
+              '3. fs.write_text {"path":"C:/path/file.txt","text":"text","overwrite":true,"create_directories":true}',
+              '4. fs.append_text {"path":"C:/path/file.txt","text":"text","create_if_missing":true,"create_directories":true}',
+              '5. fs.list {"path":"C:/path"}',
+              '6. system.info {}',
+              '',
+              'For a request to copy the first line of one text file into another file, use fs.copy_first_line.',
+              'Return exactly one line and no Markdown:',
+              marker + '{"tool":"<allowed tool>","args":{...}}'
+            ].join('\\n');
+
             await acquireAuth();
 
-            try {
+            let service = null;
+            const preferredId =
+              typeof p.serviceAutomationId === 'string'
+                ? p.serviceAutomationId.trim()
+                : '';
+
+            if (preferredId) {
+              const preferred = await api(
+                'GET',
+                '/backend-api/automation/' +
+                  encodeURIComponent(preferredId));
+
+              if (
+                preferred.ok &&
+                isServiceTask(preferred.json)
+              ) {
+                service = preferred.json;
+              }
+            }
+
+            if (!service) {
               const paused = await api(
                 'GET',
                 '/backend-api/automations?filter=paused');
 
-              if (!paused.ok || !Array.isArray(paused.json?.items)) {
-                throw new Error('paused_list_http_' + paused.status);
+              if (
+                !paused.ok ||
+                !Array.isArray(paused.json?.items)
+              ) {
+                throw new Error(
+                  'service_recovery_list_http_' +
+                  paused.status);
               }
 
-              const candidates = paused.json.items.filter(x =>
-                x &&
-                x.is_enabled === false &&
-                x.timing_mode === 'exact_schedule' &&
-                typeof x.id === 'string' &&
-                typeof x.prompt === 'string' &&
-                typeof x.schedule === 'string' &&
-                typeof x.conversation_id === 'string' &&
-                !String(x.prompt || '').includes('LOCAL BRIDGE ACTION PLANNER') &&
-                !String(x.title || '').startsWith('bridge-e2e-')
-              );
+              service =
+                paused.json.items.find(isServiceTask) ||
+                null;
+            }
 
-              candidates.sort((a, b) => {
-                const score = x =>
-                  /probe|transport|library|ndrm|srrm|scheduled/i.test(
-                    String(x.title || '')) ? 1 : 0;
-                return score(b) - score(a);
-              });
+            let created = false;
 
-              selected = candidates[0] || null;
-              if (!selected) throw new Error('no_safe_paused_worker');
+            if (!service) {
+              let createResult = null;
 
-              const detail = await api(
-                'GET',
-                '/backend-api/automation/' +
-                  encodeURIComponent(selected.id));
+              try {
+                createResult = await api(
+                  'POST',
+                  '/backend-api/automations/save',
+                  createBody(plannerPrompt));
+              } catch {
+                const readback = await api(
+                  'GET',
+                  '/backend-api/automations?filter=paused');
 
-              if (!detail.ok || !detail.json) {
-                throw new Error('worker_read_http_' + detail.status);
+                if (
+                  readback.ok &&
+                  Array.isArray(readback.json?.items)
+                ) {
+                  service =
+                    readback.json.items.find(x =>
+                      isServiceTask(x) &&
+                      String(x.prompt || '')
+                        .includes(p.probeId)) ||
+                    null;
+                }
+
+                if (!service) {
+                  throw new Error(
+                    'service_create_unknown_outcome');
+                }
               }
 
-              original = detail.json;
-              if (original.is_enabled !== false) {
-                throw new Error('worker_not_paused');
+              if (!service) {
+                if (!createResult?.ok) {
+                  throw new Error(
+                    'service_create_http_' +
+                    String(createResult?.status ?? 0) +
+                    '_' +
+                    String(createResult?.text || '')
+                      .slice(0, 300));
+                }
+
+                const createdId =
+                  extractAutomationId(createResult.json);
+
+                if (createdId) {
+                  const detail = await api(
+                    'GET',
+                    '/backend-api/automation/' +
+                      encodeURIComponent(createdId));
+
+                  if (
+                    detail.ok &&
+                    isServiceTask(detail.json)
+                  ) {
+                    service = detail.json;
+                  }
+                }
+
+                if (!service) {
+                  const readback = await api(
+                    'GET',
+                    '/backend-api/automations?filter=paused');
+
+                  if (
+                    readback.ok &&
+                    Array.isArray(readback.json?.items)
+                  ) {
+                    service =
+                      readback.json.items.find(x =>
+                        isServiceTask(x) &&
+                        String(x.prompt || '')
+                          .includes(p.probeId)) ||
+                      readback.json.items.find(
+                        isServiceTask) ||
+                      null;
+                  }
+                }
+
+                if (!service) {
+                  throw new Error(
+                    'service_create_readback_failed');
+                }
               }
 
-              const marker =
-                'PROBE_ID=' + p.probeId +
-                ' MESSAGE_ID=' + p.messageId +
-                ' ACTION_JSON=';
+              created = true;
+            }
 
-              const plannerPrompt = [
-                'LOCAL BRIDGE ACTION PLANNER V1.',
-                'You are planning exactly one local-computer action.',
-                'You do not have access to the local computer. Do not claim that you executed anything.',
-                'User instruction:',
-                p.instruction,
-                '',
-                'Allowed tools and exact argument shapes:',
-                '1. fs.copy_first_line {"source_path":"C:/path/source.txt","destination_path":"C:/path/destination.txt","overwrite":true,"create_directories":true}',
-                '2. fs.read_text {"path":"C:/path/file.txt","max_chars":200000}',
-                '3. fs.write_text {"path":"C:/path/file.txt","text":"text","overwrite":true,"create_directories":true}',
-                '4. fs.append_text {"path":"C:/path/file.txt","text":"text","create_if_missing":true,"create_directories":true}',
-                '5. fs.list {"path":"C:/path"}',
-                '6. system.info {}',
-                '',
-                'For a request to copy the first line of one text file into another file, use fs.copy_first_line.',
-                'Return exactly one line and no Markdown:',
-                marker + '{"tool":"<allowed tool>","args":{...}}'
-              ].join('\n');
-
+            if (!created) {
               const saved = await api(
                 'POST',
                 '/backend-api/automations/save',
-                saveBody(original, plannerPrompt));
+                saveBody(service, plannerPrompt));
 
               if (!saved.ok) {
                 throw new Error(
-                  'worker_save_http_' + saved.status + '_' +
-                  String(saved.text || '').slice(0, 300));
-              }
-              mutated = true;
-
-              const run = await api(
-                'POST',
-                '/backend-api/automation/' +
-                  encodeURIComponent(original.id) +
-                  '/run',
-                { idempotency_key: crypto.randomUUID() });
-
-              if (!run.ok) {
-                throw new Error(
-                  'worker_run_http_' + run.status + '_' +
-                  String(run.text || '').slice(0, 300));
-              }
-
-              await delay(8000);
-
-              let latest = null;
-              for (let attempt = 0; attempt < 5; attempt++) {
-                const candidate = await api(
-                  'GET',
-                  '/backend-api/automation/' +
-                    encodeURIComponent(original.id) +
-                    '/latest_backing_run?include_snapshot=true');
-
-                if (!candidate.ok) {
-                  throw new Error(
-                    'latest_run_http_' + candidate.status);
-                }
-
-                const text = finalText(candidate.json);
-                if (text.startsWith(marker)) {
-                  latest = candidate.json;
-                  break;
-                }
-              }
-
-              if (!latest) {
-                throw new Error('latest_run_not_correlated');
-              }
-
-              return {
-                ok: true,
-                probeId: p.probeId,
-                messageId: p.messageId,
-                contentText: finalText(latest),
-                runId: latest?.id ?? null,
-                runCreatedAt: latest?.created_at ?? null,
-                workerId: original.id,
-                elapsedMs: Math.round(performance.now() - started)
-              };
-            } finally {
-              if (mutated && original?.id) {
-                try {
-                  const current = await api(
-                    'GET',
-                    '/backend-api/automation/' +
-                      encodeURIComponent(original.id));
-
-                  if (current.ok && current.json) {
-                    const restoredResult = await api(
-                      'POST',
-                      '/backend-api/automations/save',
-                      restoreBody(current.json));
-                    restored = restoredResult.ok;
-                  }
-                } catch {}
+                  'service_save_http_' + saved.status +
+                  '_' +
+                  String(saved.text || '')
+                    .slice(0, 300));
               }
             }
+
+            const run = await api(
+              'POST',
+              '/backend-api/automation/' +
+                encodeURIComponent(service.id) +
+                '/run',
+              {
+                idempotency_key:
+                  crypto.randomUUID()
+              });
+
+            if (!run.ok) {
+              throw new Error(
+                'service_run_http_' + run.status +
+                '_' +
+                String(run.text || '').slice(0, 300));
+            }
+
+            await delay(8000);
+
+            let latest = null;
+
+            for (let attempt = 0; attempt < 5; attempt++) {
+              const candidate = await api(
+                'GET',
+                '/backend-api/automation/' +
+                  encodeURIComponent(service.id) +
+                  '/latest_backing_run?include_snapshot=true');
+
+              if (!candidate.ok) {
+                throw new Error(
+                  'latest_run_http_' +
+                  candidate.status);
+              }
+
+              const text = finalText(candidate.json);
+              if (text.startsWith(marker)) {
+                latest = candidate.json;
+                break;
+              }
+            }
+
+            if (!latest) {
+              throw new Error(
+                'latest_run_not_correlated');
+            }
+
+            return {
+              ok: true,
+              probeId: p.probeId,
+              messageId: p.messageId,
+              contentText: finalText(latest),
+              runId: latest?.id ?? null,
+              runCreatedAt: latest?.created_at ?? null,
+              workerId: service.id,
+              serviceCreated: created,
+              elapsedMs:
+                Math.round(
+                  performance.now() - started)
+            };
             """
             .Replace("PAYLOAD", payload);
 
@@ -388,6 +567,12 @@ public sealed class LocalIntentPlanner
             throw new BridgeToolException(
                 "private_transport_failed",
                 "Server-side local action planning did not complete.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.WorkerId))
+        {
+            _serviceState.SaveAutomationId(
+                result.WorkerId);
         }
 
         var marker =
@@ -454,6 +639,7 @@ public sealed class LocalIntentPlanner
         public string? RunId { get; set; }
         public string? RunCreatedAt { get; set; }
         public string? WorkerId { get; set; }
+        public bool ServiceCreated { get; set; }
         public long ElapsedMs { get; set; }
     }
 }
