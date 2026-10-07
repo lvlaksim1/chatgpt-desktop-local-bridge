@@ -9,7 +9,8 @@ public sealed record BridgeToolDefinition(
     string Description,
     string ArgsExample,
     bool IsMutating = false,
-    bool IsLongRunning = false);
+    bool IsLongRunning = false,
+    bool ExposeInBootstrap = true);
 
 public sealed record BridgePlannedAction(
     string Tool,
@@ -52,7 +53,8 @@ public sealed class ToolRouter : IDisposable
                 "Route one natural-language local-computer request through the server-side ChatGPT task planner, then execute the returned local action.",
                 "{ \"instruction\": \"Read the first line of C:/source.txt and write it to C:/result.txt\" }",
                 IsMutating: true,
-                IsLongRunning: true),
+                IsLongRunning: true,
+                ExposeInBootstrap: false),
             new(
                 "fs.copy_first_line",
                 "fs.write_text",
@@ -84,6 +86,41 @@ public sealed class ToolRouter : IDisposable
                 "{ \"file\": \"git.exe\", \"arguments\": [\"status\"], \"cwd\": \"C:/repo\", \"timeout_ms\": 0, \"max_output_chars\": 200000 }",
                 IsMutating: true,
                 IsLongRunning: true),
+            new(
+                "terminal.open",
+                "terminal.open",
+                "Open one persistent interactive Windows ConPTY terminal. Approval authorizes subsequent terminal I/O inside this session.",
+                "{ \"file\": \"powershell.exe\", \"arguments\": [\"-NoLogo\", \"-NoProfile\"], \"cwd\": \"C:/repo\", \"columns\": 120, \"rows\": 30, \"max_buffer_bytes\": 262144 }",
+                IsMutating: true,
+                IsLongRunning: true),
+            new(
+                "terminal.read",
+                "terminal.io",
+                "Read retained terminal output from an absolute byte cursor. Retry the same cursor safely; continue from nextCursor.",
+                "{ \"terminal_id\": \"<id>\", \"cursor\": 0, \"max_bytes\": 65536 }"),
+            new(
+                "terminal.write",
+                "terminal.io",
+                "Write UTF-8 terminal input exactly as typed. Use \\r to submit a command and \\u0003 for Ctrl-C.",
+                "{ \"terminal_id\": \"<id>\", \"data\": \"git status\\r\" }",
+                IsMutating: true),
+            new(
+                "terminal.resize",
+                "terminal.io",
+                "Resize an existing ConPTY terminal.",
+                "{ \"terminal_id\": \"<id>\", \"columns\": 120, \"rows\": 30 }",
+                IsMutating: true),
+            new(
+                "terminal.status",
+                "terminal.io",
+                "Return process and output-buffer state for a terminal session.",
+                "{ \"terminal_id\": \"<id>\" }"),
+            new(
+                "terminal.close",
+                "terminal.io",
+                "Close a terminal and terminate its Windows Job Object process tree.",
+                "{ \"terminal_id\": \"<id>\" }",
+                IsMutating: true),
             new(
                 "repo.status",
                 "repo.read",
@@ -137,6 +174,7 @@ public sealed class ToolRouter : IDisposable
             StringComparer.Ordinal);
 
     private readonly ProcessExecutionManager _processes = new();
+    private readonly TerminalSessionManager _terminals = new();
     private readonly RepoTools _repoTools;
     private readonly McpManager _mcp = new();
     private readonly Func<string, CancellationToken, Task<BridgePlannedAction>>? _localIntentPlanner;
@@ -153,6 +191,8 @@ public sealed class ToolRouter : IDisposable
     public int ActiveProcessCount => _processes.ActiveCount;
 
     public IReadOnlyList<string> ActiveProcessIds => _processes.ActiveExecutionIds;
+
+    public int ActiveTerminalCount => _terminals.ActiveCount;
 
     public async Task<object?> ExecuteAsync(
         string tool,
@@ -175,6 +215,24 @@ public sealed class ToolRouter : IDisposable
             "fs.append_text" => await AppendTextAsync(args),
             "fs.write_file" => await WriteFileAsync(args),
             "process.run" => await RunProcessAsync(args, cancellationToken),
+            "terminal.open" => await OpenTerminalAsync(args, cancellationToken),
+            "terminal.read" => _terminals.Read(
+                RequiredString(args, "terminal_id"),
+                Math.Max(0, OptionalLong(args, "cursor", 0)),
+                Math.Clamp(OptionalInt(args, "max_bytes", 65_536), 1_024, 200_000)),
+            "terminal.write" => await _terminals.WriteAsync(
+                RequiredString(args, "terminal_id"),
+                RequiredStringAllowEmpty(args, "data"),
+                cancellationToken),
+            "terminal.resize" => _terminals.Resize(
+                RequiredString(args, "terminal_id"),
+                Math.Clamp(OptionalInt(args, "columns", 120), 20, 500),
+                Math.Clamp(OptionalInt(args, "rows", 30), 5, 200)),
+            "terminal.status" => _terminals.Status(
+                RequiredString(args, "terminal_id")),
+            "terminal.close" => await _terminals.CloseAsync(
+                RequiredString(args, "terminal_id"),
+                cancellationToken),
             "repo.status" => await _repoTools.StatusAsync(
                 RequiredString(args, "path"),
                 cancellationToken),
@@ -225,6 +283,8 @@ public sealed class ToolRouter : IDisposable
 
     public int StopActiveProcesses() => _processes.StopAll();
 
+    public int StopActiveTerminals() => _terminals.CloseAll();
+
     public static BridgeToolDefinition? GetDefinition(string tool)
         => ToolDefinitionsByName.TryGetValue(tool, out var definition)
             ? definition
@@ -239,10 +299,16 @@ public sealed class ToolRouter : IDisposable
     {
         var lines = new List<string>();
 
-        for (var index = 0; index < ToolDefinitions.Count; index++)
+        var visibleIndex = 0;
+        foreach (var definition in ToolDefinitions)
         {
-            var definition = ToolDefinitions[index];
-            lines.Add($"{index + 1}. {definition.Name}");
+            if (!definition.ExposeInBootstrap)
+            {
+                continue;
+            }
+
+            visibleIndex++;
+            lines.Add($"{visibleIndex}. {definition.Name}");
             lines.Add($"   {definition.Description}");
             lines.Add($"   args: {definition.ArgsExample}");
             lines.Add(string.Empty);
@@ -265,6 +331,12 @@ public sealed class ToolRouter : IDisposable
                     => $"{tool}: {RequiredString(args, "path")}",
                 "process.run"
                     => $"process.run: {RequiredString(args, "file")} {string.Join(" ", OptionalStringArray(args, "arguments"))}",
+                "terminal.open"
+                    => $"terminal.open: {OptionalString(args, "file", "powershell.exe")} in {OptionalString(args, "cwd", Environment.CurrentDirectory)}",
+                "terminal.write"
+                    => $"terminal.write: {RequiredString(args, "terminal_id")} ({RequiredStringAllowEmpty(args, "data").Length} chars)",
+                "terminal.close"
+                    => $"terminal.close: {RequiredString(args, "terminal_id")}",
                 "repo.checkpoint"
                     => $"repo.checkpoint: {RequiredString(args, "path")}",
                 "repo.verify"
@@ -629,6 +701,58 @@ public sealed class ToolRouter : IDisposable
         };
     }
 
+    private async Task<object> OpenTerminalAsync(
+        JsonElement args,
+        CancellationToken cancellationToken)
+    {
+        var fileWasProvided =
+            args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty("file", out var fileElement) &&
+            fileElement.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(fileElement.GetString());
+
+        var file = OptionalString(args, "file", "powershell.exe");
+        var arguments = args.ValueKind == JsonValueKind.Object &&
+                        args.TryGetProperty("arguments", out _)
+            ? OptionalStringArray(args, "arguments")
+            : fileWasProvided
+                ? Array.Empty<string>()
+                : new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass" };
+
+        var workingDirectoryRaw = OptionalString(args, "cwd", string.Empty);
+        string? workingDirectory = null;
+
+        if (!string.IsNullOrWhiteSpace(workingDirectoryRaw))
+        {
+            workingDirectory = Path.GetFullPath(
+                Environment.ExpandEnvironmentVariables(workingDirectoryRaw));
+
+            if (!Directory.Exists(workingDirectory))
+            {
+                throw new BridgeToolException(
+                    "directory_not_found",
+                    $"Working directory does not exist: {workingDirectory}");
+            }
+        }
+
+        var columns = Math.Clamp(OptionalInt(args, "columns", 120), 20, 500);
+        var rows = Math.Clamp(OptionalInt(args, "rows", 30), 5, 200);
+        var maxBufferBytes = Math.Clamp(
+            OptionalInt(args, "max_buffer_bytes", 262_144),
+            4_096,
+            1_000_000);
+
+        return await _terminals.OpenAsync(
+            new TerminalOpenSpec(
+                file,
+                arguments,
+                workingDirectory,
+                columns,
+                rows,
+                maxBufferBytes),
+            cancellationToken);
+    }
+
     private async Task<object> RunProcessAsync(
         JsonElement args,
         CancellationToken cancellationToken)
@@ -866,9 +990,22 @@ public sealed class ToolRouter : IDisposable
         return defaultValue;
     }
 
+    private static long OptionalLong(JsonElement args, string name, long defaultValue)
+    {
+        if (args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty(name, out var value) &&
+            value.TryGetInt64(out var parsed))
+        {
+            return parsed;
+        }
+
+        return defaultValue;
+    }
+
     public void Dispose()
     {
         _mcp.Dispose();
+        _terminals.Dispose();
         _processes.Dispose();
     }
 }
