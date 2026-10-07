@@ -14,6 +14,7 @@ $ProcessName = 'ChatGptDesktopLocalBridge'
 $OldBrowserArgs = [Environment]::GetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', 'Process')
 $Socket = $null
 $NextId = 1
+$CdpTargetUrl = ''
 
 function Finish([string]$Status,[int]$Code,[string]$ErrorText,[hashtable]$Extra) {
     $o=[ordered]@{status=$Status;exit_code=$Code;error=$ErrorText;network_min_gap_seconds=$GapSeconds}
@@ -98,8 +99,16 @@ try{
     $target=Wait-Target -Port $port
     if($null -eq $target){throw 'cdp_target_missing'}
     $ws=[string]$target.webSocketDebuggerUrl
+    $script:CdpTargetUrl=$ws
+    Write-Host ('CDP_TARGET=' + $ws)
     $script:Socket=New-Object Net.WebSockets.ClientWebSocket
-    $script:Socket.ConnectAsync([Uri]$ws,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    $script:Socket.Options.Proxy=$null
+    try {
+        $script:Socket.ConnectAsync([Uri]$ws,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    }
+    catch {
+        throw ('cdp_connect_failed target=' + $ws + ' message=' + $_.Exception.Message)
+    }
     Start-Sleep -Seconds 5
     $before=Eval -Expression "({url:location.href,title:document.title,ready:document.readyState})"
     Start-Sleep -Seconds $GapSeconds
@@ -113,9 +122,11 @@ try{
   return {url:location.href,title:document.title,ready:document.readyState,file_inputs:files,buttons:buttons,links:links,body_text:String(document.body&&document.body.innerText||'').slice(0,16000)};
 })()
 '@
-    Finish -Status 'pass' -Code 0 -ErrorText '' -Extra @{before=$before;observation=$observation}
+    $compact=$observation|ConvertTo-Json -Depth 12 -Compress
+    Write-Host ('ATTACH_UI_OBSERVATION=' + $compact)
+    Finish -Status 'pass' -Code 0 -ErrorText '' -Extra @{before=$before;observation=$observation;cdp_target=$ws}
 }catch{
-    Finish -Status 'fail' -Code 40 -ErrorText $_.Exception.Message -Extra @{}
+    Finish -Status 'fail' -Code 40 -ErrorText $_.Exception.Message -Extra @{cdp_target=$script:CdpTargetUrl}
 }finally{
     if($null -ne $script:Socket){try{$script:Socket.Dispose()}catch{}}
     try{Stop-App}catch{}
