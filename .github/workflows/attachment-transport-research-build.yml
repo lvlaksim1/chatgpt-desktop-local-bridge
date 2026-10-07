@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Build research client
+      - name: Publish research client
         shell: pwsh
-        run: dotnet build src/ChatGptDesktopLocalBridge/ChatGptDesktopLocalBridge.csproj -c Release --disable-build-servers
+        run: dotnet publish src/ChatGptDesktopLocalBridge/ChatGptDesktopLocalBridge.csproj -c Release -r win-x64 --self-contained false -o research-publish --disable-build-servers
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attachment-research-publish
+          path: research-publish/
+          retention-days: 1
