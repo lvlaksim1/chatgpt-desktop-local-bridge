@@ -315,9 +315,9 @@ public sealed class ToolRouter : IDisposable
             }
 
             visibleIndex++;
-            lines.Add(`${visibleIndex}. ${definition.Name}`);
-            lines.Add(`   ${definition.Description}`);
-            lines.Add(`   args: ${definition.ArgsExample}`);
+            lines.Add($"{visibleIndex}. {definition.Name}");
+            lines.Add($"   {definition.Description}");
+            lines.Add($"   args: {definition.ArgsExample}");
             lines.Add(string.Empty);
         }
 
