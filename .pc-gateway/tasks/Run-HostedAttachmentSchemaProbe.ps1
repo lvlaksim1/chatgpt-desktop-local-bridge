@@ -54,6 +54,72 @@ function Invoke-BoundedProcess {
 }
 
 $request=Get-Content -LiteralPath $GatewayRequestPath -Raw -Encoding UTF8|ConvertFrom-Json
+if($null -ne $request.args -and $null -ne $request.args.PSObject.Properties['hosted_run_id']){
+    $candidateRun=[string]$request.args.hosted_run_id
+    if($candidateRun -match '^[0-9]{6,20}
+if([string]::IsNullOrWhiteSpace($requestId)){$requestId='attachment-hosted'}
+
+$installed=Join-Path $env:LOCALAPPDATA 'Programs\ChatGPT Desktop Local Bridge\ChatGptDesktopLocalBridge.exe'
+$root=Join-Path $env:LOCALAPPDATA ('GitHubRunner\attachment-hosted\'+$requestId)
+$artifactDir=Join-Path $root 'artifact'
+$probeResult=Join-Path $root 'probe-result.json'
+$researchExe=Join-Path $artifactDir 'ChatGptDesktopLocalBridge.exe'
+
+try{
+    if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}
+    New-Item -ItemType Directory -Force -Path $artifactDir|Out-Null
+
+    $gh=(Get-Command gh.exe -ErrorAction SilentlyContinue)
+    if($null -eq $gh){throw 'gh_not_found'}
+
+    $args='run download '+$HostedRunId+' --repo '+$HostedRepo+' --name '+$ArtifactName+' --dir "'+$artifactDir+'"'
+    $download=Invoke-BoundedProcess -FilePath ([string]$gh.Source) -Arguments $args -WorkingDirectory $root -TimeoutMs 120000
+
+    if([int]$download.exit_code -ne 0){throw ('artifact_download_failed:'+[string]$download.stderr)}
+
+    Start-Sleep -Seconds $NetworkGapSeconds
+
+    if(-not(Test-Path -LiteralPath $researchExe -PathType Leaf)){throw 'research_exe_missing'}
+
+    Stop-BridgeProcesses
+
+    $oldResultEnv=[Environment]::GetEnvironmentVariable('LOCAL_BRIDGE_ATTACHMENT_RESEARCH_RESULT','Process')
+    [Environment]::SetEnvironmentVariable('LOCAL_BRIDGE_ATTACHMENT_RESEARCH_RESULT',$probeResult,'Process')
+
+    $probeProcess=Start-Process -FilePath $researchExe -PassThru
+
+    $deadline=[DateTime]::UtcNow.AddSeconds(100)
+    while([DateTime]::UtcNow -lt $deadline){
+        if(Test-Path -LiteralPath $probeResult -PathType Leaf){break}
+        if($probeProcess.HasExited){break}
+        Start-Sleep -Milliseconds 500
+    }
+
+    [Environment]::SetEnvironmentVariable('LOCAL_BRIDGE_ATTACHMENT_RESEARCH_RESULT',$oldResultEnv,'Process')
+
+    if(-not(Test-Path -LiteralPath $probeResult -PathType Leaf)){
+        try{if(-not $probeProcess.HasExited){$probeProcess|Stop-Process -Force}}catch{}
+        throw 'probe_result_missing'
+    }
+
+    $probeRaw=Get-Content -LiteralPath $probeResult -Raw -Encoding UTF8
+    $probe=$probeRaw|ConvertFrom-Json
+
+    Stop-BridgeProcesses
+    if(Test-Path -LiteralPath $installed -PathType Leaf){Start-Process -FilePath $installed|Out-Null}
+
+    Write-Result -Status 'evidence' -Code 7 -ErrorText ($probe|ConvertTo-Json -Depth 25 -Compress) -Extra @{hosted_run_id=$HostedRunId;artifact_name=$ArtifactName;normal_app_restarted=(Test-Path -LiteralPath $installed -PathType Leaf)}
+}
+catch{
+    try{
+        [Environment]::SetEnvironmentVariable('LOCAL_BRIDGE_ATTACHMENT_RESEARCH_RESULT',$null,'Process')
+        Stop-BridgeProcesses
+        if(Test-Path -LiteralPath $installed -PathType Leaf){Start-Process -FilePath $installed|Out-Null}
+    }catch{}
+    Write-Result -Status 'fail' -Code 40 -ErrorText $_.Exception.Message
+}
+){$HostedRunId=$candidateRun}
+}
 $requestId=[string]$request.request_id
 if([string]::IsNullOrWhiteSpace($requestId)){$requestId='attachment-hosted'}
 
