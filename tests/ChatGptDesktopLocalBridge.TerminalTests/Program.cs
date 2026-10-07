@@ -58,7 +58,13 @@ cursor = initial.NextCursor;
 
 await terminals.WriteAsync(
     opened.SessionId,
-    "set LOCAL_BRIDGE_TEST_STATE=state-42&cd /d %TEMP%&echo __LB1__%LOCAL_BRIDGE_TEST_STATE%^|%CD%\r");
+    "set LOCAL_BRIDGE_TEST_STATE=state-42\r");
+await terminals.WriteAsync(
+    opened.SessionId,
+    "cd /d %TEMP%\r");
+await terminals.WriteAsync(
+    opened.SessionId,
+    "echo __LB1__%LOCAL_BRIDGE_TEST_STATE%^|%CD%\r");
 
 var first = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB1__");
 cursor = first.Cursor;
