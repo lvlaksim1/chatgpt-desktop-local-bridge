@@ -209,7 +209,7 @@ public sealed class TerminalSessionManager : IDisposable
         private readonly SafeFileHandle _inputWrite;
         private readonly SafeFileHandle _outputRead;
         private readonly SafeFileHandle _outputWrite;
-        private readonly FileStream _inputStream;
+        private readonly StreamWriter _inputWriter;
         private readonly FileStream _outputStream;
         private IntPtr _pseudoConsole;
         private readonly IntPtr _attributeList;
@@ -230,7 +230,7 @@ public sealed class TerminalSessionManager : IDisposable
             SafeFileHandle inputWrite,
             SafeFileHandle outputRead,
             SafeFileHandle outputWrite,
-            FileStream inputStream,
+            StreamWriter inputWriter,
             FileStream outputStream,
             IntPtr pseudoConsole,
             IntPtr attributeList)
@@ -243,7 +243,7 @@ public sealed class TerminalSessionManager : IDisposable
             _inputWrite = inputWrite;
             _outputRead = outputRead;
             _outputWrite = outputWrite;
-            _inputStream = inputStream;
+            _inputWriter = inputWriter;
             _outputStream = outputStream;
             _pseudoConsole = pseudoConsole;
             _attributeList = attributeList;
@@ -284,6 +284,7 @@ public sealed class TerminalSessionManager : IDisposable
             SafeFileHandle? outputRead = null;
             SafeFileHandle? outputWrite = null;
             FileStream? inputStream = null;
+            StreamWriter? inputWriter = null;
             FileStream? outputStream = null;
             WindowsJobObject? job = null;
             Process? process = null;
@@ -371,6 +372,12 @@ public sealed class TerminalSessionManager : IDisposable
                     FileAccess.Write,
                     4096,
                     isAsync: false);
+                inputWriter = new StreamWriter(
+                    inputStream,
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+                {
+                    AutoFlush = true
+                };
                 outputStream = new FileStream(
                     outputRead,
                     FileAccess.Read,
@@ -386,7 +393,7 @@ public sealed class TerminalSessionManager : IDisposable
                     inputWrite,
                     outputRead,
                     outputWrite,
-                    inputStream,
+                    inputWriter,
                     outputStream,
                     pseudoConsole,
                     attributeList);
@@ -425,6 +432,7 @@ public sealed class TerminalSessionManager : IDisposable
 
                 if (!success)
                 {
+                    inputWriter?.Dispose();
                     inputStream?.Dispose();
                     outputStream?.Dispose();
                     inputRead?.Dispose();
@@ -561,8 +569,8 @@ public sealed class TerminalSessionManager : IDisposable
                     }
                 }
 
-                await _inputStream.WriteAsync(bytes, cancellationToken);
-                await _inputStream.FlushAsync(cancellationToken);
+                await _inputWriter.WriteAsync(data.AsMemory(), cancellationToken);
+                await _inputWriter.FlushAsync(cancellationToken);
 
                 return new
                 {
@@ -811,7 +819,7 @@ public sealed class TerminalSessionManager : IDisposable
 
             TryClosePseudoConsole();
 
-            _inputStream.Dispose();
+            _inputWriter.Dispose();
             _outputStream.Dispose();
 
             _inputRead.Dispose();
