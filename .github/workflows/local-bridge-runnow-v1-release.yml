@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BASE_TAG: private-transport-v5-95dd011
+  BASE_TAG: local-bridge-runnow-de8284e
 
 jobs:
   build-release:
@@ -107,4 +107,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-RunNow-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Local Bridge run-now test ($env:TARGET_TAG)" --notes "Test build: server-side ChatGPT task planner is invoked with the native Run Now endpoint, then the returned local action is executed by Local Bridge. Adds encoding-safe first-line copy and a new Local Bridge application icon. Network requests inside the planner are serialized with at least 5 seconds between completed requests."
+          gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-RunNow-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Local Bridge run-now test ($env:TARGET_TAG)" --notes "Update: pressing 'Мост' while the bridge is already active resends the complete current Local Bridge instruction to the model without changing the session. process.run keeps the 120-second default but timeout_ms=0 now means unlimited runtime; the old 15-minute hard ceiling is removed. Network requests inside the planner remain serialized with at least 5 seconds between completed requests."
