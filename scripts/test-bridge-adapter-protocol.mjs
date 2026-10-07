@@ -117,7 +117,7 @@ assert(
 );
 
 let health = window.__localBridge.health();
-assert(health.version === 9, "Expected adapter v9.");
+assert(health.version === 10, "Expected adapter v10.");
 assert(health.lastProtocolDebug?.reason === "request-json-invalid", "Malformed request reason was not request-json-invalid.");
 assert(!posted.some(x => x?.type === "bridge.request" && x?.request?.id === "req-bad"),
   "Malformed request was dispatched.");
