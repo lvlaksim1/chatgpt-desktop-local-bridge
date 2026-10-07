@@ -14,6 +14,7 @@ globalThis.HTMLInputElement = class {};
 
 globalThis.document = {
   readyState: "complete",
+  addEventListener() {},
   querySelector() { return composer; },
   querySelectorAll(selector) {
     if (selector.includes("assistant")) return assistantNodes;
