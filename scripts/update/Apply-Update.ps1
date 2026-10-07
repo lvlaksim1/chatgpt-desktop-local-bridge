@@ -16,7 +16,73 @@ Remove-Item -LiteralPath $successMarker -Force -ErrorAction SilentlyContinue
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D6B9AF8-6D08-44E1-B2F5-8A6341D99165}_is1"
 $updateLogDir = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\logs"
 $updateLogPath = Join-Path $updateLogDir "update-last.log"
+$updateStateDir = Join-Path $env:LOCALAPPDATA "ChatGptDesktopLocalBridge\updates"
+$lastUpdateResultPath = Join-Path $updateStateDir "last-update-result.json"
+$updateHistoryPath = Join-Path $updateStateDir "update-history.jsonl"
 New-Item -ItemType Directory -Path $updateLogDir -Force | Out-Null
+New-Item -ItemType Directory -Path $updateStateDir -Force | Out-Null
+
+function Write-UpdateResult(
+    [string]$Status,
+    [string]$Message,
+    [bool]$RequiresFullSetup) {
+
+    try {
+        $fromTag = "unknown"
+        $toTag = "unknown"
+
+        if ($null -ne $manifest) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$manifest.fromTag)) {
+                $fromTag = [string]$manifest.fromTag
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$manifest.toTag)) {
+                $toTag = [string]$manifest.toTag
+            }
+        }
+
+        $record = [ordered]@{
+            Timestamp = [DateTimeOffset]::Now.ToString("o")
+            Status = $Status
+            FromTag = $fromTag
+            ToTag = $toTag
+            Message = $Message
+            RequiresFullSetup = $RequiresFullSetup
+        }
+
+        $json = $record | ConvertTo-Json -Compress
+        $record | ConvertTo-Json | Set-Content -LiteralPath $lastUpdateResultPath -Encoding UTF8
+        Add-Content -LiteralPath $updateHistoryPath -Value $json -Encoding UTF8
+    }
+    catch {
+        Write-Warning "Could not persist update result: $($_.Exception.Message)"
+    }
+}
+
+trap {
+    $failureMessage = $_.Exception.Message
+    $requiresFullSetup =
+        $failureMessage -match "(?i)base version mismatch|full Setup|release marker|legacy base version"
+
+    Write-UpdateResult -Status "failed" -Message $failureMessage -RequiresFullSetup $requiresFullSetup
+
+    try {
+        Stop-Transcript | Out-Null
+    }
+    catch {
+    }
+
+    if ($env:CHATGPT_LOCAL_BRIDGE_UPDATE_SKIP_RESTART -ne "1" -and
+        (Test-Path -LiteralPath $appExe -PathType Leaf) -and
+        -not (Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
+        try {
+            Start-Process -FilePath $appExe
+        }
+        catch {
+        }
+    }
+
+    exit 50
+}
 
 try {
     Start-Transcript -LiteralPath $updateLogPath -Force | Out-Null
@@ -281,6 +347,7 @@ try {
     Register-UninstallWrapper
 
     Set-Content -LiteralPath $successMarker -Value $manifest.toTag -Encoding ASCII
+    Write-UpdateResult -Status "success" -Message "Delta-update applied and verified successfully." -RequiresFullSetup $false
     Write-Host "Update complete: $($manifest.fromTag) -> $($manifest.toTag)"
 }
 catch {

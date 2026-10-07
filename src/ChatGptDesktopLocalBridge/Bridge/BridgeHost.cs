@@ -3,7 +3,11 @@ using System.Text.Json;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
 
-public sealed class BridgeHost
+public sealed record BridgeStopResult(
+    bool CancellationRequested,
+    int StoppedProcesses);
+
+public sealed class BridgeHost : IDisposable
 {
     private const string RequestStart = "[[LOCAL_BRIDGE_REQUEST_V1]]";
     private const string RequestEnd = "[[/LOCAL_BRIDGE_REQUEST_V1]]";
@@ -13,20 +17,30 @@ public sealed class BridgeHost
     private readonly PermissionPolicy _policy;
     private readonly Func<string, Task<bool>> _sendToChat;
     private readonly Action<string> _status;
-    private readonly ToolRouter _router = new();
+    private readonly Func<BridgePermissionPrompt, Task<bool>>? _confirmPermission;
+    private readonly Action<BridgeActivityEvent>? _activity;
+    private readonly ToolRouter _router;
     private readonly DurableRequestLedger _requestLedger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _activeExecutionSync = new();
+    private CancellationTokenSource? _activeExecutionCancellation;
     private readonly string _logDirectory;
 
     public BridgeHost(
         PermissionPolicy policy,
         Func<string, Task<bool>> sendToChat,
         Action<string> status,
-        string? sessionId = null)
+        string? sessionId = null,
+        Func<BridgePermissionPrompt, Task<bool>>? confirmPermission = null,
+        Action<BridgeActivityEvent>? activity = null,
+        Func<string, CancellationToken, Task<BridgePlannedAction>>? localIntentPlanner = null)
     {
         _policy = policy;
         _sendToChat = sendToChat;
         _status = status;
+        _confirmPermission = confirmPermission;
+        _activity = activity;
+        _router = new ToolRouter(localIntentPlanner);
 
         if (sessionId is not null && !IsValidSessionId(sessionId))
         {
@@ -132,6 +146,7 @@ public sealed class BridgeHost
             string.Empty,
             "Rules:",
             "- Use the bridge only when local data/action is needed.",
+            "- For ordinary natural-language requests that require action on the local computer, prefer local.intent and pass the user's instruction verbatim in args.instruction. Use low-level fs.* tools directly only for diagnostics or when the user explicitly asks for a specific low-level operation.",
             "- Never invent a LOCAL_BRIDGE_RESULT.",
             "- In bridge JSON, write Windows paths with forward slashes, for example C:/Windows/win.ini. Do not use backslashes in JSON path strings.",
             "- One request per assistant turn.",
@@ -172,8 +187,18 @@ public sealed class BridgeHost
                 return;
             }
 
+            var activityArgs = CloneArgs(request.Args);
+            Emit(request, "received", activityArgs);
+
             if (!string.Equals(request.Session, SessionId, StringComparison.Ordinal))
             {
+                Emit(
+                    request,
+                    "failed",
+                    activityArgs,
+                    ok: false,
+                    errorCode: "invalid_session",
+                    errorMessage: "Invalid bridge session.");
                 _status("Rejected bridge request with an invalid session.");
                 return;
             }
@@ -182,6 +207,13 @@ public sealed class BridgeHost
 
             if (reservation.Status == DurableReservationStatus.Conflict)
             {
+                Emit(
+                    request,
+                    "failed",
+                    activityArgs,
+                    ok: false,
+                    errorCode: "request_id_conflict",
+                    errorMessage: "The same request id was reused with a different payload.");
                 _status($"Rejected conflicting reuse of request id {request.Id}.");
                 await TrySendProtocolErrorAsync(
                     request,
@@ -245,6 +277,14 @@ public sealed class BridgeHost
 
             if (decision == PermissionDecision.Deny)
             {
+                Emit(
+                    request,
+                    "failed",
+                    activityArgs,
+                    ok: false,
+                    errorCode: "permission_denied",
+                    errorMessage: $"Capability {capability} is denied.");
+
                 var envelope = new BridgeResult(
                     SessionId,
                     request.Id,
@@ -266,23 +306,54 @@ public sealed class BridgeHost
 
             if (decision == PermissionDecision.Ask)
             {
-                var envelope = new BridgeResult(
-                    SessionId,
-                    request.Id,
-                    false,
-                    Error: new BridgeError(
-                        "permission_requires_confirmation",
-                        $"Capability {capability} is configured as ASK. Interactive confirmation UI is the next implementation stage."));
+                var approved = false;
 
-                await CompleteAndDeliverAsync(
-                    request,
-                    ledgerRecord,
-                    envelope,
-                    false,
-                    "permission_requires_confirmation",
-                    0,
-                    $"{request.Tool} requires interactive confirmation.");
-                return;
+                if (_confirmPermission is not null)
+                {
+                    try
+                    {
+                        approved = await _confirmPermission(
+                            new BridgePermissionPrompt(
+                                request.Tool,
+                                capability,
+                                ToolRouter.GetPermissionSummary(request.Tool, request.Args)));
+                    }
+                    catch (Exception ex)
+                    {
+                        _status($"Permission confirmation failed for {request.Id}: {ex.Message}");
+                    }
+                }
+
+                if (!approved)
+                {
+                    Emit(
+                        request,
+                        "failed",
+                        activityArgs,
+                        ok: false,
+                        errorCode: "permission_not_approved",
+                        errorMessage: $"Capability {capability} was not approved.");
+
+                    var envelope = new BridgeResult(
+                        SessionId,
+                        request.Id,
+                        false,
+                        Error: new BridgeError(
+                            "permission_not_approved",
+                            $"Capability {capability} requires confirmation and was not approved."));
+
+                    await CompleteAndDeliverAsync(
+                        request,
+                        ledgerRecord,
+                        envelope,
+                        false,
+                        "permission_not_approved",
+                        0,
+                        $"{request.Tool} was not approved.");
+                    return;
+                }
+
+                _status($"Permission approved for {request.Tool} ({request.Id}).");
             }
 
             ledgerRecord = await _requestLedger.MarkExecutingAsync(ledgerRecord);
@@ -293,15 +364,32 @@ public sealed class BridgeHost
             string? errorCode;
             string deliveredStatus;
 
+            using var executionCancellation = new CancellationTokenSource();
+            lock (_activeExecutionSync)
+            {
+                _activeExecutionCancellation = executionCancellation;
+            }
+
             try
             {
+                Emit(request, "running", activityArgs);
                 _status($"Running {request.Tool} ({request.Id})…");
-                var result = await _router.ExecuteAsync(request.Tool, request.Args);
+                var result = await _router.ExecuteAsync(
+                    request.Tool,
+                    request.Args,
+                    executionCancellation.Token);
                 stopwatch.Stop();
 
                 ok = true;
                 errorCode = null;
                 resultEnvelope = new BridgeResult(SessionId, request.Id, true, result);
+                Emit(
+                    request,
+                    "completed",
+                    activityArgs,
+                    ok: true,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    result: JsonSerializer.SerializeToElement(result));
                 deliveredStatus =
                     $"{request.Tool} completed in {stopwatch.ElapsedMilliseconds} ms.";
             }
@@ -316,7 +404,38 @@ public sealed class BridgeHost
                     request.Id,
                     false,
                     Error: new BridgeError(ex.Code, ex.Message));
+                Emit(
+                    request,
+                    "failed",
+                    activityArgs,
+                    ok: false,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    errorCode: ex.Code,
+                    errorMessage: ex.Message);
                 deliveredStatus = $"{request.Tool} failed: {ex.Message}";
+            }
+            catch (OperationCanceledException)
+            {
+                stopwatch.Stop();
+
+                ok = false;
+                errorCode = "tool_cancelled";
+                resultEnvelope = new BridgeResult(
+                    SessionId,
+                    request.Id,
+                    false,
+                    Error: new BridgeError(
+                        "tool_cancelled",
+                        "The local tool execution was stopped."));
+                Emit(
+                    request,
+                    "failed",
+                    activityArgs,
+                    ok: false,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    errorCode: "tool_cancelled",
+                    errorMessage: "The local tool execution was stopped.");
+                deliveredStatus = $"{request.Tool} was stopped.";
             }
             catch (Exception ex)
             {
@@ -329,7 +448,25 @@ public sealed class BridgeHost
                     request.Id,
                     false,
                     Error: new BridgeError("tool_error", ex.Message));
+                Emit(
+                    request,
+                    "failed",
+                    activityArgs,
+                    ok: false,
+                    elapsedMs: stopwatch.ElapsedMilliseconds,
+                    errorCode: "tool_error",
+                    errorMessage: ex.Message);
                 deliveredStatus = $"{request.Tool} failed: {ex.Message}";
+            }
+            finally
+            {
+                lock (_activeExecutionSync)
+                {
+                    if (ReferenceEquals(_activeExecutionCancellation, executionCancellation))
+                    {
+                        _activeExecutionCancellation = null;
+                    }
+                }
             }
 
             await CompleteAndDeliverAsync(
@@ -380,6 +517,14 @@ public sealed class BridgeHost
         }
         catch (Exception ex)
         {
+            Emit(
+                request,
+                "delivery_failed",
+                CloneArgs(request.Args),
+                ok: false,
+                elapsedMs: elapsedMs,
+                errorCode: "result_delivery_failed",
+                errorMessage: ex.Message);
             _status(
                 $"{request.Tool} completed locally, but result delivery is pending recovery: {ex.Message}");
             return;
@@ -441,6 +586,71 @@ public sealed class BridgeHost
         {
             throw new InvalidOperationException("Could not inject bridge result into the ChatGPT composer.");
         }
+    }
+
+    public BridgeStopResult StopActiveWork()
+    {
+        var cancellationRequested = false;
+        lock (_activeExecutionSync)
+        {
+            if (_activeExecutionCancellation is not null &&
+                !_activeExecutionCancellation.IsCancellationRequested)
+            {
+                _activeExecutionCancellation.Cancel();
+                cancellationRequested = true;
+            }
+        }
+
+        var stoppedProcesses = _router.StopActiveProcesses();
+        return new BridgeStopResult(cancellationRequested, stoppedProcesses);
+    }
+
+    public void Dispose()
+    {
+        StopActiveWork();
+        _router.Dispose();
+
+        lock (_activeExecutionSync)
+        {
+            _activeExecutionCancellation?.Dispose();
+            _activeExecutionCancellation = null;
+        }
+
+        _gate.Dispose();
+    }
+
+    private void Emit(
+        BridgeRequest request,
+        string phase,
+        JsonElement args,
+        bool? ok = null,
+        long? elapsedMs = null,
+        JsonElement? result = null,
+        string? errorCode = null,
+        string? errorMessage = null)
+    {
+        _activity?.Invoke(
+            new BridgeActivityEvent(
+                DateTimeOffset.Now,
+                phase,
+                request.Id,
+                request.Tool,
+                args,
+                ok,
+                elapsedMs,
+                result,
+                errorCode,
+                errorMessage));
+    }
+
+    private static JsonElement CloneArgs(JsonElement args)
+    {
+        if (args.ValueKind == JsonValueKind.Undefined)
+        {
+            return JsonSerializer.SerializeToElement(new { });
+        }
+
+        return args.Clone();
     }
 
     private static string GetDataRoot()
