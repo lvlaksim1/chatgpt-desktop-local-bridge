@@ -374,13 +374,23 @@ internal sealed class WindowsJobObject : IDisposable
 
     public void Assign(Process process)
     {
+        Assign(process.Handle);
+    }
+
+    public void Assign(IntPtr processHandle)
+    {
         ThrowIfDisposed();
 
-        if (!AssignProcessToJobObject(_handle, process.Handle))
+        if (processHandle == IntPtr.Zero)
+        {
+            throw new ArgumentException("Process handle must not be null.", nameof(processHandle));
+        }
+
+        if (!AssignProcessToJobObject(_handle, processHandle))
         {
             throw new Win32Exception(
                 Marshal.GetLastWin32Error(),
-                $"AssignProcessToJobObject failed for process {process.Id}.");
+                "AssignProcessToJobObject failed.");
         }
     }
 
