@@ -49,7 +49,7 @@ try{
  return info;
 })()
 '@
- if(-not [bool]$nav.clicked){throw ('scheduled_navigation_control_not_found:'+ [string]$nav.reason)}
+ if(-not [bool]$nav.clicked){$hasScheduled=([string]$before.body) -match 'Заплан';throw ('scheduled_navigation_control_not_found:'+ [string]$nav.reason + ':body_has_scheduled=' + [string]$hasScheduled + ':url=' + [string]$before.url)}
  Start-Sleep -Seconds 15
  $obs=Eval @'
 (()=>{const f=Array.from(document.querySelectorAll('input[type="file"]')).map((e,i)=>({i,accept:e.accept||null,multiple:!!e.multiple,aria:e.getAttribute('aria-label'),testid:e.getAttribute('data-testid')}));const b=Array.from(document.querySelectorAll('button')).slice(0,400).map((e,i)=>({i,text:String(e.innerText||'').trim().slice(0,140),aria:e.getAttribute('aria-label'),title:e.getAttribute('title'),testid:e.getAttribute('data-testid')}));const a=Array.from(document.querySelectorAll('a')).slice(0,400).map((e,i)=>({i,text:String(e.innerText||'').trim().slice(0,140),href:e.href||null,aria:e.getAttribute('aria-label')}));return{url:location.href,title:document.title,ready:document.readyState,file_inputs:f,buttons:b,links:a,body_text:String(document.body&&document.body.innerText||'').slice(0,20000)}})()
