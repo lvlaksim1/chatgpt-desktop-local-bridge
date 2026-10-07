@@ -219,6 +219,11 @@ public partial class MainWindow
                         ShowSelectedTab();
                         SetStatus("ChatGPT готов");
 
+                        if (await TryRunAttachmentTransportResearchProbeAsync(tab))
+                        {
+                            return;
+                        }
+
                         if (_settings.AutoInitializeBridge)
                         {
                             ScheduleBridgeStart(
