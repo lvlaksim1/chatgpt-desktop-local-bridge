@@ -387,8 +387,22 @@ public partial class MainWindow
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (await SendTextToChatAsync(tab, bootstrap))
+            var outcome = await SendTextToChatAttemptAsync(tab, bootstrap);
+            if (outcome == ChatSendOutcome.Confirmed)
             {
+                return true;
+            }
+
+            if (outcome == ChatSendOutcome.UncertainAfterSubmit)
+            {
+                if (ReferenceEquals(ActiveTab, tab))
+                {
+                    SetStatus(
+                        "Bootstrap: отправка началась, но подтверждение сообщения не получено; повтор не выполняю, ожидаю READY.");
+                }
+
+                // A non-idempotent composer submit may already have succeeded.
+                // Treat it as possibly sent and let READY become the proof.
                 return true;
             }
 
@@ -533,7 +547,7 @@ public partial class MainWindow
         var stop = host.StopActiveWork();
         SetStatus(!stop.CancellationRequested && stop.StoppedProcesses == 0
             ? "Сейчас нет выполняющегося локального действия."
-            : $"STOP отправлен · отмена={(stop.CancellationRequested ? "да" : "нет")} · процессов={stop.StoppedProcesses}");
+            : $"STOP отправлен · отмена={(stop.CancellationRequested ? "да" : "нет")} · процессов/терминалов={stop.StoppedProcesses}");
     }
 
     private async Task<bool> HasBridgeResultInConversationAsync(
@@ -736,15 +750,29 @@ public partial class MainWindow
             : value;
     }
 
+    private enum ChatSendOutcome
+    {
+        Confirmed,
+        RejectedBeforeSubmit,
+        UncertainAfterSubmit
+    }
+
     private async Task<bool> SendTextToChatAsync(
+        ChatTab tab,
+        string text)
+        => await SendTextToChatAttemptAsync(tab, text) ==
+           ChatSendOutcome.Confirmed;
+
+    private async Task<ChatSendOutcome> SendTextToChatAttemptAsync(
         ChatTab tab,
         string text)
     {
         var browser = tab.Browser;
+        var submissionStarted = false;
 
         if (browser.CoreWebView2 is null)
         {
-            return false;
+            return ChatSendOutcome.RejectedBeforeSubmit;
         }
 
         try
@@ -759,7 +787,7 @@ public partial class MainWindow
                 {
                     SetStatus("Ошибка отправки: send-receipt-unavailable");
                 }
-                return false;
+                return ChatSendOutcome.RejectedBeforeSubmit;
             }
 
             using var baselineDocument = JsonDocument.Parse(baselineRaw);
@@ -771,7 +799,7 @@ public partial class MainWindow
                 {
                     SetStatus("Ошибка отправки: send-receipt-invalid");
                 }
-                return false;
+                return ChatSendOutcome.RejectedBeforeSubmit;
             }
 
             var preflightRaw = await browser.ExecuteScriptAsync(
@@ -797,7 +825,7 @@ public partial class MainWindow
                 {
                     SetStatus($"Ошибка отправки: {reason}");
                 }
-                return false;
+                return ChatSendOutcome.RejectedBeforeSubmit;
             }
 
             var insertParameters = JsonSerializer.Serialize(new { text });
@@ -841,7 +869,7 @@ public partial class MainWindow
                 {
                     SetStatus("Ошибка отправки: native-input-not-accepted");
                 }
-                return false;
+                return ChatSendOutcome.RejectedBeforeSubmit;
             }
 
             var submitRaw = await browser.ExecuteScriptAsync(
@@ -870,9 +898,10 @@ public partial class MainWindow
                 {
                     SetStatus($"Ошибка отправки: {reason}");
                 }
-                return false;
+                return ChatSendOutcome.RejectedBeforeSubmit;
             }
 
+            submissionStarted = true;
             var sendDeadline = DateTime.UtcNow.AddSeconds(30);
 
             while (DateTime.UtcNow < sendDeadline)
@@ -894,7 +923,7 @@ public partial class MainWindow
 
                     if (confirmed)
                     {
-                        return true;
+                        return ChatSendOutcome.Confirmed;
                     }
                 }
 
@@ -903,10 +932,11 @@ public partial class MainWindow
 
             if (ReferenceEquals(ActiveTab, tab))
             {
-                SetStatus("Ошибка отправки: native-submit-not-confirmed");
+                SetStatus(
+                    "Отправка началась, но появление нового сообщения не подтверждено; автоматический повтор заблокирован.");
             }
 
-            return false;
+            return ChatSendOutcome.UncertainAfterSubmit;
         }
         catch (Exception ex)
         {
@@ -915,7 +945,9 @@ public partial class MainWindow
                 SetStatus($"Ошибка отправки: {ex.Message}");
             }
 
-            return false;
+            return submissionStarted
+                ? ChatSendOutcome.UncertainAfterSubmit
+                : ChatSendOutcome.RejectedBeforeSubmit;
         }
     }
 

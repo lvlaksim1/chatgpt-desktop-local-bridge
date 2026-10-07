@@ -7,22 +7,18 @@
     "repo.read": "AUTO",
     "repo.checkpoint": "AUTO",
     "mcp.read": "AUTO",
-    "terminal.read": "AUTO",
-
     "fs.write_text": "ASK",
     "process.start": "ASK",
     "terminal.open": "ASK",
-    "terminal.write": "ASK",
-    "terminal.close": "ASK",
     "repo.verify": "ASK",
     "mcp.call": "ASK",
     "fs.delete": "ASK",
     "process.kill": "ASK",
     "registry.write": "ASK",
     "admin.execute": "ASK",
-
     "excel.read": "AUTO",
     "excel.write": "ASK",
-    "shell.run": "ASK"
+    "shell.run": "ASK",
+    "terminal.io": "AUTO"
   }
 }

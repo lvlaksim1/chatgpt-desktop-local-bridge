@@ -9,7 +9,8 @@ public sealed record BridgeToolDefinition(
     string Description,
     string ArgsExample,
     bool IsMutating = false,
-    bool IsLongRunning = false);
+    bool IsLongRunning = false,
+    bool ExposeInBootstrap = true);
 
 public sealed record BridgePlannedAction(
     string Tool,
@@ -52,7 +53,8 @@ public sealed class ToolRouter : IDisposable
                 "Experimental fallback planner for a natural-language local-computer request. Ordinary bridge work should use the direct local tools instead.",
                 "{ \"instruction\": \"Read the first line of C:/source.txt and write it to C:/result.txt\" }",
                 IsMutating: true,
-                IsLongRunning: true),
+                IsLongRunning: true,
+                ExposeInBootstrap: false),
             new(
                 "fs.copy_first_line",
                 "fs.write_text",
@@ -93,34 +95,34 @@ public sealed class ToolRouter : IDisposable
                 IsLongRunning: true),
             new(
                 "terminal.write",
-                "terminal.write",
+                "terminal.io",
                 "Write UTF-8 input to a persistent terminal exactly as typed. End a command with \\r.",
                 "{ \"session_id\": \"<terminal-id>\", \"data\": \"git status\\r\" }",
                 IsMutating: true),
             new(
                 "terminal.read",
-                "terminal.read",
+                "terminal.io",
                 "Read terminal output using an absolute cursor so retries do not create gaps or duplicate bytes.",
                 "{ \"session_id\": \"<terminal-id>\", \"cursor\": 0, \"max_bytes\": 65536, \"wait_ms\": 1000 }"),
             new(
                 "terminal.status",
-                "terminal.read",
+                "terminal.io",
                 "Return running state, exit code, dimensions and output cursor range for one terminal.",
                 "{ \"session_id\": \"<terminal-id>\" }"),
             new(
                 "terminal.list",
-                "terminal.read",
+                "terminal.io",
                 "List terminal sessions known to this Local Bridge process.",
                 "{}"),
             new(
                 "terminal.resize",
-                "terminal.write",
+                "terminal.io",
                 "Resize a live ConPTY terminal.",
                 "{ \"session_id\": \"<terminal-id>\", \"cols\": 120, \"rows\": 30 }",
                 IsMutating: true),
             new(
                 "terminal.close",
-                "terminal.close",
+                "terminal.io",
                 "Close a persistent terminal and terminate its contained process tree.",
                 "{ \"session_id\": \"<terminal-id>\", \"force\": false }",
                 IsMutating: true),
@@ -304,12 +306,18 @@ public sealed class ToolRouter : IDisposable
     {
         var lines = new List<string>();
 
-        for (var index = 0; index < ToolDefinitions.Count; index++)
+        var visibleIndex = 0;
+        foreach (var definition in ToolDefinitions)
         {
-            var definition = ToolDefinitions[index];
-            lines.Add($"{index + 1}. {definition.Name}");
-            lines.Add($"   {definition.Description}");
-            lines.Add($"   args: {definition.ArgsExample}");
+            if (!definition.ExposeInBootstrap)
+            {
+                continue;
+            }
+
+            visibleIndex++;
+            lines.Add(`${visibleIndex}. ${definition.Name}`);
+            lines.Add(`   ${definition.Description}`);
+            lines.Add(`   args: ${definition.ArgsExample}`);
             lines.Add(string.Empty);
         }
 
