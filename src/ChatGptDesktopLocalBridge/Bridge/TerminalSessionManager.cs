@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.IO.Pipes;
 using Microsoft.Win32.SafeHandles;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
@@ -249,8 +248,8 @@ public sealed class TerminalSessionManager : IDisposable
         private readonly SemaphoreSlim _writeGate = new(1, 1);
         private readonly List<byte> _ring = new(RingBytes);
         private readonly CancellationTokenSource _readerCancellation = new();
-        private readonly AnonymousPipeClientStream _input;
-        private readonly AnonymousPipeClientStream _output;
+        private readonly FileStream _input;
+        private readonly FileStream _output;
         private readonly Process _process;
         private readonly WindowsJobObject _job;
         private readonly Task _readerTask;
@@ -258,10 +257,8 @@ public sealed class TerminalSessionManager : IDisposable
             NewOutputSignal();
 
         private IntPtr _pseudoConsole;
-        private IntPtr _inputPseudoSide;
         private IntPtr _inputHostSide;
         private IntPtr _outputHostSide;
-        private IntPtr _outputPseudoSide;
         private long _baseCursor;
         private bool _closed;
         private int _columns;
@@ -273,10 +270,8 @@ public sealed class TerminalSessionManager : IDisposable
             string sessionId,
             TerminalOpenSpec spec,
             IntPtr pseudoConsole,
-            IntPtr inputPseudoSide,
             IntPtr inputHostSide,
             IntPtr outputHostSide,
-            IntPtr outputPseudoSide,
             Process process,
             WindowsJobObject job)
         {
@@ -289,19 +284,21 @@ public sealed class TerminalSessionManager : IDisposable
             _columns = spec.Columns;
             _rows = spec.Rows;
             _pseudoConsole = pseudoConsole;
-            _inputPseudoSide = inputPseudoSide;
             _inputHostSide = inputHostSide;
             _outputHostSide = outputHostSide;
-            _outputPseudoSide = outputPseudoSide;
             _process = process;
             _job = job;
 
-            _input = new AnonymousPipeClientStream(
-                PipeDirection.Out,
-                new SafePipeHandle(_inputHostSide, ownsHandle: false));
-            _output = new AnonymousPipeClientStream(
-                PipeDirection.In,
-                new SafePipeHandle(_outputHostSide, ownsHandle: false));
+            _input = new FileStream(
+                new SafeFileHandle(_inputHostSide, ownsHandle: false),
+                FileAccess.Write,
+                bufferSize: 4096,
+                isAsync: true);
+            _output = new FileStream(
+                new SafeFileHandle(_outputHostSide, ownsHandle: false),
+                FileAccess.Read,
+                bufferSize: 4096,
+                isAsync: true);
 
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) =>
@@ -385,27 +382,10 @@ public sealed class TerminalSessionManager : IDisposable
 
             try
             {
-                if (!Native.CreatePipe(
-                        out inputPseudoSide,
-                        out inputHostSide,
-                        IntPtr.Zero,
-                        0))
-                {
-                    throw new Win32Exception(
-                        Marshal.GetLastWin32Error(),
-                        "CreatePipe for terminal input failed.");
-                }
-
-                if (!Native.CreatePipe(
-                        out outputHostSide,
-                        out outputPseudoSide,
-                        IntPtr.Zero,
-                        0))
-                {
-                    throw new Win32Exception(
-                        Marshal.GetLastWin32Error(),
-                        "CreatePipe for terminal output failed.");
-                }
+                (inputPseudoSide, inputHostSide) =
+                    CreateConPtyPipe(callerReads: false);
+                (outputPseudoSide, outputHostSide) =
+                    CreateConPtyPipe(callerReads: true);
 
                 var hr = Native.CreatePseudoConsole(
                     new Native.Coord((short)spec.Columns, (short)spec.Rows),
@@ -474,7 +454,11 @@ public sealed class TerminalSessionManager : IDisposable
                 {
                     StartupInfo = new Native.StartupInfo
                     {
-                        cb = Marshal.SizeOf<Native.StartupInfoEx>()
+                        cb = Marshal.SizeOf<Native.StartupInfoEx>(),
+                        dwFlags = Native.StartfUseStdHandles,
+                        hStdInput = IntPtr.Zero,
+                        hStdOutput = IntPtr.Zero,
+                        hStdError = IntPtr.Zero
                     },
                     lpAttributeList = attributeList
                 };
@@ -507,15 +491,18 @@ public sealed class TerminalSessionManager : IDisposable
                 processHandle = processInfo.hProcess;
                 threadHandle = processInfo.hThread;
 
+                // CreateProcessW has completed the ConHost attachment. The local copies
+                // of the synchronous ConPTY-facing pipe ends are no longer needed.
+                CloseRawHandle(ref inputPseudoSide);
+                CloseRawHandle(ref outputPseudoSide);
+
                 var process = Process.GetProcessById((int)processInfo.dwProcessId);
                 var session = new TerminalSession(
                     sessionId,
                     spec,
                     pseudoConsole,
-                    inputPseudoSide,
                     inputHostSide,
                     outputHostSide,
-                    outputPseudoSide,
                     process,
                     job);
 
@@ -523,10 +510,8 @@ public sealed class TerminalSessionManager : IDisposable
                 // the suspended shell is allowed to execute. This guarantees that
                 // its input writer and output reader already exist on first instruction.
                 pseudoConsole = IntPtr.Zero;
-                inputPseudoSide = IntPtr.Zero;
                 inputHostSide = IntPtr.Zero;
                 outputHostSide = IntPtr.Zero;
-                outputPseudoSide = IntPtr.Zero;
                 job = null;
 
                 try
@@ -901,10 +886,8 @@ public sealed class TerminalSessionManager : IDisposable
                     _pseudoConsole = IntPtr.Zero;
                 }
 
-                CloseRawHandle(ref _inputPseudoSide);
                 CloseRawHandle(ref _inputHostSide);
                 CloseRawHandle(ref _outputHostSide);
-                CloseRawHandle(ref _outputPseudoSide);
             }
 
             _readerCancellation.Dispose();
@@ -1016,6 +999,58 @@ public sealed class TerminalSessionManager : IDisposable
             => new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
+    private static (IntPtr PtySide, IntPtr CallerSide) CreateConPtyPipe(
+        bool callerReads)
+    {
+        var pipeName = @"\\.\pipe\ChatGptDesktopLocalBridge-ConPTY-" +
+                       Guid.NewGuid().ToString("N");
+
+        var serverAccess = callerReads
+            ? Native.PipeAccessOutbound
+            : Native.PipeAccessInbound;
+
+        var clientAccess = callerReads
+            ? Native.GenericRead
+            : Native.GenericWrite;
+
+        var ptySide = Native.CreateNamedPipe(
+            pipeName,
+            serverAccess,
+            Native.PipeTypeByte | Native.PipeReadModeByte | Native.PipeWait,
+            1,
+            4096,
+            4096,
+            0,
+            IntPtr.Zero);
+
+        if (ptySide == IntPtr.Zero || ptySide == new IntPtr(-1))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "CreateNamedPipeW failed for ConPTY.");
+        }
+
+        var callerSide = Native.CreateFile(
+            pipeName,
+            clientAccess,
+            0,
+            IntPtr.Zero,
+            Native.OpenExisting,
+            Native.FileAttributeNormal | Native.FileFlagOverlapped,
+            IntPtr.Zero);
+
+        if (callerSide == IntPtr.Zero || callerSide == new IntPtr(-1))
+        {
+            var error = Marshal.GetLastWin32Error();
+            Native.CloseHandle(ptySide);
+            throw new Win32Exception(
+                error,
+                "CreateFileW failed for ConPTY caller endpoint.");
+        }
+
+        return (ptySide, callerSide);
+    }
+
     private static string BuildCommandLine(
         string file,
         IReadOnlyList<string> arguments)
@@ -1081,6 +1116,17 @@ public sealed class TerminalSessionManager : IDisposable
         public const uint ExtendedStartupInfoPresent = 0x00080000;
         public const uint CreateUnicodeEnvironment = 0x00000400;
         public const uint CreateSuspended = 0x00000004;
+        public const uint StartfUseStdHandles = 0x00000100;
+        public const uint FileFlagOverlapped = 0x40000000;
+        public const uint FileAttributeNormal = 0x00000080;
+        public const uint PipeAccessInbound = 0x00000001;
+        public const uint PipeAccessOutbound = 0x00000002;
+        public const uint PipeTypeByte = 0x00000000;
+        public const uint PipeReadModeByte = 0x00000000;
+        public const uint PipeWait = 0x00000000;
+        public const uint GenericRead = 0x80000000;
+        public const uint GenericWrite = 0x40000000;
+        public const uint OpenExisting = 3;
         public const int ProcThreadAttributePseudoConsole = 0x00020016;
         public const int ProcThreadAttributeJobList = 0x0002000D;
 
@@ -1130,13 +1176,34 @@ public sealed class TerminalSessionManager : IDisposable
             public uint dwThreadId;
         }
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool CreatePipe(
-            out IntPtr hReadPipe,
-            out IntPtr hWritePipe,
-            IntPtr lpPipeAttributes,
-            uint nSize);
+        [DllImport(
+            "kernel32.dll",
+            CharSet = CharSet.Unicode,
+            SetLastError = true,
+            EntryPoint = "CreateNamedPipeW")]
+        public static extern IntPtr CreateNamedPipe(
+            string lpName,
+            uint dwOpenMode,
+            uint dwPipeMode,
+            uint nMaxInstances,
+            uint nOutBufferSize,
+            uint nInBufferSize,
+            uint nDefaultTimeOut,
+            IntPtr lpSecurityAttributes);
+
+        [DllImport(
+            "kernel32.dll",
+            CharSet = CharSet.Unicode,
+            SetLastError = true,
+            EntryPoint = "CreateFileW")]
+        public static extern IntPtr CreateFile(
+            string lpFileName,
+            uint dwDesiredAccess,
+            uint dwShareMode,
+            IntPtr lpSecurityAttributes,
+            uint dwCreationDisposition,
+            uint dwFlagsAndAttributes,
+            IntPtr hTemplateFile);
 
         [DllImport("kernel32.dll", SetLastError = false)]
         public static extern int CreatePseudoConsole(
