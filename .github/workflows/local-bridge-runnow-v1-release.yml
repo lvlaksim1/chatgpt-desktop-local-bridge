@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BASE_TAG: local-bridge-runnow-de8284e
+  BASE_TAG: local-bridge-runnow-41aa0f6
 
 jobs:
   build-release:
