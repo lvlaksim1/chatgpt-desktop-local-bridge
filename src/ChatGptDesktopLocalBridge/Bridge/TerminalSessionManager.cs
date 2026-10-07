@@ -378,8 +378,10 @@ public sealed class TerminalSessionManager : IDisposable
             IntPtr outputPseudoSide = IntPtr.Zero;
             IntPtr pseudoConsole = IntPtr.Zero;
             IntPtr attributeList = IntPtr.Zero;
+            IntPtr jobList = IntPtr.Zero;
             IntPtr processHandle = IntPtr.Zero;
             IntPtr threadHandle = IntPtr.Zero;
+            WindowsJobObject? job = null;
 
             try
             {
@@ -417,17 +419,19 @@ public sealed class TerminalSessionManager : IDisposable
                     Marshal.ThrowExceptionForHR(hr);
                 }
 
+                job = WindowsJobObject.CreateKillOnClose();
+
                 var attributeListSize = IntPtr.Zero;
                 _ = Native.InitializeProcThreadAttributeList(
                     IntPtr.Zero,
-                    1,
+                    2,
                     0,
                     ref attributeListSize);
 
                 attributeList = Marshal.AllocHGlobal(attributeListSize);
                 if (!Native.InitializeProcThreadAttributeList(
                         attributeList,
-                        1,
+                        2,
                         0,
                         ref attributeListSize))
                 {
@@ -448,6 +452,22 @@ public sealed class TerminalSessionManager : IDisposable
                     throw new Win32Exception(
                         Marshal.GetLastWin32Error(),
                         "UpdateProcThreadAttribute for ConPTY failed.");
+                }
+
+                jobList = Marshal.AllocHGlobal(IntPtr.Size);
+                Marshal.WriteIntPtr(jobList, job.Handle);
+                if (!Native.UpdateProcThreadAttribute(
+                        attributeList,
+                        0,
+                        (IntPtr)Native.ProcThreadAttributeJobList,
+                        jobList,
+                        (IntPtr)IntPtr.Size,
+                        IntPtr.Zero,
+                        IntPtr.Zero))
+                {
+                    throw new Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "UpdateProcThreadAttribute for Job Object failed.");
                 }
 
                 var startup = new Native.StartupInfoEx
@@ -488,42 +508,6 @@ public sealed class TerminalSessionManager : IDisposable
                 threadHandle = processInfo.hThread;
 
                 var process = Process.GetProcessById((int)processInfo.dwProcessId);
-                WindowsJobObject? job = null;
-                try
-                {
-                    job = WindowsJobObject.CreateKillOnClose();
-                    job.Assign(process);
-
-                    var resumeResult = Native.ResumeThread(threadHandle);
-                    if (resumeResult == uint.MaxValue)
-                    {
-                        throw new Win32Exception(
-                            Marshal.GetLastWin32Error(),
-                            "ResumeThread failed for terminal process.");
-                    }
-                }
-                catch
-                {
-                    try
-                    {
-                        job?.Terminate(1);
-                    }
-                    catch
-                    {
-                        try
-                        {
-                            process.Kill(entireProcessTree: true);
-                        }
-                        catch
-                        {
-                        }
-                    }
-
-                    process.Dispose();
-                    job?.Dispose();
-                    throw;
-                }
-
                 var session = new TerminalSession(
                     sessionId,
                     spec,
@@ -535,12 +519,31 @@ public sealed class TerminalSessionManager : IDisposable
                     process,
                     job);
 
-                // Ownership transferred to the TerminalSession.
+                // Transfer ConPTY pipes and Job Object to the live session before
+                // the suspended shell is allowed to execute. This guarantees that
+                // its input writer and output reader already exist on first instruction.
                 pseudoConsole = IntPtr.Zero;
                 inputPseudoSide = IntPtr.Zero;
                 inputHostSide = IntPtr.Zero;
                 outputHostSide = IntPtr.Zero;
                 outputPseudoSide = IntPtr.Zero;
+                job = null;
+
+                try
+                {
+                    var resumeResult = Native.ResumeThread(threadHandle);
+                    if (resumeResult == uint.MaxValue)
+                    {
+                        throw new Win32Exception(
+                            Marshal.GetLastWin32Error(),
+                            "ResumeThread failed for terminal process.");
+                    }
+                }
+                catch
+                {
+                    session.Dispose();
+                    throw;
+                }
 
                 return session;
             }
@@ -572,6 +575,11 @@ public sealed class TerminalSessionManager : IDisposable
                     Marshal.FreeHGlobal(attributeList);
                 }
 
+                if (jobList != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(jobList);
+                }
+
                 if (pseudoConsole != IntPtr.Zero)
                 {
                     Native.ClosePseudoConsole(pseudoConsole);
@@ -581,6 +589,7 @@ public sealed class TerminalSessionManager : IDisposable
                 CloseRawHandle(ref inputHostSide);
                 CloseRawHandle(ref outputHostSide);
                 CloseRawHandle(ref outputPseudoSide);
+                job?.Dispose();
             }
         }
 
@@ -1073,6 +1082,7 @@ public sealed class TerminalSessionManager : IDisposable
         public const uint CreateUnicodeEnvironment = 0x00000400;
         public const uint CreateSuspended = 0x00000004;
         public const int ProcThreadAttributePseudoConsole = 0x00020016;
+        public const int ProcThreadAttributeJobList = 0x0002000D;
 
         [StructLayout(LayoutKind.Sequential)]
         public readonly struct Coord(short x, short y)
