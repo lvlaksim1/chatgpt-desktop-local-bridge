@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.IO.Pipes;
 using Microsoft.Win32.SafeHandles;
 
 namespace ChatGptDesktopLocalBridge.Bridge;
@@ -248,8 +249,8 @@ public sealed class TerminalSessionManager : IDisposable
         private readonly SemaphoreSlim _writeGate = new(1, 1);
         private readonly List<byte> _ring = new(RingBytes);
         private readonly CancellationTokenSource _readerCancellation = new();
-        private readonly FileStream _input;
-        private readonly FileStream _output;
+        private readonly AnonymousPipeClientStream _input;
+        private readonly AnonymousPipeClientStream _output;
         private readonly Process _process;
         private readonly WindowsJobObject _job;
         private readonly Task _readerTask;
@@ -295,16 +296,12 @@ public sealed class TerminalSessionManager : IDisposable
             _process = process;
             _job = job;
 
-            _input = new FileStream(
-                new SafeFileHandle(_inputHostSide, ownsHandle: false),
-                FileAccess.Write,
-                bufferSize: 4096,
-                isAsync: true);
-            _output = new FileStream(
-                new SafeFileHandle(_outputHostSide, ownsHandle: false),
-                FileAccess.Read,
-                bufferSize: 4096,
-                isAsync: true);
+            _input = new AnonymousPipeClientStream(
+                PipeDirection.Out,
+                new SafePipeHandle(_inputHostSide, ownsHandle: false));
+            _output = new AnonymousPipeClientStream(
+                PipeDirection.In,
+                new SafePipeHandle(_outputHostSide, ownsHandle: false));
 
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) =>
