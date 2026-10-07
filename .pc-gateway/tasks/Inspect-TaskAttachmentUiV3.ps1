@@ -28,16 +28,23 @@ try{
  $script:Socket=New-Object Net.WebSockets.ClientWebSocket
  $script:Socket.Options.Proxy=$null
  try{$script:Socket.ConnectAsync([Uri]$ws,[Threading.CancellationToken]::None).GetAwaiter().GetResult()}catch{throw('cdp_connect_failed:'+ $_.Exception.Message)}
- Start-Sleep -Seconds $Gap
- $before=Eval "({url:location.href,title:document.title,ready:document.readyState})"
+ Start-Sleep -Seconds 15
+ $before=Eval "({url:location.href,title:document.title,ready:document.readyState,body:String(document.body&&document.body.innerText||'').slice(0,3000)})"
  Start-Sleep -Seconds $Gap
  $nav=Eval @'
 (()=>{
- const all=Array.from(document.querySelectorAll('*'));
- const label=all.find(e=>String(e.textContent||'').trim()==='Запланировано');
- if(!label) return {clicked:false,reason:'label_not_found',url:location.href};
- const clickable=label.closest('a,button,[role="link"],[role="button"]') || label.parentElement || label;
- const info={clicked:true,text:String(label.textContent||'').trim(),href:String(clickable.href||''),tag:clickable.tagName,role:String(clickable.getAttribute&&clickable.getAttribute('role')||'')};
+ const clickables=Array.from(document.querySelectorAll('a,button,[role="link"],[role="button"]'));
+ let clickable=clickables.find(e=>{
+   const s=[e.innerText,e.textContent,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('data-testid'),e.href].filter(Boolean).join(' ');
+   return /заплан|scheduled|automation/i.test(s);
+ });
+ let label=null;
+ if(!clickable){
+   const matches=Array.from(document.querySelectorAll('*')).map(e=>({e,t:String(e.innerText||e.textContent||'').trim()})).filter(x=>x.t && /заплан/i.test(x.t)).sort((a,b)=>a.t.length-b.t.length);
+   if(matches.length){label=matches[0].e;clickable=label.closest('a,button,[role="link"],[role="button"]')||label.parentElement||label;}
+ }
+ if(!clickable) return {clicked:false,reason:'control_not_found',url:location.href};
+ const info={clicked:true,text:String((label||clickable).innerText||(label||clickable).textContent||'').trim().slice(0,200),href:String(clickable.href||''),tag:clickable.tagName,role:String(clickable.getAttribute&&clickable.getAttribute('role')||'')};
  clickable.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
  return info;
 })()
