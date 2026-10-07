@@ -17,9 +17,11 @@ try {
   $files=@()
   if($null -ne $obs -and $null -ne $obs.file_inputs){foreach($f in @($obs.file_inputs)){$files += [ordered]@{i=if($null -ne $f.i){[int]$f.i}else{[int]$f.index};accept=[string]$f.accept;multiple=[bool]$f.multiple;aria=[string]$f.aria;testid=[string]$f.testid}}}
   $buttons=@()
-  if($null -ne $obs -and $null -ne $obs.buttons){foreach($b in @($obs.buttons)){$joined=([string]$b.text+' '+[string]$b.aria+' '+[string]$b.title+' '+[string]$b.testid);if($joined -match '(?i)attach|upload|file|add|plus|прикреп|добав|файл'){$buttons += [ordered]@{i=[int]$b.i;text=[string]$b.text;aria=[string]$b.aria;title=[string]$b.title;testid=[string]$b.testid}}}}
-  $body=''; if($null -ne $obs -and $null -ne $obs.body_text){$body=[string]$obs.body_text}; if($body.Length -gt 2000){$body=$body.Substring(0,2000)}
-  $evidence=[ordered]@{target=$target;status=[string]$p.status;url=if($null -ne $obs){[string]$obs.url}else{''};title=if($null -ne $obs){[string]$obs.title}else{''};file_inputs=$files;buttons=$buttons;body=$body}
+  if($null -ne $obs -and $null -ne $obs.buttons){foreach($b in @($obs.buttons)){$joined=([string]$b.text+' '+[string]$b.aria+' '+[string]$b.title+' '+[string]$b.testid);if($joined -match '(?i)attach|upload|file|add|plus|прикреп|добав|файл|scheduled|task|заплан'){$buttons += [ordered]@{i=[int]$b.i;text=[string]$b.text;aria=[string]$b.aria;title=[string]$b.title;testid=[string]$b.testid}}}}
+  $links=@()
+  if($null -ne $obs -and $null -ne $obs.links){foreach($a in @($obs.links)){$joined=([string]$a.text+' '+[string]$a.href+' '+[string]$a.aria);if($joined -match '(?i)scheduled|task|automation|заплан'){$links += [ordered]@{i=[int]$a.i;text=[string]$a.text;href=[string]$a.href;aria=[string]$a.aria}}}}
+  $body=''; if($null -ne $obs -and $null -ne $obs.body_text){$body=[string]$obs.body_text}; if($body.Length -gt 1200){$body=$body.Substring(0,1200)}
+  $evidence=[ordered]@{target=$target;status=[string]$p.status;url=if($null -ne $obs){[string]$obs.url}else{''};title=if($null -ne $obs){[string]$obs.title}else{''};file_inputs=$files;buttons=$buttons;links=$links;body=$body}
   $compact=$evidence|ConvertTo-Json -Depth 8 -Compress
   @{status='evidence';exit_code=7;error=$compact}|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $GatewayResultPath -Encoding UTF8
   exit 7
