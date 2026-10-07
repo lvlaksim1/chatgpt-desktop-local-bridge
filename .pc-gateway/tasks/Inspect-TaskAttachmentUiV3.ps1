@@ -27,7 +27,7 @@ try{
  Write-Host ('CDP_WS='+$ws)
  $script:Socket=New-Object Net.WebSockets.ClientWebSocket
  $script:Socket.Options.Proxy=$null
- try{$script:Socket.ConnectAsync([Uri]$ws,[Threading.CancellationToken]::None).GetAwaiter().GetResult()}catch{throw('cdp_connect_failed:'+$_ .Exception.Message)}
+ try{$script:Socket.ConnectAsync([Uri]$ws,[Threading.CancellationToken]::None).GetAwaiter().GetResult()}catch{throw('cdp_connect_failed:'+ $_.Exception.Message)}
  Start-Sleep -Seconds $Gap
  $before=Eval "({url:location.href,title:document.title,ready:document.readyState})"
  Start-Sleep -Seconds $Gap
