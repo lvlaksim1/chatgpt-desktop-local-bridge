@@ -81,7 +81,7 @@ public sealed class ToolRouter : IDisposable
                 "process.run",
                 "process.start",
                 "Run one bounded non-interactive process inside a Windows Job Object.",
-                "{ \"file\": \"git.exe\", \"arguments\": [\"status\"], \"cwd\": \"C:/repo\", \"timeout_ms\": 120000, \"max_output_chars\": 200000 }",
+                "{ \"file\": \"git.exe\", \"arguments\": [\"status\"], \"cwd\": \"C:/repo\", \"timeout_ms\": 0, \"max_output_chars\": 200000 }",
                 IsMutating: true,
                 IsLongRunning: true),
             new(
@@ -636,10 +636,16 @@ public sealed class ToolRouter : IDisposable
         var file = RequiredString(args, "file");
         var arguments = OptionalStringArray(args, "arguments");
         var workingDirectoryRaw = OptionalString(args, "cwd", string.Empty);
-        var timeoutMs = Math.Clamp(
-            OptionalInt(args, "timeout_ms", DefaultProcessTimeoutMs),
-            1_000,
-            MaxProcessTimeoutMs);
+        var timeoutMs = OptionalInt(
+            args,
+            "timeout_ms",
+            DefaultProcessTimeoutMs);
+        if (timeoutMs < 0)
+        {
+            throw new BridgeToolException(
+                "invalid_args",
+                "timeout_ms must be 0 (unlimited) or a positive number of milliseconds.");
+        }
         var maxOutputChars = Math.Clamp(
             OptionalInt(args, "max_output_chars", DefaultProcessOutputChars),
             1_000,

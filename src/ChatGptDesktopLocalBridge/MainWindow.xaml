@@ -189,7 +189,7 @@
                         Grid.Column="1"
                         Margin="5,7,0,7"
                         Style="{StaticResource TopBarButtonStyle}"
-                        Click="InitializeBridgeButton_OnClick"
+                        Click="RefreshBridgeButton_OnClick"
                         Content="Мост" />
                 <Button Grid.Column="2"
                         Margin="5,7,0,7"

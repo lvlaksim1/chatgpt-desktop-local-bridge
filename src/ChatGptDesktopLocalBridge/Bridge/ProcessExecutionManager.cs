@@ -121,7 +121,9 @@ public sealed class ProcessExecutionManager : IDisposable
             var stopped = false;
             var cancelled = false;
 
-            using var timeoutCts = new CancellationTokenSource(spec.TimeoutMs);
+            using var timeoutCts = spec.TimeoutMs > 0
+                ? new CancellationTokenSource(spec.TimeoutMs)
+                : new CancellationTokenSource();
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
                 timeoutCts.Token,
                 stopCts.Token,
