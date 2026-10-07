@@ -33,19 +33,16 @@ try{
  Start-Sleep -Seconds $Gap
  $nav=Eval @'
 (()=>{
- const els=Array.from(document.querySelectorAll('a,button'));
- const el=els.find(e=>{
-   const text=String(e.innerText||e.textContent||'').trim();
-   const href=String(e.href||'');
-   return text==='Запланировано' || /scheduled|tasks|automation/i.test(href);
- });
- if(!el) return {clicked:false,url:location.href};
- const info={clicked:true,text:String(el.innerText||el.textContent||'').trim(),href:String(el.href||''),tag:el.tagName};
- el.click();
+ const all=Array.from(document.querySelectorAll('*'));
+ const label=all.find(e=>String(e.textContent||'').trim()==='Запланировано');
+ if(!label) return {clicked:false,reason:'label_not_found',url:location.href};
+ const clickable=label.closest('a,button,[role="link"],[role="button"]') || label.parentElement || label;
+ const info={clicked:true,text:String(label.textContent||'').trim(),href:String(clickable.href||''),tag:clickable.tagName,role:String(clickable.getAttribute&&clickable.getAttribute('role')||'')};
+ clickable.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
  return info;
 })()
 '@
- if(-not [bool]$nav.clicked){throw 'scheduled_navigation_control_not_found'}
+ if(-not [bool]$nav.clicked){throw ('scheduled_navigation_control_not_found:'+ [string]$nav.reason)}
  Start-Sleep -Seconds 15
  $obs=Eval @'
 (()=>{const f=Array.from(document.querySelectorAll('input[type="file"]')).map((e,i)=>({i,accept:e.accept||null,multiple:!!e.multiple,aria:e.getAttribute('aria-label'),testid:e.getAttribute('data-testid')}));const b=Array.from(document.querySelectorAll('button')).slice(0,400).map((e,i)=>({i,text:String(e.innerText||'').trim().slice(0,140),aria:e.getAttribute('aria-label'),title:e.getAttribute('title'),testid:e.getAttribute('data-testid')}));const a=Array.from(document.querySelectorAll('a')).slice(0,400).map((e,i)=>({i,text:String(e.innerText||'').trim().slice(0,140),href:e.href||null,aria:e.getAttribute('aria-label')}));return{url:location.href,title:document.title,ready:document.readyState,file_inputs:f,buttons:b,links:a,body_text:String(document.body&&document.body.innerText||'').slice(0,20000)}})()
