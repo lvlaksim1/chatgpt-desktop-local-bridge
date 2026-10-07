@@ -1,0 +1,63 @@
+name: Apply bridge refresh update
+
+on:
+  push:
+    branches:
+      - work/bridge-refresh-unbounded-timeout
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-bridge-refresh-unbounded-timeout
+  cancel-in-progress: true
+
+jobs:
+  apply-verify:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Apply source patch
+        shell: pwsh
+        run: .\scripts\apply-bridge-refresh-unbounded-timeout.ps1
+
+      - name: Validate adapter
+        run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
+
+      - name: Restore
+        shell: pwsh
+        run: |
+          dotnet restore .\ChatGptDesktopLocalBridge.sln
+          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
+
+      - name: Build
+        run: dotnet build .\ChatGptDesktopLocalBridge.sln --configuration Release --no-restore
+
+      - name: Runtime tests
+        run: dotnet run --project .\tests\ChatGptDesktopLocalBridge.LedgerTests\ChatGptDesktopLocalBridge.LedgerTests.csproj --configuration Release --no-build
+
+      - name: Commit patched source if needed
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) {
+            Write-Host 'No source changes remain to commit.'
+            exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/ChatGptDesktopLocalBridge/MainWindow.xaml `
+                  src/ChatGptDesktopLocalBridge/MainWindow.BridgeRefresh.cs `
+                  src/ChatGptDesktopLocalBridge/Bridge/ToolRouter.cs `
+                  src/ChatGptDesktopLocalBridge/Bridge/ProcessExecutionManager.cs `
+                  .github/workflows/local-bridge-runnow-v1-release.yml
+          git commit -m 'feat: refresh bridge instruction and allow unlimited process runtime'
+          git push origin HEAD:work/bridge-refresh-unbounded-timeout
