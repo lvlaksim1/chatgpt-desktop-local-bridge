@@ -1116,7 +1116,7 @@ public sealed class TerminalSessionManager : IDisposable
         public const uint ExtendedStartupInfoPresent = 0x00080000;
         public const uint CreateUnicodeEnvironment = 0x00000400;
         public const uint CreateSuspended = 0x00000004;
-        public const uint StartfUseStdHandles = 0x00000100;
+        public const int StartfUseStdHandles = 0x00000100;
         public const uint FileFlagOverlapped = 0x40000000;
         public const uint FileAttributeNormal = 0x00000080;
         public const uint PipeAccessInbound = 0x00000001;
