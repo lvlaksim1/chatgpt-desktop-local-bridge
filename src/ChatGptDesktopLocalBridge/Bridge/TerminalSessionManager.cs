@@ -85,7 +85,16 @@ public sealed class TerminalSessionManager : IDisposable
 
         try
         {
-            await Task.Yield();
+            await session.WaitForInitialSettleAsync(cancellationToken);
+
+            if (session.Exited)
+            {
+                var status = session.Status();
+                throw new BridgeToolException(
+                    "terminal_exited_during_start",
+                    $"Terminal process exited during startup with code {status.ExitCode?.ToString() ?? "unknown"}.");
+            }
+
             return session.OpenOutcome();
         }
         catch
@@ -451,6 +460,48 @@ public sealed class TerminalSessionManager : IDisposable
                 _rows,
                 Spec.MaxBufferBytes,
                 0);
+
+        public async Task WaitForInitialSettleAsync(
+            CancellationToken cancellationToken)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var lastTotalBytes = -1L;
+            var lastChangeMs = 0L;
+            var sawOutput = false;
+
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(2))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (Exited)
+                {
+                    return;
+                }
+
+                var (totalBytes, _) = _output.Status();
+                if (totalBytes != lastTotalBytes)
+                {
+                    lastTotalBytes = totalBytes;
+                    lastChangeMs = stopwatch.ElapsedMilliseconds;
+                    sawOutput |= totalBytes > 0;
+                }
+
+                if (sawOutput &&
+                    stopwatch.ElapsedMilliseconds >= 500 &&
+                    stopwatch.ElapsedMilliseconds - lastChangeMs >= 250)
+                {
+                    return;
+                }
+
+                if (!sawOutput &&
+                    stopwatch.ElapsedMilliseconds >= 750)
+                {
+                    return;
+                }
+
+                await Task.Delay(50, cancellationToken);
+            }
+        }
 
         public TerminalReadOutcome Read(long cursor, int maxBytes)
         {
