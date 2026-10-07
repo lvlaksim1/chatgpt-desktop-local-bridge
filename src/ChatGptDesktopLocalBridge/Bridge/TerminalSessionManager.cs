@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
@@ -205,14 +206,9 @@ public sealed class TerminalSessionManager : IDisposable
         private readonly TerminalOutputRing _output;
         private readonly WindowsJobObject _job;
         private readonly Process _process;
-        private readonly SafeFileHandle _inputRead;
-        private readonly SafeFileHandle _inputWrite;
-        private readonly SafeFileHandle _outputRead;
-        private readonly SafeFileHandle _outputWrite;
-        private readonly StreamWriter _inputWriter;
-        private readonly FileStream _outputStream;
+        private readonly NamedPipeClientStream _inputWrite;
+        private readonly NamedPipeClientStream _outputRead;
         private IntPtr _pseudoConsole;
-        private readonly IntPtr _attributeList;
         private readonly Task _readerTask;
         private readonly Task _exitTask;
         private bool _closed;
@@ -226,27 +222,17 @@ public sealed class TerminalSessionManager : IDisposable
             TerminalOpenSpec spec,
             WindowsJobObject job,
             Process process,
-            SafeFileHandle inputRead,
-            SafeFileHandle inputWrite,
-            SafeFileHandle outputRead,
-            SafeFileHandle outputWrite,
-            StreamWriter inputWriter,
-            FileStream outputStream,
-            IntPtr pseudoConsole,
-            IntPtr attributeList)
+            NamedPipeClientStream inputWrite,
+            NamedPipeClientStream outputRead,
+            IntPtr pseudoConsole)
         {
             Id = id;
             Spec = spec;
             _job = job;
             _process = process;
-            _inputRead = inputRead;
             _inputWrite = inputWrite;
             _outputRead = outputRead;
-            _outputWrite = outputWrite;
-            _inputWriter = inputWriter;
-            _outputStream = outputStream;
             _pseudoConsole = pseudoConsole;
-            _attributeList = attributeList;
             _columns = spec.Columns;
             _rows = spec.Rows;
             _output = new TerminalOutputRing(spec.MaxBufferBytes);
@@ -279,13 +265,10 @@ public sealed class TerminalSessionManager : IDisposable
                     "Persistent terminal sessions require Windows ConPTY.");
             }
 
-            SafeFileHandle? inputRead = null;
-            SafeFileHandle? inputWrite = null;
-            SafeFileHandle? outputRead = null;
-            SafeFileHandle? outputWrite = null;
-            FileStream? inputStream = null;
-            StreamWriter? inputWriter = null;
-            FileStream? outputStream = null;
+            NamedPipeServerStream? inputServer = null;
+            NamedPipeServerStream? outputServer = null;
+            NamedPipeClientStream? inputWrite = null;
+            NamedPipeClientStream? outputRead = null;
             WindowsJobObject? job = null;
             Process? process = null;
             IntPtr pseudoConsole = IntPtr.Zero;
@@ -295,15 +278,32 @@ public sealed class TerminalSessionManager : IDisposable
 
             try
             {
-                NativeMethods.CreateAnonymousPipe(out inputRead, out inputWrite);
-                NativeMethods.CreateAnonymousPipe(out outputRead, out outputWrite);
+                var inputName = "local-bridge-conpty-in-" + Guid.NewGuid().ToString("N");
+                inputServer = CreateConPtyServer(inputName, PipeDirection.In);
+                inputWrite = new NamedPipeClientStream(
+                    ".",
+                    inputName,
+                    PipeDirection.Out,
+                    PipeOptions.Asynchronous);
+                inputWrite.Connect(5_000);
+                inputServer.WaitForConnection();
+
+                var outputName = "local-bridge-conpty-out-" + Guid.NewGuid().ToString("N");
+                outputServer = CreateConPtyServer(outputName, PipeDirection.Out);
+                outputRead = new NamedPipeClientStream(
+                    ".",
+                    outputName,
+                    PipeDirection.In,
+                    PipeOptions.Asynchronous);
+                outputRead.Connect(5_000);
+                outputServer.WaitForConnection();
 
                 var createResult = NativeMethods.CreatePseudoConsole(
                     new NativeMethods.COORD(
                         checked((short)spec.Columns),
                         checked((short)spec.Rows)),
-                    inputRead,
-                    outputWrite,
+                    inputServer.SafePipeHandle,
+                    outputServer.SafePipeHandle,
                     0,
                     out pseudoConsole);
 
@@ -350,6 +350,18 @@ public sealed class TerminalSessionManager : IDisposable
                         $"Could not start terminal process '{spec.File}'.");
                 }
 
+                // The child now owns its pseudo-console association. Keeping duplicate
+                // ConPTY-side pipe handles in the host can delay EOF and complicate
+                // bidirectional I/O, so release those copies immediately after spawn.
+                inputServer.Dispose();
+                inputServer = null;
+                outputServer.Dispose();
+                outputServer = null;
+
+                NativeMethods.DeleteProcThreadAttributeList(attributeList);
+                Marshal.FreeHGlobal(attributeList);
+                attributeList = IntPtr.Zero;
+
                 job = WindowsJobObject.CreateKillOnClose();
                 job.Assign(processInfo.hProcess);
 
@@ -367,36 +379,20 @@ public sealed class TerminalSessionManager : IDisposable
                 NativeMethods.CloseHandle(processInfo.hProcess);
                 processInfo.hProcess = IntPtr.Zero;
 
-                inputStream = new FileStream(
-                    inputWrite,
-                    FileAccess.Write,
-                    4096,
-                    isAsync: false);
-                inputWriter = new StreamWriter(
-                    inputStream,
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
-                {
-                    AutoFlush = true
-                };
-                outputStream = new FileStream(
-                    outputRead,
-                    FileAccess.Read,
-                    8192,
-                    isAsync: false);
-
                 var session = new TerminalSession(
                     Guid.NewGuid().ToString("N"),
                     spec,
                     job,
                     process,
-                    inputRead,
                     inputWrite,
                     outputRead,
-                    outputWrite,
-                    inputWriter,
-                    outputStream,
-                    pseudoConsole,
-                    attributeList);
+                    pseudoConsole);
+
+                inputWrite = null;
+                outputRead = null;
+                job = null;
+                process = null;
+                pseudoConsole = IntPtr.Zero;
                 success = true;
                 return session;
             }
@@ -430,32 +426,37 @@ public sealed class TerminalSessionManager : IDisposable
                     NativeMethods.CloseHandle(processInfo.hProcess);
                 }
 
-                if (!success)
+                if (attributeList != IntPtr.Zero)
                 {
-                    inputWriter?.Dispose();
-                    inputStream?.Dispose();
-                    outputStream?.Dispose();
-                    inputRead?.Dispose();
-                    inputWrite?.Dispose();
-                    outputRead?.Dispose();
-                    outputWrite?.Dispose();
-
-                    if (attributeList != IntPtr.Zero)
-                    {
-                        NativeMethods.DeleteProcThreadAttributeList(attributeList);
-                        Marshal.FreeHGlobal(attributeList);
-                    }
-
-                    if (pseudoConsole != IntPtr.Zero)
-                    {
-                        NativeMethods.ClosePseudoConsole(pseudoConsole);
-                    }
-
-                    process?.Dispose();
-                    job?.Dispose();
+                    NativeMethods.DeleteProcThreadAttributeList(attributeList);
+                    Marshal.FreeHGlobal(attributeList);
                 }
+
+                if (!success && pseudoConsole != IntPtr.Zero)
+                {
+                    NativeMethods.ClosePseudoConsole(pseudoConsole);
+                }
+
+                inputServer?.Dispose();
+                outputServer?.Dispose();
+                inputWrite?.Dispose();
+                outputRead?.Dispose();
+                process?.Dispose();
+                job?.Dispose();
             }
         }
+
+        private static NamedPipeServerStream CreateConPtyServer(
+            string name,
+            PipeDirection direction)
+            => new(
+                name,
+                direction,
+                maxNumberOfServerInstances: 1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.None,
+                inBufferSize: 128 * 1024,
+                outBufferSize: 128 * 1024);
 
         public TerminalOpenOutcome OpenOutcome()
             => new(
@@ -569,8 +570,8 @@ public sealed class TerminalSessionManager : IDisposable
                     }
                 }
 
-                await _inputWriter.WriteAsync(data.AsMemory(), cancellationToken);
-                await _inputWriter.FlushAsync(cancellationToken);
+                await _inputWrite.WriteAsync(bytes, cancellationToken);
+                await _inputWrite.FlushAsync(cancellationToken);
 
                 return new
                 {
@@ -734,7 +735,7 @@ public sealed class TerminalSessionManager : IDisposable
             {
                 while (true)
                 {
-                    var read = await _outputStream.ReadAsync(buffer);
+                    var read = await _outputRead.ReadAsync(buffer);
                     if (read <= 0)
                     {
                         break;
@@ -819,19 +820,8 @@ public sealed class TerminalSessionManager : IDisposable
 
             TryClosePseudoConsole();
 
-            _inputWriter.Dispose();
-            _outputStream.Dispose();
-
-            _inputRead.Dispose();
             _inputWrite.Dispose();
             _outputRead.Dispose();
-            _outputWrite.Dispose();
-
-            if (_attributeList != IntPtr.Zero)
-            {
-                NativeMethods.DeleteProcThreadAttributeList(_attributeList);
-                Marshal.FreeHGlobal(_attributeList);
-            }
 
             _process.Dispose();
             _job.Dispose();
@@ -1065,8 +1055,8 @@ public sealed class TerminalSessionManager : IDisposable
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern int CreatePseudoConsole(
             COORD size,
-            SafeFileHandle hInput,
-            SafeFileHandle hOutput,
+            SafePipeHandle hInput,
+            SafePipeHandle hOutput,
             uint dwFlags,
             out IntPtr phPC);
 
@@ -1077,14 +1067,6 @@ public sealed class TerminalSessionManager : IDisposable
 
         [DllImport("kernel32.dll")]
         public static extern void ClosePseudoConsole(IntPtr hPC);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool CreatePipe(
-            out SafeFileHandle hReadPipe,
-            out SafeFileHandle hWritePipe,
-            IntPtr lpPipeAttributes,
-            int nSize);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -1129,18 +1111,6 @@ public sealed class TerminalSessionManager : IDisposable
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool CloseHandle(IntPtr hObject);
-
-        public static void CreateAnonymousPipe(
-            out SafeFileHandle read,
-            out SafeFileHandle write)
-        {
-            if (!CreatePipe(out read, out write, IntPtr.Zero, 0))
-            {
-                throw new Win32Exception(
-                    Marshal.GetLastWin32Error(),
-                    "CreatePipe failed.");
-            }
-        }
 
         public static IntPtr CreatePseudoConsoleAttributeList(
             IntPtr pseudoConsole)
