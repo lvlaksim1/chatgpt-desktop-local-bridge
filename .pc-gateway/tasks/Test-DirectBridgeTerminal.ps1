@@ -159,6 +159,22 @@ if (second.Text.Contains("__LB1__", StringComparison.Ordinal))
     throw new Exception("Cursor-based terminal read replayed already-consumed output.");
 }
 
+// Verify absolute-cursor isolation before resizing. ResizePseudoConsole may emit
+// a fresh redraw of the visible terminal screen, which is new ConPTY output.
+await terminals.WriteAsync(opened.SessionId, "Write-Output '__LB3__cursor-ok'\r");
+var third = await ReadUntilAsync(
+    terminals,
+    opened.SessionId,
+    cursor,
+    "__LB3__");
+cursor = third.Cursor;
+
+if (third.Text.Contains("__LB1__", StringComparison.Ordinal) ||
+    third.Text.Contains("__LB2__", StringComparison.Ordinal))
+{
+    throw new Exception("Absolute cursor did not isolate new terminal output before resize.");
+}
+
 terminals.Resize(opened.SessionId, 100, 24);
 var afterResize = terminals.Status(opened.SessionId);
 if (afterResize.Columns != 100 || afterResize.Rows != 24)
@@ -166,17 +182,16 @@ if (afterResize.Columns != 100 || afterResize.Rows != 24)
     throw new Exception("ConPTY resize state did not update.");
 }
 
-await terminals.WriteAsync(opened.SessionId, "Write-Output '__LB3__cursor-ok'\r");
-var third = await ReadUntilAsync(
+await terminals.WriteAsync(opened.SessionId, "Write-Output '__LB4__resize-ok'\r");
+var fourth = await ReadUntilAsync(
     terminals,
     opened.SessionId,
     cursor,
-    "__LB3__");
+    "__LB4__");
 
-if (third.Text.Contains("__LB1__", StringComparison.Ordinal) ||
-    third.Text.Contains("__LB2__", StringComparison.Ordinal))
+if (!fourth.Text.Contains("__LB4__resize-ok", StringComparison.Ordinal))
 {
-    throw new Exception("Absolute cursor did not isolate new terminal output.");
+    throw new Exception("Terminal stopped producing output after resize.");
 }
 
 var closed = await terminals.CloseAsync(
@@ -192,7 +207,7 @@ if (finalStatus.Running)
 Console.WriteLine(
     "PASS session=" + opened.SessionId +
     " pid=" + opened.ProcessId +
-    " cursor=" + third.Cursor +
+    " cursor=" + fourth.Cursor +
     " exit=" + (closed.ExitCode?.ToString() ?? "null"));
 '@ | Set-Content -LiteralPath $programPath -Encoding UTF8
 
