@@ -14,6 +14,7 @@ public sealed class AppSettings
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
     public int UpdateCheckIntervalMinutes { get; set; } = 30;
+    public string? LocalIntentWorkerAutomationId { get; set; }
 
     // Legacy 0.2.x fields retained only for migration.
     public string? ShellTheme { get; set; }
