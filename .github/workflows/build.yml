@@ -37,6 +37,9 @@ jobs:
       - name: Build
         run: dotnet build .\ChatGptDesktopLocalBridge.sln --configuration Release --no-restore
 
+      - name: Verify persistent ConPTY terminal
+        run: dotnet run --project .\tests\ChatGptDesktopLocalBridge.TerminalTests\ChatGptDesktopLocalBridge.TerminalTests.csproj --configuration Release
+
       - name: Publish self-contained win-x64 test build
         run: >-
           dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj
