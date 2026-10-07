@@ -56,6 +56,13 @@ var initial = await terminals.ReadAsync(
     collapseCarriageReturns: true);
 cursor = initial.NextCursor;
 
+var afterOpen = terminals.Status(opened.SessionId);
+Console.WriteLine(
+    "OPEN-STATUS running=" + afterOpen.Running +
+    " exit=" + (afterOpen.ExitCode?.ToString() ?? "null") +
+    " base=" + afterOpen.BaseCursor +
+    " end=" + afterOpen.EndCursor);
+
 await terminals.WriteAsync(
     opened.SessionId,
     "set LOCAL_BRIDGE_TEST_STATE=state-42\r");
