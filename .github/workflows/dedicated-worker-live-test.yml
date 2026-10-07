@@ -1,0 +1,55 @@
+name: Dedicated Worker Live Test Package
+
+on:
+  push:
+    branches:
+      - feature/local-intent-dedicated-worker
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    if: contains(github.event.head_commit.message, '[live-test-package]')
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
+
+      - name: Publish self-contained test build
+        shell: pwsh
+        run: |
+          $publish = Join-Path $PWD "publish\win-x64"
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output $publish
+
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $tag = "local-intent-worker-test-$short"
+          $version = "0.3.${{ github.run_number }}.0"
+
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = $tag
+            commit = $sha
+            appVersion = $version
+          } | ConvertTo-Json | Set-Content (Join-Path $publish "release-info.json") -Encoding UTF8
+
+          Compress-Archive -Path (Join-Path $publish "*") -DestinationPath .\ChatGptDesktopLocalBridge-Feature.zip -Force
+          $hash = (Get-FileHash .\ChatGptDesktopLocalBridge-Feature.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  ChatGptDesktopLocalBridge-Feature.zip" | Set-Content .\ChatGptDesktopLocalBridge-Feature.zip.sha256 -Encoding ASCII
+
+          "TARGET_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish temporary prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:TARGET_TAG .\ChatGptDesktopLocalBridge-Feature.zip .\ChatGptDesktopLocalBridge-Feature.zip.sha256 --target "${{ github.sha }}" --prerelease --title "Dedicated worker live-test package" --notes "Temporary package for PC Gateway live validation. Delete after the validation cycle."
