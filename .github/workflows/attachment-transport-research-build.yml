@@ -1,0 +1,22 @@
+name: Attachment transport research build
+
+on:
+  push:
+    branches:
+      - research/attachment-task-transport
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build research client
+        shell: pwsh
+        run: dotnet build src/ChatGptDesktopLocalBridge/ChatGptDesktopLocalBridge.csproj -c Release --disable-build-servers
