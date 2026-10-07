@@ -361,12 +361,12 @@ public sealed class TerminalSessionManager : IDisposable
                     inputWrite,
                     FileAccess.Write,
                     4096,
-                    isAsync: true);
+                    isAsync: false);
                 outputStream = new FileStream(
                     outputRead,
                     FileAccess.Read,
                     8192,
-                    isAsync: true);
+                    isAsync: false);
 
                 var session = new TerminalSession(
                     Guid.NewGuid().ToString("N"),
