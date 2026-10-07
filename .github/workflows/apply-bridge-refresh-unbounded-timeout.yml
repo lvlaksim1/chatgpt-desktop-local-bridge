@@ -48,7 +48,12 @@ jobs:
       - name: Commit patched source if needed
         shell: pwsh
         run: |
-          if (-not (git status --porcelain)) {
+          $sourceChanges = git status --porcelain -- `
+            src/ChatGptDesktopLocalBridge/MainWindow.xaml `
+            src/ChatGptDesktopLocalBridge/MainWindow.BridgeRefresh.cs `
+            src/ChatGptDesktopLocalBridge/Bridge/ToolRouter.cs `
+            src/ChatGptDesktopLocalBridge/Bridge/ProcessExecutionManager.cs
+          if (-not $sourceChanges) {
             Write-Host 'No source changes remain to commit.'
             exit 0
           }
@@ -57,7 +62,6 @@ jobs:
           git add src/ChatGptDesktopLocalBridge/MainWindow.xaml `
                   src/ChatGptDesktopLocalBridge/MainWindow.BridgeRefresh.cs `
                   src/ChatGptDesktopLocalBridge/Bridge/ToolRouter.cs `
-                  src/ChatGptDesktopLocalBridge/Bridge/ProcessExecutionManager.cs `
-                  .github/workflows/local-bridge-runnow-v1-release.yml
+                  src/ChatGptDesktopLocalBridge/Bridge/ProcessExecutionManager.cs
           git commit -m 'feat: refresh bridge instruction and allow unlimited process runtime'
           git push origin HEAD:work/bridge-refresh-unbounded-timeout
