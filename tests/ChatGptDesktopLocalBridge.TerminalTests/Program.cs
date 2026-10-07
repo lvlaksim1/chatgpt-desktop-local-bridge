@@ -152,13 +152,9 @@ if (!secondReplay.Text.Contains("__LB2__state-42|", StringComparison.Ordinal))
     throw new Exception("Retrying an absolute cursor did not reproduce the previously read segment.");
 }
 
-terminals.Resize(opened.SessionId, 100, 24);
-var resized = terminals.Status(opened.SessionId);
-if (resized.Columns != 100 || resized.Rows != 24)
-{
-    throw new Exception("Terminal resize was not applied.");
-}
-
+// Verify cursor isolation before any terminal resize. ConPTY is allowed to redraw
+// its visible screen buffer after ResizePseudoConsole, and that redraw is genuinely
+// new output rather than a replay from the bridge ring buffer.
 await terminals.WriteAsync(opened.SessionId, "echo __LB3__cursor-ok\r");
 var third = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB3__cursor-ok");
 var thirdTail = await DrainUntilQuietAsync(terminals, opened.SessionId, third.Cursor);
@@ -169,8 +165,25 @@ if (thirdText.Contains("__LB1__", StringComparison.Ordinal) ||
     thirdText.Contains("__LB2__", StringComparison.Ordinal))
 {
     throw new Exception(
-        "Absolute cursor crossed a settled output boundary. Output: " +
+        "Absolute cursor crossed a settled output boundary before resize. Output: " +
         thirdText.Replace("\r", "\\r").Replace("\n", "\\n"));
+}
+
+terminals.Resize(opened.SessionId, 100, 24);
+var resized = terminals.Status(opened.SessionId);
+if (resized.Columns != 100 || resized.Rows != 24)
+{
+    throw new Exception("Terminal resize was not applied.");
+}
+
+await terminals.WriteAsync(opened.SessionId, "echo __LB4__resize-ok\r");
+var fourth = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB4__resize-ok");
+var fourthTail = await DrainUntilQuietAsync(terminals, opened.SessionId, fourth.Cursor);
+cursor = fourthTail.Cursor;
+
+if (!(fourth.Text + fourthTail.Text).Contains("__LB4__resize-ok", StringComparison.Ordinal))
+{
+    throw new Exception("Terminal stopped producing command output after resize.");
 }
 
 await terminals.CloseAsync(opened.SessionId, force: true);
