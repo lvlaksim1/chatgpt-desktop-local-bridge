@@ -133,6 +133,100 @@ public partial class MainWindow
 
                 const detail = JSON.parse(detailResponse.text || '{}');
 
+                const conversationId =
+                  typeof detail?.conversation_id === 'string'
+                    ? detail.conversation_id
+                    : '';
+
+                const conversationProbe = {
+                  requested: false,
+                  status: null,
+                  keys: [],
+                  mappingCount: 0,
+                  messageShapes: []
+                };
+
+                if (conversationId) {
+                  const conversationResponse = await pacedFetch(
+                    '/backend-api/conversation/' +
+                      encodeURIComponent(conversationId),
+                    {
+                      method: 'GET',
+                      credentials: 'include',
+                      cache: 'no-store',
+                      redirect: 'follow',
+                      headers
+                    });
+
+                  conversationProbe.requested = true;
+                  conversationProbe.status = conversationResponse.status;
+
+                  if (conversationResponse.ok) {
+                    const conversation =
+                      JSON.parse(conversationResponse.text || '{}');
+
+                    conversationProbe.keys =
+                      Object.keys(conversation || {}).sort();
+
+                    const mapping =
+                      conversation?.mapping &&
+                      typeof conversation.mapping === 'object'
+                        ? conversation.mapping
+                        : {};
+
+                    conversationProbe.mappingCount =
+                      Object.keys(mapping).length;
+
+                    const signatures = new Set();
+
+                    for (const node of Object.values(mapping)) {
+                      const message = node?.message;
+                      if (!message || typeof message !== 'object') {
+                        continue;
+                      }
+
+                      const content =
+                        message.content &&
+                        typeof message.content === 'object'
+                          ? message.content
+                          : {};
+
+                      const metadata =
+                        message.metadata &&
+                        typeof message.metadata === 'object'
+                          ? message.metadata
+                          : {};
+
+                      const shape = {
+                        role:
+                          typeof message?.author?.role === 'string'
+                            ? message.author.role
+                            : null,
+                        messageKeys:
+                          Object.keys(message).sort(),
+                        contentType:
+                          typeof content.content_type === 'string'
+                            ? content.content_type
+                            : null,
+                        contentKeys:
+                          Object.keys(content).sort(),
+                        metadataKeys:
+                          Object.keys(metadata).sort()
+                      };
+
+                      const signature = JSON.stringify(shape);
+                      if (!signatures.has(signature)) {
+                        signatures.add(signature);
+                        conversationProbe.messageShapes.push(shape);
+                      }
+
+                      if (conversationProbe.messageShapes.length >= 30) {
+                        break;
+                      }
+                    }
+                  }
+                }
+
                 const relevantKeys = value =>
                   Object.keys(value || {})
                     .filter(key =>
@@ -169,14 +263,15 @@ public partial class MainWindow
                     detail.id.length > 0,
                   conversationIdPresent:
                     typeof detail?.conversation_id === 'string' &&
-                    detail.conversation_id.length > 0
+                    detail.conversation_id.length > 0,
+                  conversationProbe
                 };
                 """;
 
             var probe = await PageContextAsyncExecutor.ExecuteAsync<JsonElement>(
                 tab.Browser,
                 asyncBody,
-                TimeSpan.FromSeconds(45));
+                TimeSpan.FromSeconds(70));
 
             output = new
             {
