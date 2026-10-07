@@ -2,11 +2,11 @@
   "schema": "context-capsule",
   "version": "2.0.0-dev",
   "source": "lvlaksim1/context-capsule-project-manager",
-  "core_commit": "9d6a2f69d38d880c44ea59c9b3d31b406cc5bcf1",
+  "core_commit": "2912687b38e23dcd0b017f336c321a3ae7f39674",
   "installed_at": "2026-10-01",
   "repository": "lvlaksim1/chatgpt-desktop-local-bridge",
   "update_policy": "manual",
-  "project_manager_commit": "9d6a2f69d38d880c44ea59c9b3d31b406cc5bcf1",
+  "project_manager_commit": "2912687b38e23dcd0b017f336c321a3ae7f39674",
   "context_capsule_commit": "2ef41a5ed57ae514cc5980065560d7e55d5e4b9a",
   "provenance": {
     "context_capsule": {
@@ -15,7 +15,7 @@
     },
     "project_manager": {
       "repository": "lvlaksim1/context-capsule-project-manager",
-      "commit": "9d6a2f69d38d880c44ea59c9b3d31b406cc5bcf1"
+      "commit": "2912687b38e23dcd0b017f336c321a3ae7f39674"
     }
   },
   "context_capsule_version": "1.3.1",
@@ -28,6 +28,6 @@
   "project_manager": {
     "version": "2.0.0-dev",
     "repository": "lvlaksim1/context-capsule-project-manager",
-    "commit": "9d6a2f69d38d880c44ea59c9b3d31b406cc5bcf1"
+    "commit": "2912687b38e23dcd0b017f336c321a3ae7f39674"
   }
 }
