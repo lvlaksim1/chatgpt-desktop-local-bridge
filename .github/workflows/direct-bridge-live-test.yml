@@ -1,0 +1,66 @@
+name: Direct Bridge Live Test Package
+
+on:
+  push:
+    branches:
+      - feature/direct-bridge-terminal
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    if: contains(github.event.head_commit.message, '[live-test-package]')
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore .\ChatGptDesktopLocalBridge.sln --runtime win-x64
+
+      - name: Verify terminal before packaging
+        run: dotnet run --project .\tests\ChatGptDesktopLocalBridge.TerminalTests\ChatGptDesktopLocalBridge.TerminalTests.csproj --configuration Release
+
+      - name: Publish self-contained app and terminal probe
+        shell: pwsh
+        run: |
+          $app = Join-Path $PWD "publish\app"
+          $probe = Join-Path $PWD "publish\terminal-probe"
+
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --output $app
+          dotnet publish .\tests\ChatGptDesktopLocalBridge.TerminalTests\ChatGptDesktopLocalBridge.TerminalTests.csproj --configuration Release --runtime win-x64 --self-contained true --output $probe
+
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 7)
+          $tag = "direct-bridge-test-$short"
+          $version = "0.4.${{ github.run_number }}.0"
+
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = $tag
+            commit = $sha
+            appVersion = $version
+          } | ConvertTo-Json | Set-Content (Join-Path $app "release-info.json") -Encoding UTF8
+
+          Compress-Archive -Path (Join-Path $app "*") -DestinationPath .\ChatGptDesktopLocalBridge-DirectBridge.zip -Force
+          Compress-Archive -Path (Join-Path $probe "*") -DestinationPath .\ChatGptDesktopLocalBridge-TerminalProbe.zip -Force
+
+          $appHash = (Get-FileHash .\ChatGptDesktopLocalBridge-DirectBridge.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $probeHash = (Get-FileHash .\ChatGptDesktopLocalBridge-TerminalProbe.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "$appHash  ChatGptDesktopLocalBridge-DirectBridge.zip"
+            "$probeHash  ChatGptDesktopLocalBridge-TerminalProbe.zip"
+          ) | Set-Content .\SHA256SUMS.txt -Encoding ASCII
+
+          "TARGET_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Publish temporary prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:TARGET_TAG .\ChatGptDesktopLocalBridge-DirectBridge.zip .\ChatGptDesktopLocalBridge-TerminalProbe.zip .\SHA256SUMS.txt --target "${{ github.sha }}" --prerelease --title "Direct bridge live-test package" --notes "Temporary self-contained package for trusted-PC validation of the direct chat-to-PC bridge. Delete after the validation cycle."
