@@ -155,10 +155,4 @@ $newCts = @'
 '@
 Replace-Exact $processManager $oldCts $newCts.TrimEnd("`r", "`n")
 
-# The updater must target the version currently installed by the owner.
-Replace-Exact `
-    '.github/workflows/local-bridge-runnow-v1-release.yml' `
-    '  BASE_TAG: private-transport-v5-95dd011' `
-    '  BASE_TAG: local-bridge-runnow-de8284e'
-
 Write-Host 'Bridge refresh and unbounded process timeout patch applied.'
