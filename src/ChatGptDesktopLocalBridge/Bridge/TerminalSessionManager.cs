@@ -309,11 +309,14 @@ public sealed class TerminalSessionManager : IDisposable
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) =>
             {
+                TaskCompletionSource<bool> signal;
                 lock (_sync)
                 {
                     TryCaptureExitCodeLocked();
-                    SignalOutputChangedLocked();
+                    signal = SignalOutputChangedLocked();
                 }
+
+                signal.TrySetResult(true);
             };
 
             _readerTask = Task.Run(ReadLoopAsync);
@@ -464,7 +467,8 @@ public sealed class TerminalSessionManager : IDisposable
 
                 var creationFlags =
                     Native.ExtendedStartupInfoPresent |
-                    Native.CreateUnicodeEnvironment;
+                    Native.CreateUnicodeEnvironment |
+                    Native.CreateSuspended;
 
                 if (!Native.CreateProcess(
                         null,
@@ -492,15 +496,30 @@ public sealed class TerminalSessionManager : IDisposable
                 {
                     job = WindowsJobObject.CreateKillOnClose();
                     job.Assign(process);
+
+                    var resumeResult = Native.ResumeThread(threadHandle);
+                    if (resumeResult == uint.MaxValue)
+                    {
+                        throw new Win32Exception(
+                            Marshal.GetLastWin32Error(),
+                            "ResumeThread failed for terminal process.");
+                    }
                 }
                 catch
                 {
                     try
                     {
-                        process.Kill(entireProcessTree: true);
+                        job?.Terminate(1);
                     }
                     catch
                     {
+                        try
+                        {
+                            process.Kill(entireProcessTree: true);
+                        }
+                        catch
+                        {
+                        }
                     }
 
                     process.Dispose();
@@ -747,49 +766,48 @@ public sealed class TerminalSessionManager : IDisposable
             bool force,
             CancellationToken cancellationToken)
         {
-            bool alreadyClosed;
             lock (_sync)
             {
-                alreadyClosed = _closed;
-                if (!_closed)
-                {
-                    _closed = true;
-                    _lastActivityUtc = DateTimeOffset.UtcNow;
-                }
-            }
-
-            if (alreadyClosed)
-            {
-                lock (_sync)
+                if (_closed)
                 {
                     TryCaptureExitCodeLocked();
                     return new TerminalCloseOutcome(SessionId, true, _exitCode);
                 }
+
+                _lastActivityUtc = DateTimeOffset.UtcNow;
             }
 
             try
             {
                 if (!_process.HasExited)
                 {
-                    if (force)
-                    {
-                        _job.Terminate(1);
-                    }
-                    else
+                    if (!force)
                     {
                         try
                         {
-                            await WriteAsync("\u0003", cancellationToken);
+                            await _writeGate.WaitAsync(cancellationToken);
+                            try
+                            {
+                                await _input.WriteAsync(
+                                    Encoding.UTF8.GetBytes("\u0003"),
+                                    cancellationToken);
+                                await _input.FlushAsync(cancellationToken);
+                            }
+                            finally
+                            {
+                                _writeGate.Release();
+                            }
+
                             await Task.Delay(250, cancellationToken);
                         }
                         catch
                         {
                         }
+                    }
 
-                        if (!_process.HasExited)
-                        {
-                            _job.Terminate(1);
-                        }
+                    if (!_process.HasExited)
+                    {
+                        _job.Terminate(1);
                     }
                 }
             }
@@ -816,12 +834,16 @@ public sealed class TerminalSessionManager : IDisposable
             {
             }
 
+            TaskCompletionSource<bool> signal;
             lock (_sync)
             {
+                _closed = true;
                 TryCaptureExitCodeLocked();
-                SignalOutputChangedLocked();
-                return new TerminalCloseOutcome(SessionId, false, _exitCode);
+                signal = SignalOutputChangedLocked();
             }
+
+            signal.TrySetResult(true);
+            return new TerminalCloseOutcome(SessionId, false, _exitCode);
         }
 
         public void Dispose()
@@ -1052,6 +1074,7 @@ public sealed class TerminalSessionManager : IDisposable
     {
         public const uint ExtendedStartupInfoPresent = 0x00080000;
         public const uint CreateUnicodeEnvironment = 0x00000400;
+        public const uint CreateSuspended = 0x00000004;
         public const int ProcThreadAttributePseudoConsole = 0x00020016;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -1164,6 +1187,9 @@ public sealed class TerminalSessionManager : IDisposable
             string? lpCurrentDirectory,
             ref StartupInfoEx lpStartupInfo,
             out ProcessInformation lpProcessInformation);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern uint ResumeThread(IntPtr hThread);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
