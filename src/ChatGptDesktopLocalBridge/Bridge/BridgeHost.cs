@@ -5,7 +5,8 @@ namespace ChatGptDesktopLocalBridge.Bridge;
 
 public sealed record BridgeStopResult(
     bool CancellationRequested,
-    int StoppedProcesses);
+    int StoppedProcesses,
+    int StoppedTerminals);
 
 public sealed class BridgeHost : IDisposable
 {
@@ -146,7 +147,9 @@ public sealed class BridgeHost : IDisposable
             string.Empty,
             "Rules:",
             "- Use the bridge only when local data/action is needed.",
-            "- For ordinary natural-language requests that require action on the local computer, prefer local.intent and pass the user's instruction verbatim in args.instruction. Use low-level fs.* tools directly only for diagnostics or when the user explicitly asks for a specific low-level operation.",
+            "- The current ChatGPT conversation is the planner. Use the direct fs.*, repo.*, process.*, terminal.*, and mcp.* tools yourself; do not delegate ordinary local work to a second planner.",
+            "- Use process.run for one bounded non-interactive command. Use terminal.open plus terminal.write/read/status/resize/close when shell state or interactivity must persist across multiple bridge turns.",
+            "- After terminal.open is approved, terminal I/O remains authorized only inside that terminal session. Close the terminal when it is no longer needed.",
             "- Never invent a LOCAL_BRIDGE_RESULT.",
             "- In bridge JSON, write Windows paths with forward slashes, for example C:/Windows/win.ini. Do not use backslashes in JSON path strings.",
             "- One request per assistant turn.",
@@ -602,7 +605,11 @@ public sealed class BridgeHost : IDisposable
         }
 
         var stoppedProcesses = _router.StopActiveProcesses();
-        return new BridgeStopResult(cancellationRequested, stoppedProcesses);
+        var stoppedTerminals = _router.StopActiveTerminals();
+        return new BridgeStopResult(
+            cancellationRequested,
+            stoppedProcesses,
+            stoppedTerminals);
     }
 
     public void Dispose()
