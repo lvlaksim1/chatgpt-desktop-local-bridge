@@ -1,0 +1,104 @@
+name: EA074E0 Write Tools Build
+
+on:
+  push:
+    branches:
+      - m4-write-tools-ea074e0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate build inputs
+        shell: pwsh
+        run: |
+          [scriptblock]::Create((Get-Content .\scripts\build-delta-update.ps1 -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content .\scripts\update\Apply-Update.ps1 -Raw)) | Out-Null
+
+      - name: Publish write-tools build
+        shell: pwsh
+        run: |
+          dotnet restore .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --runtime win-x64
+          dotnet publish .\src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output .\publish\win-x64
+
+          $sha = "${{ github.sha }}"
+          [ordered]@{
+            schema = "chatgpt-desktop-local-bridge-release-v1"
+            tag = "dev-ea074e0-write-tools"
+            commit = $sha
+            appVersion = "0.1.39.0"
+          } | ConvertTo-Json | Set-Content .\publish\win-x64\release-info.json -Encoding UTF8
+
+      - name: Publish exact ea074e0 base
+        shell: pwsh
+        run: |
+          $baseWorktree = Join-Path $PWD "base-ea074e0"
+          $basePublish = Join-Path $PWD "publish-base-ea074e0"
+          git worktree add --detach $baseWorktree ea074e06bd4e959106f49f57cad1ac731597dac3
+          try {
+            dotnet restore (Join-Path $baseWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --runtime win-x64
+            dotnet publish (Join-Path $baseWorktree "src\ChatGptDesktopLocalBridge\ChatGptDesktopLocalBridge.csproj") --configuration Release --runtime win-x64 --self-contained true --no-restore --output $basePublish
+          }
+          finally {
+            git worktree remove --force $baseWorktree
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build full setup
+        shell: pwsh
+        run: |
+          $sourceDir = (Resolve-Path ".\publish\win-x64").Path
+          $outputDir = $PWD.Path
+          ISCC.exe "/DMyAppVersion=0.1.39.0" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" ".\installer\ChatGptDesktopLocalBridge.iss"
+          if (-not (Test-Path ".\ChatGptDesktopLocalBridge-Setup.exe")) { throw "Full setup was not produced." }
+          Move-Item ".\ChatGptDesktopLocalBridge-Setup.exe" ".\ChatGptDesktopLocalBridge-ea074e0-write-tools-Setup.exe" -Force
+
+      - name: Build incremental update from installed morning build
+        shell: pwsh
+        run: |
+          $basePublish = (Resolve-Path ".\publish-base-ea074e0").Path
+          $currentPublish = (Resolve-Path ".\publish\win-x64").Path
+          $deltaDir = Join-Path $PWD "delta-ea074e0-write-tools"
+
+          .\scripts\build-delta-update.ps1 `
+            -BasePublishDir $basePublish `
+            -LegacyInstallerVersion "0.1.38.0" `
+            -CurrentPublishDir $currentPublish `
+            -BaseTag "benchmark-ea074e0" `
+            -TargetTag "dev-ea074e0-write-tools" `
+            -TargetCommit "${{ github.sha }}" `
+            -OutputPath $deltaDir
+
+          $resolvedDelta = (Resolve-Path $deltaDir).Path
+          ISCC.exe "/DDeltaDir=$resolvedDelta" "/DOutputDir=$PWD" "/DBaseTag=benchmark-ea074e0" "/DTargetTag=dev-ea074e0-write-tools" "/DUpdateVersion=0.1.39.0" ".\installer\DeltaUpdate.iss"
+
+          $expected = ".\ChatGptDesktopLocalBridge-Update-from-benchmark-ea074e0.exe"
+          if (-not (Test-Path $expected)) { throw "Incremental updater was not produced." }
+
+      - name: Publish write-tools release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev-ea074e0-write-tools --cleanup-tag --yes 2>$null
+          gh release create dev-ea074e0-write-tools `
+            .\ChatGptDesktopLocalBridge-Update-from-benchmark-ea074e0.exe `
+            .\ChatGptDesktopLocalBridge-ea074e0-write-tools-Setup.exe `
+            --target "${{ github.sha }}" `
+            --prerelease `
+            --title "EA074E0 transport + file write tools" `
+            --notes "Preserves the proven ea074e0 ChatGPT transport. Adds fs.write_text, fs.append_text, and fs.write_file. All three use the existing fs.write_text permission capability."

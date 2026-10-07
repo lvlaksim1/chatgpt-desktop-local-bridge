@@ -170,7 +170,7 @@ try
         "Oversized-result error envelope exceeded the transport bound.");
 
     var definitions = ToolRouter.Definitions;
-    Require(definitions.Count == 3, "Unexpected number of registered bridge tools.");
+    Require(definitions.Count == 17, "Unexpected number of registered bridge tools.");
     Require(
         definitions.Select(definition => definition.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Count,
         "Bridge tool registry contains duplicate names.");
@@ -199,12 +199,188 @@ try
         ToolRouter.GetCapability("unknown.tool") == "unknown.tool",
         "Unknown tool capability fallback changed.");
 
-    Console.WriteLine("durable request ledger regression: PASS");
+    Require(
+        ToolRouter.GetDefinition("process.run")?.IsLongRunning == true,
+        "process.run is no longer marked as a long-running tool.");
+    Require(
+        ToolRouter.GetDefinition("fs.write_text")?.IsMutating == true,
+        "fs.write_text is no longer marked as mutating.");
+    Require(
+        ToolRouter.GetCapability("fs.append_text") == "fs.write_text",
+        "Append capability no longer shares the write permission.");
+    Require(
+        ToolRouter.GetCapability("repo.map") == "repo.read",
+        "Repo map is no longer governed by the repo.read capability.");
+    Require(
+        ToolRouter.GetCapability("mcp.list_tools") == "mcp.read",
+        "MCP discovery is no longer governed by the mcp.read capability.");
+    Require(
+        ToolRouter.GetCapability("mcp.call") == "mcp.call",
+        "MCP execution capability mapping drifted.");
+    Require(
+        ToolRouter.GetDefinition("mcp.call")?.IsLongRunning == true,
+        "mcp.call is no longer marked as long-running.");
+
+    using (var router = new ToolRouter())
+    {
+        var repoRoot = Path.Combine(root, "repo-tools");
+        Directory.CreateDirectory(repoRoot);
+
+        static void RunGit(string cwd, params string[] arguments)
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git.exe",
+                WorkingDirectory = cwd,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new Exception("Could not start git.exe for repo-tool regression setup.");
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                throw new Exception(
+                    $"git {string.Join(" ", arguments)} failed: {process.StandardError.ReadToEnd()}");
+            }
+        }
+
+        RunGit(repoRoot, "init");
+        RunGit(repoRoot, "config", "user.name", "Local Bridge CI");
+        RunGit(repoRoot, "config", "user.email", "local-bridge-ci@example.invalid");
+
+        var trackedFile = Path.Combine(repoRoot, "BridgeSample.cs");
+        await File.WriteAllTextAsync(
+            trackedFile,
+            "namespace Demo;\npublic static class BridgeSample { public static string Value() => \"v1\"; }\n");
+        RunGit(repoRoot, "add", "BridgeSample.cs");
+        RunGit(repoRoot, "commit", "-m", "baseline");
+
+        await File.WriteAllTextAsync(
+            trackedFile,
+            "namespace Demo;\npublic static class BridgeSample { public static string Value() => \"v2\"; }\n");
+
+        var statusResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.status",
+                Args(JsonSerializer.Serialize(new { path = repoRoot }))));
+        Require(
+            statusResult.GetProperty("clean").GetBoolean() == false,
+            "repo.status failed to report the modified working tree.");
+
+        var diffResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.diff",
+                Args(JsonSerializer.Serialize(new { path = repoRoot, staged = false, max_chars = 20_000 }))));
+        Require(
+            diffResult.GetProperty("diff").GetString()?.Contains(
+                "v2",
+                StringComparison.Ordinal) == true,
+            "repo.diff did not return the working-tree change.");
+
+        var mapResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.map",
+                Args(JsonSerializer.Serialize(new
+                {
+                    path = repoRoot,
+                    query = "BridgeSample Value",
+                    max_files = 20,
+                    max_chars = 20_000
+                }))));
+        Require(
+            mapResult.GetProperty("map").GetString()?.Contains(
+                "BridgeSample.cs",
+                StringComparison.OrdinalIgnoreCase) == true,
+            "repo.map did not surface the query-relevant source file.");
+
+        var checkpointResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.checkpoint",
+                Args(JsonSerializer.Serialize(new { path = repoRoot }))));
+        var checkpointPath = checkpointResult.GetProperty("checkpointPath").GetString();
+        Require(
+            checkpointPath is not null && File.Exists(Path.Combine(checkpointPath, "working.diff")),
+            "repo.checkpoint did not persist the working diff.");
+        if (!string.IsNullOrWhiteSpace(checkpointPath) && Directory.Exists(checkpointPath))
+        {
+            Directory.Delete(checkpointPath, recursive: true);
+        }
+
+        var verifyResult = JsonSerializer.SerializeToElement(
+            await router.ExecuteAsync(
+                "repo.verify",
+                Args(JsonSerializer.Serialize(new
+                {
+                    path = repoRoot,
+                    file = "cmd.exe",
+                    arguments = new[] { "/d", "/c", "exit 0" },
+                    timeout_ms = 10_000,
+                    max_output_chars = 4_096
+                }))));
+        Require(
+            verifyResult.GetProperty("ok").GetBoolean(),
+            "repo.verify did not report a successful bounded command.");
+
+        var processResult = await router.ExecuteAsync(
+            "process.run",
+            Args("{\"file\":\"cmd.exe\",\"arguments\":[\"/d\",\"/c\",\"echo bridge-process-ok\"],\"timeout_ms\":10000,\"max_output_chars\":4096}"));
+        var processJson = JsonSerializer.SerializeToElement(processResult);
+        Require(
+            processJson.GetProperty("exitCode").GetInt32() == 0,
+            "Contained process smoke test did not exit successfully.");
+        Require(
+            processJson.GetProperty("stdout").GetString()?.Contains(
+                "bridge-process-ok",
+                StringComparison.OrdinalIgnoreCase) == true,
+            "Contained process smoke test lost stdout.");
+
+        var longRunTask = router.ExecuteAsync(
+            "process.run",
+            Args("{\"file\":\"cmd.exe\",\"arguments\":[\"/d\",\"/c\",\"ping 127.0.0.1 -n 30 >nul\"],\"timeout_ms\":60000,\"max_output_chars\":4096}"));
+        await Task.Delay(500);
+        Require(router.StopActiveProcesses() >= 1, "STOP did not find the active process execution.");
+        var stoppedResult = JsonSerializer.SerializeToElement(await longRunTask);
+        Require(
+            stoppedResult.GetProperty("stopped").GetBoolean(),
+            "STOP did not propagate to the process result.");
+    }
+
+    Console.WriteLine("durable request ledger + runtime foundation regression: PASS");
 }
 finally
 {
     if (Directory.Exists(root))
     {
-        Directory.Delete(root, recursive: true);
+        try
+        {
+            Directory.Delete(root, recursive: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            foreach (var file in Directory.EnumerateFiles(
+                         root,
+                         "*",
+                         SearchOption.AllDirectories))
+            {
+                try
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+                catch
+                {
+                    // Best-effort test cleanup only.
+                }
+            }
+
+            Directory.Delete(root, recursive: true);
+        }
     }
 }

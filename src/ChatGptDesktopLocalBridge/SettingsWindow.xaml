@@ -1,0 +1,159 @@
+<Window x:Class="ChatGptDesktopLocalBridge.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки"
+        Width="540"
+        Height="620"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="#181A1C"
+        Foreground="#F0F0F0"
+        FontFamily="Segoe UI"
+        WindowStartupLocation="CenterOwner">
+    <Border BorderBrush="#3A3D40" BorderThickness="1" Background="#181A1C">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="58" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="#202124"
+                    MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                <Grid>
+                    <TextBlock Margin="14,0,50,0"
+                               VerticalAlignment="Center"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Text="Настройки" />
+                    <Button HorizontalAlignment="Right"
+                            Width="44"
+                            BorderThickness="0"
+                            Background="Transparent"
+                            Foreground="White"
+                            FontSize="15"
+                            Click="CancelButton_OnClick"
+                            Content="✕" />
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="18">
+                    <TextBlock FontSize="17"
+                               FontWeight="SemiBold"
+                               Text="Единая тема приложения" />
+                    <TextBlock Margin="0,6,0,14"
+                               Foreground="#9DA1A6"
+                               TextWrapping="Wrap"
+                               Text="Один базовый цвет применяется к оболочке Local Bridge и всей поверхности ChatGPT. Связанные оттенки рассчитываются автоматически." />
+
+                    <WrapPanel Margin="0,0,0,8">
+                        <Button Margin="0,0,8,8" Padding="10,5"
+                                Tag="#202124" Click="PresetButton_OnClick" Content="Тёмная" />
+                        <Button Margin="0,0,8,8" Padding="10,5"
+                                Tag="#151719" Click="PresetButton_OnClick" Content="Графит" />
+                        <Button Margin="0,0,8,8" Padding="10,5"
+                                Tag="#243044" Click="PresetButton_OnClick" Content="Синяя" />
+                        <Button Margin="0,0,8,8" Padding="10,5"
+                                Tag="#F1F2F4" Click="PresetButton_OnClick" Content="Светлая" />
+                    </WrapPanel>
+
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="46" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="R" />
+                        <Slider x:Name="RedSlider" Grid.Column="1"
+                                Minimum="0" Maximum="255" TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                ValueChanged="ColorSlider_OnValueChanged" />
+                        <TextBlock x:Name="RedValueText" Grid.Column="2"
+                                   TextAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid Margin="0,7,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="46" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="G" />
+                        <Slider x:Name="GreenSlider" Grid.Column="1"
+                                Minimum="0" Maximum="255" TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                ValueChanged="ColorSlider_OnValueChanged" />
+                        <TextBlock x:Name="GreenValueText" Grid.Column="2"
+                                   TextAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid Margin="0,7,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="46" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="B" />
+                        <Slider x:Name="BlueSlider" Grid.Column="1"
+                                Minimum="0" Maximum="255" TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                ValueChanged="ColorSlider_OnValueChanged" />
+                        <TextBlock x:Name="BlueValueText" Grid.Column="2"
+                                   TextAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="70" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="ColorPreview" Grid.Column="0"
+                                Height="40" CornerRadius="4"
+                                BorderBrush="#555" BorderThickness="1" />
+                        <TextBlock x:Name="ColorHexText" Grid.Column="1"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontFamily="Consolas"
+                                   FontSize="14" />
+                    </Grid>
+
+                    <TextBlock Margin="0,24,0,8"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Local Bridge" />
+                    <CheckBox x:Name="AutoBridgeCheckBox"
+                              Content="Автоматически восстанавливать мост после запуска и обновления" />
+
+                    <TextBlock Margin="0,24,0,8"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Обновления" />
+                    <TextBlock x:Name="UpdateHistoryText"
+                               Padding="10"
+                               Background="#111315"
+                               Foreground="#AEB2B7"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2"
+                    Background="#202124"
+                    BorderBrush="#34373A"
+                    BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="12">
+                    <Button Margin="0,0,8,0"
+                            Padding="16,7"
+                            Click="CancelButton_OnClick"
+                            Content="Отмена" />
+                    <Button Padding="16,7"
+                            Click="SaveButton_OnClick"
+                            Content="Сохранить" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

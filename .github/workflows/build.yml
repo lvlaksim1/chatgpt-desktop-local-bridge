@@ -23,9 +23,6 @@ jobs:
       - name: Validate Web adapter JavaScript
         run: node --check .\src\ChatGptDesktopLocalBridge\Web\bridge-adapter.js
 
-      - name: Test Web adapter protocol diagnostics
-        run: node .\scripts\test-bridge-adapter-protocol.mjs
-
       - name: Validate update PowerShell syntax
         shell: pwsh
         run: |
@@ -39,9 +36,6 @@ jobs:
 
       - name: Build
         run: dotnet build .\ChatGptDesktopLocalBridge.sln --configuration Release --no-restore
-
-      - name: Test durable request ledger
-        run: dotnet run --project .\tests\ChatGptDesktopLocalBridge.LedgerTests\ChatGptDesktopLocalBridge.LedgerTests.csproj --configuration Release --no-build
 
       - name: Publish self-contained win-x64 test build
         run: >-

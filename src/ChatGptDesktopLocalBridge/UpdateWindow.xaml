@@ -1,0 +1,80 @@
+<Window x:Class="ChatGptDesktopLocalBridge.UpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Обновление"
+        Width="520"
+        Height="360"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="#181A1C"
+        Foreground="#F0F0F0"
+        FontFamily="Segoe UI"
+        WindowStartupLocation="CenterOwner">
+    <Border BorderBrush="#3A3D40" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="58" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="#202124"
+                    MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                <Grid>
+                    <TextBlock Margin="14,0,50,0"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Text="Обновление ChatGPT Desktop Local Bridge" />
+                    <Button HorizontalAlignment="Right"
+                            Width="44"
+                            BorderThickness="0"
+                            Background="Transparent"
+                            Foreground="White"
+                            Click="CancelButton_OnClick"
+                            Content="✕" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Margin="20">
+                <TextBlock x:Name="TargetText"
+                           FontSize="17"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="PackageText"
+                           Margin="0,12,0,0"
+                           Foreground="#C7CBD0" />
+                <TextBlock x:Name="ReasonText"
+                           Margin="0,10,0,0"
+                           Foreground="#9EA2A7"
+                           TextWrapping="Wrap" />
+                <Border Margin="0,20,0,0"
+                        Padding="10"
+                        Background="#111315"
+                        BorderBrush="#34373A"
+                        BorderThickness="1">
+                    <TextBlock x:Name="LastResultText"
+                               Foreground="#AEB2B7"
+                               TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+
+            <Border Grid.Row="2"
+                    Background="#202124"
+                    BorderBrush="#34373A"
+                    BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="12">
+                    <Button Margin="0,0,8,0"
+                            Padding="16,7"
+                            Click="CancelButton_OnClick"
+                            Content="Отмена" />
+                    <Button x:Name="InstallButton"
+                            Padding="16,7"
+                            Click="InstallButton_OnClick"
+                            Content="Скачать и установить" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

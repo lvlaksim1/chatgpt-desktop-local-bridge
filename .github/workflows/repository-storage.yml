@@ -71,7 +71,7 @@ jobs:
             fi
             echo "Artifact $artifact_id was already removed by another cleanup."
           }
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100"             --jq '.artifacts[] | [.id, (.workflow_run.id // 0)] | @tsv' |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq '.artifacts[] | [.id, (.workflow_run.id // 0)] | @tsv' |
             while IFS=$'\t' read -r artifact_id run_id; do
               [ -z "$artifact_id" ] && continue
               if [ "$run_id" = "0" ]; then
