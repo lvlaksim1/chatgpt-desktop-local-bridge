@@ -18,6 +18,10 @@ public sealed class LocalIntentPlanner
             "fs.copy_first_line"
         };
 
+    private static readonly SemaphoreSlim PlanNetworkGate =
+        new(1, 1);
+    private static DateTimeOffset? LastPlanCompletedUtc;
+
     private readonly WebView2 _browser;
     private readonly RequestBindingGuard _binding;
     private readonly LocalIntentServiceStateStore _serviceState;
@@ -47,6 +51,42 @@ public sealed class LocalIntentPlanner
                 "ChatGPT WebView is not initialized.");
         }
 
+        await PlanNetworkGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            if (LastPlanCompletedUtc is DateTimeOffset previous)
+            {
+                var elapsed =
+                    DateTimeOffset.UtcNow - previous;
+                var required =
+                    TimeSpan.FromMilliseconds(
+                        NetworkMinGapMs);
+
+                if (elapsed < required)
+                {
+                    await Task.Delay(
+                        required - elapsed,
+                        cancellationToken);
+                }
+            }
+
+            return await PlanCoreAsync(
+                instruction,
+                cancellationToken);
+        }
+        finally
+        {
+            LastPlanCompletedUtc =
+                DateTimeOffset.UtcNow;
+            PlanNetworkGate.Release();
+        }
+    }
+
+    private async Task<BridgePlannedAction> PlanCoreAsync(
+        string instruction,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
 
         var binding = _binding.Capture();
