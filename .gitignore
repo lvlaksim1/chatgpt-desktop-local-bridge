@@ -11,3 +11,14 @@ publish/
 *.msix
 *.exe
 installer/Output/
+
+# Repository storage policy
+/dist/
+/build/
+*.exe
+*.msi
+*.zip
+*.7z
+*.rar
+*.dll
+*.pdb
