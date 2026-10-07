@@ -15,6 +15,9 @@ concurrency:
 
 env:
   BASE_TAG: local-bridge-runnow-41aa0f6
+  BASE_COMMIT: 41aa0f605418d9a710268992ada994126e8b0406
+  OWNER_BASE_TAG: local-bridge-runnow-de8284e
+  OWNER_BASE_COMMIT: de8284e1cbe0213d17ff54d3c725eaa31706a101
 
 jobs:
   build-release:
@@ -92,6 +95,15 @@ jobs:
           gh release download $env:BASE_TAG --pattern "ChatGptDesktopLocalBridge-PublishManifest.json" --dir .\base-manifest --clobber
           if (-not (Test-Path ".\base-manifest\ChatGptDesktopLocalBridge-PublishManifest.json")) { throw "Base manifest was not downloaded." }
 
+      - name: Verify installed-owner base is source-equivalent
+        shell: pwsh
+        run: |
+          $drift = @(git diff --name-only $env:OWNER_BASE_COMMIT $env:BASE_COMMIT -- src installer scripts)
+          if ($drift.Count -gt 0) {
+            throw "Owner base and exact base differ in packaged source: $($drift -join ', ')"
+          }
+          Write-Host "Owner base differs from exact release only outside packaged application source."
+
       - name: Build exact incremental updater
         shell: pwsh
         run: |
@@ -102,9 +114,27 @@ jobs:
           $expected = ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe"
           if (-not (Test-Path $expected)) { throw "Incremental updater was not produced." }
 
+      - name: Build installed-owner compatible updater
+        shell: pwsh
+        run: |
+          $sourceDelta = Join-Path $PWD "delta-runnow-v1"
+          $compatDelta = Join-Path $PWD "delta-owner-base"
+          Copy-Item -LiteralPath $sourceDelta -Destination $compatDelta -Recurse -Force
+
+          $manifestPath = Join-Path $compatDelta "update-manifest.json"
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $manifest.fromTag = $env:OWNER_BASE_TAG
+          $manifest.baseline = @($manifest.baseline | Where-Object { [string]$_.path -ne "release-info.json" })
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          $resolvedCompat = (Resolve-Path $compatDelta).Path
+          ISCC.exe "/DDeltaDir=$resolvedCompat" "/DOutputDir=$PWD" "/DBaseTag=$env:OWNER_BASE_TAG" "/DTargetTag=$env:TARGET_TAG" "/DUpdateVersion=$env:APP_VERSION" ".\installer\DeltaUpdate.iss"
+          $expected = ".\ChatGptDesktopLocalBridge-Update-from-$($env:OWNER_BASE_TAG).exe"
+          if (-not (Test-Path $expected)) { throw "Owner-base updater was not produced." }
+
       - name: Publish prerelease
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-RunNow-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Local Bridge run-now test ($env:TARGET_TAG)" --notes "Update: pressing 'Мост' while the bridge is already active resends the complete current Local Bridge instruction to the model without changing the session. process.run keeps the 120-second default but timeout_ms=0 now means unlimited runtime; the old 15-minute hard ceiling is removed. Network requests inside the planner remain serialized with at least 5 seconds between completed requests."
+          gh release create $env:TARGET_TAG ".\ChatGptDesktopLocalBridge-RunNow-Setup.exe" ".\ChatGptDesktopLocalBridge-PublishManifest.json" ".\ChatGptDesktopLocalBridge-Update-from-$($env:BASE_TAG).exe" ".\ChatGptDesktopLocalBridge-Update-from-$($env:OWNER_BASE_TAG).exe" --target "${{ github.sha }}" --prerelease --title "Local Bridge run-now test ($env:TARGET_TAG)" --notes "Update: pressing 'Мост' while the bridge is already active resends the complete current Local Bridge instruction to the model without changing the session. process.run keeps the 120-second default but timeout_ms=0 now means unlimited runtime; the old 15-minute hard ceiling is removed. Includes a compatibility updater for the owner's installed de8284e build; de8284e and 41aa0f6 differ only in non-packaged PC-gateway test scripts. Network requests inside the planner remain serialized with at least 5 seconds between completed requests."
