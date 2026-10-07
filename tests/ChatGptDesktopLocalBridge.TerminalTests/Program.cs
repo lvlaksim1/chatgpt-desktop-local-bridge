@@ -37,6 +37,41 @@ static async Task<(string Text, long Cursor)> ReadUntilAsync(
     throw new Exception("Marker not received: " + marker + " output=" + text);
 }
 
+static async Task<(string Text, long Cursor)> DrainUntilQuietAsync(
+    TerminalSessionManager terminals,
+    string sessionId,
+    long cursor)
+{
+    var deadline = DateTime.UtcNow.AddSeconds(3);
+    var text = "";
+    var quietReads = 0;
+
+    while (DateTime.UtcNow < deadline && quietReads < 2)
+    {
+        var chunk = await terminals.ReadAsync(
+            sessionId,
+            cursor,
+            65536,
+            250,
+            stripAnsi: true,
+            collapseCarriageReturns: true);
+
+        cursor = chunk.NextCursor;
+        text += chunk.Text;
+
+        if (chunk.Text.Length == 0)
+        {
+            quietReads++;
+        }
+        else
+        {
+            quietReads = 0;
+        }
+    }
+
+    return (text, cursor);
+}
+
 using var terminals = new TerminalSessionManager();
 var opened = await terminals.OpenAsync(
     new TerminalOpenSpec(
@@ -73,10 +108,12 @@ await terminals.WriteAsync(
     opened.SessionId,
     "echo __LB1__%LOCAL_BRIDGE_TEST_STATE%^|%CD%\r");
 
-var first = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB1__");
-cursor = first.Cursor;
+var first = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB1__state-42|");
+var firstTail = await DrainUntilQuietAsync(terminals, opened.SessionId, first.Cursor);
+cursor = firstTail.Cursor;
+var firstText = first.Text + firstTail.Text;
 
-if (!first.Text.Contains("__LB1__state-42|", StringComparison.Ordinal))
+if (!firstText.Contains("__LB1__state-42|", StringComparison.Ordinal))
 {
     throw new Exception("First command did not establish expected shell state.");
 }
@@ -85,17 +122,34 @@ await terminals.WriteAsync(
     opened.SessionId,
     "echo __LB2__%LOCAL_BRIDGE_TEST_STATE%^|%CD%\r");
 
-var second = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB2__");
-cursor = second.Cursor;
+var secondStart = cursor;
+var second = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB2__state-42|");
+var secondTail = await DrainUntilQuietAsync(terminals, opened.SessionId, second.Cursor);
+cursor = secondTail.Cursor;
+var secondText = second.Text + secondTail.Text;
 
-if (!second.Text.Contains("__LB2__state-42|", StringComparison.Ordinal))
+if (!secondText.Contains("__LB2__state-42|", StringComparison.Ordinal))
 {
     throw new Exception("Shell state was not preserved between bridge requests.");
 }
 
-if (second.Text.Contains("__LB1__", StringComparison.Ordinal))
+if (secondText.Contains("__LB1__", StringComparison.Ordinal))
 {
-    throw new Exception("Cursor replayed already-consumed output.");
+    throw new Exception("Cursor replayed already-consumed output after a quiet boundary.");
+}
+
+var secondLength = checked((int)Math.Min(cursor - secondStart, 65536));
+var secondReplay = await terminals.ReadAsync(
+    opened.SessionId,
+    secondStart,
+    Math.Max(secondLength, 1),
+    0,
+    stripAnsi: true,
+    collapseCarriageReturns: true);
+
+if (!secondReplay.Text.Contains("__LB2__state-42|", StringComparison.Ordinal))
+{
+    throw new Exception("Retrying an absolute cursor did not reproduce the previously read segment.");
 }
 
 terminals.Resize(opened.SessionId, 100, 24);
@@ -106,12 +160,17 @@ if (resized.Columns != 100 || resized.Rows != 24)
 }
 
 await terminals.WriteAsync(opened.SessionId, "echo __LB3__cursor-ok\r");
-var third = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB3__");
+var third = await ReadUntilAsync(terminals, opened.SessionId, cursor, "__LB3__cursor-ok");
+var thirdTail = await DrainUntilQuietAsync(terminals, opened.SessionId, third.Cursor);
+var thirdText = third.Text + thirdTail.Text;
+cursor = thirdTail.Cursor;
 
-if (third.Text.Contains("__LB1__", StringComparison.Ordinal) ||
-    third.Text.Contains("__LB2__", StringComparison.Ordinal))
+if (thirdText.Contains("__LB1__", StringComparison.Ordinal) ||
+    thirdText.Contains("__LB2__", StringComparison.Ordinal))
 {
-    throw new Exception("Absolute cursor did not isolate new output.");
+    throw new Exception(
+        "Absolute cursor crossed a settled output boundary. Output: " +
+        thirdText.Replace("\r", "\\r").Replace("\n", "\\n"));
 }
 
 await terminals.CloseAsync(opened.SessionId, force: true);
