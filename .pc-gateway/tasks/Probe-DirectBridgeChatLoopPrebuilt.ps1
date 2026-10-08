@@ -526,6 +526,12 @@ try {
     $id = 1
     $health = Wait-Adapter -Socket $Socket -Id ([ref]$id) -TimeoutSeconds 60
 
+    $Stage = 'navigate-clean-chat'
+    [void](Send-Cdp -Socket $Socket -Id $id -Method 'Page.navigate' -Params @{ url = 'https://chatgpt.com/' } -TimeoutMs 15000)
+    $id++
+    Start-Sleep -Seconds 5
+    $health = Wait-Adapter -Socket $Socket -Id ([ref]$id) -TimeoutSeconds 60
+
     $Stage = 'initialize-bridge'
     $readyPrefix = From-Utf8Base64 '0JzQvtGB0YIg0LPQvtGC0L7Qsg=='
     $initialTexts = @(Get-UiTexts $root)
