@@ -26,6 +26,10 @@ $Started=[DateTimeOffset]::UtcNow
 $BridgeStatus=''
 $SessionPrefix=''
 
+function From-Utf8Base64([string]$Value){
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
+
 function Finish([string]$Status,[int]$Code,[string]$ErrorText='',[hashtable]$Extra=@{}){
     $p=[ordered]@{status=$Status;error=$ErrorText;exit_code=$Code;stage=$Stage;package_tag=$PackageTag}
     foreach($k in $Extra.Keys){$p[$k]=$Extra[$k]}
@@ -248,7 +252,8 @@ try{
     if($null-eq$root){throw 'UI Automation root unavailable.'}
 
     $Stage='new-chat'
-    Invoke-Button $root '+ Чат'
+    $newChatButton=From-Utf8Base64 'KyDQp9Cw0YI='
+    Invoke-Button $root $newChatButton
     Start-Sleep -Seconds 5
 
     $Stage='composer'
@@ -258,7 +263,8 @@ try{
     $id=[int]$ready.id
 
     $Stage='bridge'
-    Invoke-Button $root 'Мост'
+    $bridgeButton=From-Utf8Base64 '0JzQvtGB0YI='
+    Invoke-Button $root $bridgeButton
     $BridgeStatus=Wait-BridgeReady $root 100
     if($BridgeStatus -notmatch '([0-9a-fA-F]{8})'){throw ('Could not parse bridge session from status: '+$BridgeStatus)}
     $SessionPrefix=$Matches[1].ToLowerInvariant()
