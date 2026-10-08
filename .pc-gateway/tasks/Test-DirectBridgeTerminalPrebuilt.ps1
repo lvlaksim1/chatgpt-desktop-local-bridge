@@ -72,11 +72,11 @@ try {
     $process = Start-Process -FilePath $probeExe -WorkingDirectory $unpack -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
 
     $stdout = if (Test-Path -LiteralPath $stdoutPath) {
-        Get-Content -LiteralPath $stdoutPath -Raw -Encoding UTF8
+        [string](Get-Content -LiteralPath $stdoutPath -Raw -Encoding UTF8)
     } else { '' }
 
     $stderr = if (Test-Path -LiteralPath $stderrPath) {
-        Get-Content -LiteralPath $stderrPath -Raw -Encoding UTF8
+        [string](Get-Content -LiteralPath $stderrPath -Raw -Encoding UTF8)
     } else { '' }
 
     if ($process.ExitCode -ne 0) {
