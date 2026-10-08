@@ -134,7 +134,8 @@ function Connect-ReadyRoot([int]$Port,[string[]]$KnownIds,[int]$TimeoutSeconds=9
             foreach($target in $roots){
                 $s=New-Object Net.WebSockets.ClientWebSocket
                 try{
-                    $s.ConnectAsync([Uri]$target.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+                    $wsUrl=[string]$target.webSocketDebuggerUrl
+                    $s.ConnectAsync([Uri]$wsUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
                     $id=1
                     $h=Eval $s ([ref]$id) 'window.__localBridge && window.__localBridge.health ? window.__localBridge.health() : null'
                     if($null-ne$h){
