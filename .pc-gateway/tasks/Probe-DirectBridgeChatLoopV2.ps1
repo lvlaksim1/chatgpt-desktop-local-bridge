@@ -178,19 +178,28 @@ function Wait-BridgeReady($Root,[int]$TimeoutSeconds=100){
     $deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while([DateTime]::UtcNow -lt $deadline){
         $texts=@(Get-UiTexts $Root)
-        $ready=@($texts|Where-Object{$_ -match '([0-9a-fA-F]{8})' -and ($_ -like '*Мост*' -or $_ -like '*Bridge*')}|Select-Object -Last 1)
-        if($ready.Count -gt 0){return [string]$ready[0]}
+        foreach($item in $texts){
+            $value=[string]$item
+            if($value -match "([0-9a-fA-F]{8})"){
+                return $value
+            }
+        }
         Start-Sleep -Milliseconds 500
     }
-    throw 'Bridge READY timeout.'
+    throw "Bridge READY timeout."
 }
 
 function Wait-Marker($S,[ref]$Id,[string]$Marker,[int]$TimeoutSeconds=240){
-    $markerJson=$Marker|ConvertTo-Json -Compress
-    $expr='(() => { const m='+$markerJson+'; const n=Array.from(document.querySelectorAll("[data-message-author-role=assistant],[data-markdown-text-style=assistant-message]")); return n.some(x => (x.innerText||x.textContent||"").includes(m)); })()'
+    $expr="Array.from(document.querySelectorAll('[data-message-author-role=assistant],[data-markdown-text-style=assistant-message]')).map(function(x){return (x.innerText || x.textContent || '');})"
     $deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while([DateTime]::UtcNow -lt $deadline){
-        if([bool](Eval $S $Id $expr)){return $true}
+        $texts=@(Eval $S $Id $expr)
+        foreach($item in $texts){
+            $value=[string]$item
+            if($value.Contains($Marker)){
+                return $true
+            }
+        }
         Start-Sleep -Milliseconds 500
     }
     return $false
