@@ -526,11 +526,47 @@ try {
     $id = 1
     $health = Wait-Adapter -Socket $Socket -Id ([ref]$id) -TimeoutSeconds 60
 
-    $Stage = 'navigate-clean-chat'
-    [void](Send-Cdp -Socket $Socket -Id $id -Method 'Page.navigate' -Params @{ url = 'https://chatgpt.com/' } -TimeoutMs 15000)
-    $id++
+    $Stage = 'open-clean-chat-tab'
+    Invoke-Button -Root $root -Name '+ Чат'
     Start-Sleep -Seconds 5
-    $health = Wait-Adapter -Socket $Socket -Id ([ref]$id) -TimeoutSeconds 60
+
+    if ($null -ne $Socket) {
+        try { $Socket.Dispose() } catch {}
+        $Socket = $null
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    $newTarget = $null
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $items = @(Invoke-RestMethod -Uri ('http://127.0.0.1:' + $port + '/json') -UseBasicParsing -TimeoutSec 2)
+            $roots = @($items | Where-Object {
+                $_.type -eq 'page' -and
+                ([string]$_.url).TrimEnd('/') -eq 'https://chatgpt.com' -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.webSocketDebuggerUrl)
+            })
+
+            if ($roots.Count -gt 0) {
+                $newTarget = $roots[-1]
+                break
+            }
+        }
+        catch {}
+
+        Start-Sleep -Milliseconds 500
+    }
+
+    if ($null -eq $newTarget) {
+        throw 'New ChatGPT tab target was not found after + Chat.'
+    }
+
+    $Socket = New-Object Net.WebSockets.ClientWebSocket
+    $Socket.ConnectAsync(
+        [Uri]$newTarget.webSocketDebuggerUrl,
+        [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+
+    $id = 1000
+    $health = Wait-Adapter -Socket $Socket -Id ([ref]$id) -TimeoutSeconds 75
 
     $Stage = 'initialize-bridge'
     $readyPrefix = From-Utf8Base64 '0JzQvtGB0YIg0LPQvtGC0L7Qsg=='
