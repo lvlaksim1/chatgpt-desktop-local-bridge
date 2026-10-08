@@ -40,6 +40,7 @@ $asset = 'ChatGptDesktopLocalBridge-TerminalProbe.zip'
 $expectedSha256 = '7656fb0d22ecb3d05b74bca3e5ba79211c15727b1c39483d2e2fb18b1e4c726b'
 $url = "https://github.com/lvlaksim1/chatgpt-desktop-local-bridge/releases/download/$tag/$asset"
 
+$stage = 'init'
 $work = Join-Path $env:TEMP ('direct-bridge-prebuilt-' + [Guid]::NewGuid().ToString('N'))
 $zip = Join-Path $work $asset
 $unpack = Join-Path $work 'probe'
@@ -49,15 +50,20 @@ $stderrPath = Join-Path $work 'stderr.txt'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 try {
+    $stage = 'download'
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
 
-    $actualSha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $stage = 'hash'
+    $hashObject = Get-FileHash -LiteralPath $zip -Algorithm SHA256
+    $actualSha256 = ([string]$hashObject.Hash).ToLowerInvariant()
     if ($actualSha256 -ne $expectedSha256) {
         Write-Result -Status 'fail' -ExitCode 41 -ErrorText ("SHA256 mismatch: " + $actualSha256)
     }
 
+    $stage = 'expand'
     Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
 
+    $stage = 'locate-probe'
     $probeExe = Join-Path $unpack 'ChatGptDesktopLocalBridge.TerminalTests.exe'
     if (-not (Test-Path -LiteralPath $probeExe -PathType Leaf)) {
         $candidate = Get-ChildItem -LiteralPath $unpack -Recurse -Filter '*.exe' -File |
@@ -69,8 +75,10 @@ try {
         $probeExe = $candidate.FullName
     }
 
+    $stage = 'run-probe'
     $process = Start-Process -FilePath $probeExe -WorkingDirectory $unpack -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
 
+    $stage = 'read-output'
     $stdout = if (Test-Path -LiteralPath $stdoutPath) {
         [string](Get-Content -LiteralPath $stdoutPath -Raw -Encoding UTF8)
     } else { '' }
@@ -95,15 +103,17 @@ try {
         }
     }
 
+    $stage = 'write-success'
     Write-Result -Status 'pass' -ExitCode 0 -Extra @{
         package_tag = $tag
         package_sha256 = $actualSha256
-        stdout = $stdout.Trim()
-        stderr = $stderr.Trim()
+        stdout = ([string]$stdout).Trim()
+        stderr = ([string]$stderr).Trim()
     }
 }
 catch {
-    Write-Result -Status 'fail' -ExitCode 45 -ErrorText $_.Exception.Message
+    $detail = ([string]$_.Exception.Message) + ' | stage=' + $stage + ' | line=' + ([string]$_.InvocationInfo.ScriptLineNumber) + ' | command=' + ([string]$_.InvocationInfo.Line) + ' | stack=' + ([string]$_.ScriptStackTrace)
+    Write-Result -Status 'fail' -ExitCode 45 -ErrorText $detail
 }
 finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
