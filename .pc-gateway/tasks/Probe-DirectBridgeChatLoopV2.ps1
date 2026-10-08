@@ -119,13 +119,18 @@ function Eval($S,[ref]$Id,[string]$Expression){
     return $r.result.result.value
 }
 
-function Connect-ReadyRoot([int]$Port,[int]$TimeoutSeconds=90){
+function Connect-ReadyRoot([int]$Port,[string[]]$KnownIds,[int]$TimeoutSeconds=90){
     $deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $last='none'
     while([DateTime]::UtcNow -lt $deadline){
         try{
             $items=@(Invoke-RestMethod -Uri ('http://127.0.0.1:'+$Port+'/json') -UseBasicParsing -TimeoutSec 2)
-            $roots=@($items|Where-Object{$_.type -eq 'page' -and ([string]$_.url).TrimEnd('/') -eq 'https://chatgpt.com' -and $_.webSocketDebuggerUrl})
+            $roots=@($items|Where-Object{
+                $_.type -eq 'page' -and
+                ([string]$_.url) -like 'https://chatgpt.com/*' -and
+                $_.webSocketDebuggerUrl -and
+                -not ($KnownIds -contains [string]$_.id)
+            })
             foreach($target in $roots){
                 $s=New-Object Net.WebSockets.ClientWebSocket
                 try{
@@ -252,12 +257,14 @@ try{
     if($null-eq$root){throw 'UI Automation root unavailable.'}
 
     $Stage='new-chat'
+    $beforeTargets=@(Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/json') -UseBasicParsing -TimeoutSec 3)
+    $knownIds=@($beforeTargets|ForEach-Object{[string]$_.id})
     $newChatButton=From-Utf8Base64 'KyDQp9Cw0YI='
     Invoke-Button $root $newChatButton
     Start-Sleep -Seconds 5
 
     $Stage='composer'
-    $ready=Connect-ReadyRoot $port 90
+    $ready=Connect-ReadyRoot $port $knownIds 90
     $Socket=$ready.socket
     $health=$ready.health
     $id=[int]$ready.id
