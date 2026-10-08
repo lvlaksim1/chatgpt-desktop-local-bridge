@@ -31,31 +31,27 @@ try{
 
     $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
     $dom=$json|ConvertFrom-Json
-    $rows=@()
+    $body=[string]$dom.bodyText
 
+    $rows=@()
     foreach($c in @($dom.candidates)){
-        $rows += [ordered]@{
-            tag=[string]$c.tag
-            id=[string]$c.id
-            role=[string]$c.role
-            ce=[string]$c.contenteditable
-            testid=[string]$c.testid
-            placeholder=[string]$c.placeholder
-            aria=[string]$c.ariaLabel
-            cls=([string]$c.classes).Substring(0,[Math]::Min(120,([string]$c.classes).Length))
-        }
+        $rows += (([string]$c.tag)+'|id='+([string]$c.id)+'|role='+([string]$c.role)+'|ce='+([string]$c.contenteditable)+'|testid='+([string]$c.testid)+'|placeholder='+([string]$c.placeholder)+'|aria='+([string]$c.ariaLabel))
     }
 
-    $compact=($rows|ConvertTo-Json -Depth 5 -Compress)
-    if($compact.Length -gt 600){$compact=$compact.Substring(0,600)}
+    $summary=[string]($rows -join ' || ')
+    if($summary.Length -gt 1200){$summary=$summary.Substring(0,1200)}
+    $bodyPrefix=$body
+    if($bodyPrefix.Length -gt 500){$bodyPrefix=$bodyPrefix.Substring(0,500)}
 
-    Finish 'pass' 0 $compact @{
+    Finish 'pass' 0 $summary @{
         target_request_id=$target
         href=[string]$dom.href
         title=[string]$dom.title
         candidate_count=@($dom.candidates).Count
-        body_prefix=([string]$dom.bodyText).Substring(0,[Math]::Min(300,([string]$dom.bodyText).Length))
+        body_prefix=$bodyPrefix
+        login_like=[bool]($body -match '(?i)log in|sign up|войти|регистрац')
+        challenge_like=[bool]($body -match '(?i)checking your browser|verify you are human|cloudflare|провер')
     }
 }catch{
-    Finish 'fail' 31 $_.Exception.Message
+    Finish 'fail' 31 (([string]$_.Exception.Message)+' | line='+([string]$_.InvocationInfo.ScriptLineNumber))
 }
