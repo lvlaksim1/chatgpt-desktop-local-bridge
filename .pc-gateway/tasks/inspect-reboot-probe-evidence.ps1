@@ -5,7 +5,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
-$root=Join-Path $env:LOCALAPPDATA 'GitHubRunner\pc-runner-gateway\request-ledger\evidence\llm-after-reboot-final-20261026-bc155f0-v1'
+$root=Join-Path $env:LOCALAPPDATA 'GitHubRunner\pc-runner-gateway\request-ledger\evidence\llm-reboot-probe-corrected-20261026-d0825d5-v1'
 $log='D:\LocalAI\Ollama\logs\reboot-probe-v2-result.json'
 $report=[ordered]@{status='diagnostic';error='';evidence_root_exists=$false;files=@();project_status='';project_error='';stdout_tail='';stderr_tail='';local_report_exists=$false;local_status='';local_error='';local_attempts=@();result_project_status='';gateway_status='';gateway_exit_code='';task_exit='';api_reachable=$false;ollama_processes=0}
 function Tail([string]$file,[int]$max){
