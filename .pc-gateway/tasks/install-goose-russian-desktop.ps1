@@ -86,20 +86,20 @@ try {
  $report.telemetry_disabled_in_launcher=$true
  $hintsPath=Join-Path $work '.goosehints'
  if(-not (Test-Path -LiteralPath $hintsPath -PathType Leaf)){
-  $hints='Отвечай на русском языке. Все пояснения, планы, уточняющие вопросы и отчёты об операциях пиши по-русски. Не переводи имена файлов, команды, имена переменных и технические идентификаторы. Перед изменением файлов или запуском потенциально опасной команды запрашивай подтверждение.'
+  $hints=([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('0J7RgtCy0LXRh9Cw0Lkg0L3QsCDRgNGD0YHRgdC60L7QvCDRj9C30YvQutC1LiDQktGB0LUg0L/QvtGP0YHQvdC10L3QuNGPLCDQv9C70LDQvdGLLCDRg9GC0L7Rh9C90Y/RjtGJ0LjQtSDQstC+0L/RgNC+0YHRiyDQuCDQvtGC0YfRkdGC0Ysg0L7QsSDQvtC/0LXRgNCw0YbQuNGP0YUg0L/QuNGI0Lgg0L/Qvi3RgNGD0YHRgdC60LguINCd0LUg0L/QtdGA0LXQstC+0LTQuCDQuNC80LXQvdCwINGE0LDQudC70L7Qsiwg0LrQvtC80LDQvdC00YssINC40LzQtdC90LAg0L/QtdGA0LXQvNC10L3QvdGL0YUg0Lgg0YLQtdGF0L3QuNGH0LXRgdC60LjQtSDQuNC00LXQvdGC0LjRhNC40LrQsNGC0L7RgNGLLiDQn9C10YDQtdC0INC40LfQvNC10L3QtdC90LjQtdC8INGE0LDQudC70L7QsiDQuNC70Lgg0LfQsNC/0YPRgdC60L7QvCDQv9C+0YLQtdC90YbQuNCw0LvRjNC90L4g0L7Qv9Cw0YHQvdC+0Lkg0LrQvtC80LDQvdC00Ysg0LfQsNC/0YDQsNGI0LjQstCw0Lkg0L/QvtC00YLQstC10YDQttC00LXQvdC40LUu')))
   [IO.File]::WriteAllText($hintsPath,$hints,(New-Object System.Text.UTF8Encoding($false)))
  }
  $report.russian_hints=$hintsPath
  $desktop=[Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
  if(-not [string]::IsNullOrWhiteSpace($desktop)){
-  $shortcut=Join-Path $desktop 'Goose - Русский.lnk'
+  $shortcut=Join-Path $desktop ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('R29vc2UgLSDQoNGD0YHRgdC60LjQuS5sbms=')))
   $shell=New-Object -ComObject WScript.Shell
   $link=$shell.CreateShortcut($shortcut)
   $link.TargetPath=Join-Path $env:SystemRoot 'System32\cmd.exe'
   $link.Arguments='/c ""'+$launch+'""'
   $link.WorkingDirectory=$base
   $link.IconLocation=$actualExe+',0'
-  $link.Description='Goose: русский графический интерфейс, локальная модель Qwen3.5'
+  $link.Description=([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('R29vc2U6INGA0YPRgdGB0LrQuNC5INCz0YDQsNGE0LjRh9C10YHQutC40Lkg0LjQvdGC0LXRgNGE0LXQudGBLCDQu9C+0LrQsNC70YzQvdCw0Y8g0LzQvtC00LXQu9GMIFF3ZW4zLjU=')))
   $link.Save()
   $report.shortcut=$shortcut
  }
