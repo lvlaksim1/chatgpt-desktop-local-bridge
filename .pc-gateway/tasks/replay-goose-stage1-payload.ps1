@@ -33,7 +33,13 @@ else{
     if([int]$response.StatusCode -eq 200){$item.status='success'}
    }catch{
     $item.error=[string]$_.Exception.Message
-    try{$item.http=[string][int]$_.Exception.Response.StatusCode}catch{}
+    try{
+     $item.http=[string][int]$_.Exception.Response.StatusCode
+     $rd=New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+     $details=$rd.ReadToEnd()
+     $rd.Dispose()
+     if($details){$item.error+=' server='+$details}
+    }catch{}
    }
    $item.seconds=[math]::Round(([DateTime]::UtcNow-$start).TotalSeconds,1)
    $report.tests+=($item)
