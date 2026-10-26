@@ -46,7 +46,7 @@ try {
  $r.stdout=$o.Trim()
  $r.stderr=$e.Trim()
  $r.shell_file_exists=Test-Path -LiteralPath $target -PathType Leaf
- if($r.shell_file_exists){$r.content_matches=((Get-Content -LiteralPath $target -Raw).Trim() -eq $nonce)}
+ if($r.shell_file_exists){$r.content_matches=([IO.File]::ReadAllText($target).Trim() -eq $nonce)}
  $logs=Join-Path $env:GOOSE_PATH_ROOT 'data\logs'
  if(Test-Path $logs){
   $trace=@(Get-ChildItem $logs -File -Filter 'llm_request*.jsonl' -ErrorAction SilentlyContinue|Where-Object{$_.LastWriteTimeUtc -ge $start.AddSeconds(-3)})
@@ -60,7 +60,7 @@ try {
  }else{
   $r.error='PowerShell not fully verified: file='+$r.shell_file_exists+' match='+$r.content_matches+' trace='+$r.powershell_seen_in_trace+' exit='+$r.exit_code+' stderr='+$r.stderr
  }
-}catch{$r.error=[string]$_.Exception.Message}
+}catch{$r.error=[string]$_.Exception.Message+'; output='+$r.stdout+'; stderr='+$r.stderr+'; file='+$r.shell_file_exists}
 $r.duration_sec=[math]::Round(([DateTime]::UtcNow-$start).TotalSeconds,1)
 if($r.error.Length -gt 680){$r.error=$r.error.Substring(0,680)}
 $r|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $GatewayResultPath -Encoding UTF8
