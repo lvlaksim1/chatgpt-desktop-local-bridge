@@ -39,7 +39,7 @@ try {
     $names=@($tags.models | ForEach-Object { [string]$_.name })
     if($names -notcontains 'qwen3.5:9b') { throw 'Model qwen3.5:9b not registered' }
     $report.model='qwen3.5:9b'
-    $payload=ConvertTo-Json -InputObject @{
+    $payloadObject=@{
         model='qwen3.5:9b'
         prompt='Ответь одним словом: два плюс два?'
         stream=$false
@@ -52,7 +52,8 @@ try {
             num_predict=24
             temperature=0
         }
-    } -Depth 8 -Compress
+    }
+    $payload=ConvertTo-Json -InputObject $payloadObject -Depth 8 -Compress
     $answer=Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/generate' -Method Post -ContentType 'application/json' -Body $payload -TimeoutSec 75
     if($answer.done -ne $true) { throw 'Generation not completed' }
     if([string]::IsNullOrWhiteSpace([string]$answer.response)) { throw 'Generation returned an empty answer' }
