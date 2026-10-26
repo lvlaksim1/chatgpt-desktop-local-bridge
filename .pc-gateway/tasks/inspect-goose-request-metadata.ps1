@@ -17,12 +17,15 @@ if($report.directory_exists){
     $obj=ConvertFrom-Json -InputObject $line -ErrorAction Stop
     $item.keys=@($obj.PSObject.Properties.Name) -join ','
     $payload=$obj
+    if($null -ne $obj.input){$payload=$obj.input}
+    if($payload -is [string]){try{$payload=ConvertFrom-Json -InputObject $payload}catch{}}
     if($null -ne $obj.payload){$payload=$obj.payload}
     if($null -ne $obj.request){$payload=$obj.request}
     if($null -ne $payload.payload){$payload=$payload.payload}
     if($null -ne $payload.body){$payload=$payload.body}
     $item.request_keys=@($payload.PSObject.Properties.Name) -join ','
     if($null -ne $payload.model){$item.model=[string]$payload.model}
+    if(-not $item.model -and $null -ne $obj.model_config){$item.model=[string]$obj.model_config.model_name}
     if($null -ne $payload.stream){$item.stream=[string]$payload.stream}
     if($null -ne $payload.max_tokens){$item.max_tokens=[string]$payload.max_tokens}
     if($null -ne $payload.max_completion_tokens){$item.max_tokens=[string]$payload.max_completion_tokens}
