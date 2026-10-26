@@ -23,6 +23,6 @@ foreach($fn in @('launcher-events.log','scheduled-stderr.log','scheduled-stdout.
 $report.process_count=@(Get-Process -Name 'ollama','llama-server' -ErrorAction SilentlyContinue).Count
 try{$v=Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/version' -Method Get -TimeoutSec 3;$report.api_reachable=$true}catch{}
 $report.error='task_state='+$report.task_state+' last='+$report.last_result+' last_run='+$report.last_run_time+' api='+$report.api_reachable+' processes='+$report.process_count+' logs='+($report.logs -join ' || ')
-if($report.error.Length -gt 690){$report.error=$report.error.Substring($report.error.Length-690)}
+if($report.error.Length -gt 690){$report.error=$report.error.Substring(0,690)}
 $report|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $GatewayResultPath -Encoding UTF8
 exit 0
