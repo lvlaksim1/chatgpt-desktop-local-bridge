@@ -7,7 +7,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
 $root=Join-Path $env:LOCALAPPDATA 'GitHubRunner\pc-runner-gateway\request-ledger\evidence\llm-after-reboot-generation-20261026-ae98975-v1'
 $log='D:\LocalAI\Ollama\logs\reboot-probe-result.json'
-$report=[ordered]@{status='diagnostic';error='';evidence_root_exists=$false;files=@();project_status='';project_error='';stdout_tail='';stderr_tail='';local_report_exists=$false;api_reachable=$false;ollama_processes=0}
+$report=[ordered]@{status='diagnostic';error='';evidence_root_exists=$false;files=@();project_status='';project_error='';stdout_tail='';stderr_tail='';local_report_exists=$false;local_status='';local_error='';local_attempts=@();result_project_status='';gateway_status='';gateway_exit_code='';task_exit='';api_reachable=$false;ollama_processes=0}
 function Tail([string]$file,[int]$max){
  $s=([string](Get-Content -LiteralPath $file -Tail 20 -ErrorAction Stop|Out-String)).Trim()
  if($s.Length -gt $max){return $s.Substring($s.Length-$max)}
