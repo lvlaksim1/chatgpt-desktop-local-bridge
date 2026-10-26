@@ -111,12 +111,6 @@ try {
     Write-Stage 'create-configuration'
     # Create a named local model sharing the existing model blobs; no pulling and no large model copy.
     $modelfile=Join-Path $base 'Modelfile-rtx2070'
-    $lines=@(
-        'FROM qwen3.5:9b'
-        'PARAMETER num_gpu '+[string]$report.chosen_gpu_layers
-        'PARAMETER num_ctx 4096'
-        'PARAMETER num_batch 64'
-    )
     $lines=@('FROM qwen3.5:9b',('PARAMETER num_gpu '+[string]$report.chosen_gpu_layers),'PARAMETER num_ctx 4096','PARAMETER num_batch 64')
     [IO.File]::WriteAllLines($modelfile,$lines,[Text.UTF8Encoding]::new($false))
     $report.modelfile=$modelfile
