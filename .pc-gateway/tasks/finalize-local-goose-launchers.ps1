@@ -23,6 +23,7 @@ try{
   'set "GOOSE_PROVIDER=ollama"',
   'set "GOOSE_MODEL=qwen3.5:4b-goose"',
   'set "GOOSE_INPUT_LIMIT=8192"',
+  'set "GOOSE_MAX_TOKENS=8192"',
   'set "OLLAMA_STREAM_USAGE=false"',
   'set "GOOSE_DISABLE_KEYRING=1"',
   'cd /d "D:\LocalAI\Goose\workspace"'
