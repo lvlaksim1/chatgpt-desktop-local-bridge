@@ -331,7 +331,8 @@
       userMessageCount: nodes.length,
       baselineUserMessageCount: baseline,
       exactNewUserMessage,
-      confirmed: Boolean(state.composerEmpty || exactNewUserMessage)
+      composerClearedWithoutProof: Boolean(state.composerEmpty && !exactNewUserMessage),
+      confirmed: Boolean(exactNewUserMessage)
     };
 
     lastNativeSendDebug = { stage: "receipt", ...receipt };
@@ -555,7 +556,7 @@
     const composerForm = composer?.closest("form") || null;
 
     return {
-      version: 10,
+      version: 11,
       href: location.href,
       readyState: document.readyState,
       webViewAvailable: Boolean(window.chrome?.webview),
@@ -596,7 +597,7 @@
     scan: scheduleScan,
     health,
     contextNavigationTarget,
-    version: 10
+    version: 11
   };
 
   const observer = new MutationObserver(scheduleScan);

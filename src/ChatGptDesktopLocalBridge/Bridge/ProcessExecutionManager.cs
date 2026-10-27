@@ -318,6 +318,15 @@ internal sealed class WindowsJobObject : IDisposable
         _handle = handle;
     }
 
+    internal IntPtr Handle
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return _handle;
+        }
+    }
+
     public static WindowsJobObject CreateKillOnClose()
     {
         if (!OperatingSystem.IsWindows())
