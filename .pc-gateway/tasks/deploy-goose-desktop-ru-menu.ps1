@@ -20,7 +20,7 @@ try{
  $test=Start-Process -FilePath $node.Source -ArgumentList @('--check',$srcScript) -PassThru -NoNewWindow -RedirectStandardOutput $syntaxOut -RedirectStandardError $syntaxErrors
  if(-not $test.WaitForExit(10000)){try{$test.Kill()}catch{};throw 'Node patch syntax validation timed out'}
  $test.Refresh()
- if($test.ExitCode -ne 0){throw ('Invalid patch script: '+(Get-Content $syntaxErrors -Tail 8|Out-String))}
+ if((Get-Item -LiteralPath $syntaxErrors).Length -gt 0){throw ('Invalid patch script: '+(Get-Content $syntaxErrors -Tail 8|Out-String))}
  $report.stage='copy'
  $targetParent=Split-Path -Parent $target
  New-Item -ItemType Directory -Path $targetParent -Force|Out-Null
@@ -41,7 +41,7 @@ try{
   $patch.Refresh()
   $report.patch_stdout=(Get-Content $stdout -Tail 3 -ErrorAction SilentlyContinue|Out-String).Trim()
   $report.patch_stderr=(Get-Content $stderr -Tail 6 -ErrorAction SilentlyContinue|Out-String).Trim()
-  if($patch.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $backup -PathType Leaf)){
+  if(-not (Test-Path -LiteralPath $backup -PathType Leaf) -or $report.patch_stdout -notmatch '"status":"success"'){
    throw ('ASAR patch failed: '+$report.patch_stderr)
   }
  }
