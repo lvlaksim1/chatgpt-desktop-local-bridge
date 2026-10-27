@@ -17,8 +17,9 @@ try{
   $args=@('install','--prefix',$toolsRoot,'--no-audit','--no-fund','@electron/asar@3.4.0')
   $proc=Start-Process -FilePath $npm.Source -ArgumentList $args -PassThru -NoNewWindow -RedirectStandardOutput $npmout -RedirectStandardError $npmerr
   if(-not $proc.WaitForExit(85000)){try{$proc.Kill()}catch{};throw 'npm installation of ASAR inspection tools exceeded 85 seconds'}
+  $proc.Refresh()
   $r.npm_status=[string]$proc.ExitCode
-  if($proc.ExitCode -ne 0){$tail=(Get-Content $npmerr -Tail 7|Out-String).Trim();throw ('npm asar install failed: '+$tail)}
+  if(-not (Test-Path -LiteralPath $target -PathType Container)){$tail=(Get-Content $npmerr -Tail 7|Out-String).Trim();throw ('npm asar install failed: '+$tail)}
  }
  $js=@'
 const asar=require('./node_modules/@electron/asar');
@@ -47,7 +48,8 @@ console.log(JSON.stringify(result));
  $stderr=Join-Path $toolsRoot 'asar-inspection-errors.log'
  $p=Start-Process -FilePath $node.Source -ArgumentList @($jsfile) -WorkingDirectory $toolsRoot -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
  if(-not $p.WaitForExit(25000)){try{$p.Kill()}catch{};throw 'Asar inventory exceeded 25 seconds'}
- if($p.ExitCode -ne 0){throw ('ASAR inspect failed: '+(Get-Content $stderr -Tail 6|Out-String))}
+ $p.Refresh()
+ if(-not (Test-Path -LiteralPath $stdout -PathType Leaf) -or (Get-Item $stdout).Length -eq 0){throw ('ASAR inspect failed: '+(Get-Content $stderr -Tail 6|Out-String))}
  $info=Get-Content $stdout -Raw|ConvertFrom-Json
  $r.files=@($info.files)
  $r.interesting=@($info.main)
