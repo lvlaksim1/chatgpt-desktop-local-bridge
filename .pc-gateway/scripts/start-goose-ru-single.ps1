@@ -15,7 +15,7 @@ function Record([string]$message) {
 try {
     if(-not(Test-Path -LiteralPath $exe -PathType Leaf)){throw "Missing Goose.exe: $exe"}
     if(-not(Test-Path -LiteralPath $work -PathType Container)){throw "Missing workspace: $work"}
-    $mutex = New-Object System.Threading.Mutex($false, 'Local\GooseRuDesktopLauncher')
+    $mutex = [System.Threading.Mutex]::new($false, 'Local\GooseRuDesktopLauncher')
     try {
         $locked = $mutex.WaitOne(15000)
     } catch [System.Threading.AbandonedMutexException] {
