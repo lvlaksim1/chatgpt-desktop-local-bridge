@@ -96,8 +96,8 @@ async function main(){
  const tempArchive=archive+'.ru-new';
  if(fs.existsSync(tempArchive))fs.rmSync(tempArchive);
  await asar.createPackage(temp,tempArchive);
- const check1=asar.extractFile(tempArchive,mainPath).toString('utf8');
- const check2=asar.extractFile(tempArchive,rendererPath).toString('utf8');
+ const check1=asar.extractFile(tempArchive,mainPath.split('/').join(path.sep)).toString('utf8');
+ const check2=asar.extractFile(tempArchive,rendererPath.split('/').join(path.sep)).toString('utf8');
  if(!check1.includes(patchMarker)||!check2.includes('Прикрепить файл'))throw Error('Repacked archive validation failed');
  if(fs.existsSync(originalArchive))throw Error('Backup already exists: no overwrite');
  fs.copyFileSync(archive,originalArchive);
