@@ -112,7 +112,7 @@ public static class GooseRuIntegrityWin32 {
   $r.stage='patch-copy'
   Copy-Item -LiteralPath $exe -Destination $exeBackup
   $matches[0].value=$hash
-  $json=ConvertTo-Json -InputObject $entries -Compress -Depth 6
+  $json=ConvertTo-Json -InputObject @($entries) -Compress -Depth 6
   $bytes=[Text.Encoding]::UTF8.GetBytes($json)
   $pending=$exe+'.ru-integrity-pending'
   $swap=$exe+'.ru-integrity-swap'
