@@ -27,7 +27,7 @@ console.log(JSON.stringify(out));
  $r.asar_old=@($data.original) -join ','
  $r.asar_new=@($data.repacked) -join ','
  $r.status='success'
- $r.error='old='+$r.asar_old+' | new='+$r.asar_new
+ $r.error='old_main='+$data.hasMainOriginal+' new_main='+$data.hasMainRepacked+' new='+$r.asar_new
 }catch{$r.error=[string]$_.Exception.Message}
 if($r.error.Length -gt 675){$r.error=$r.error.Substring(0,675)}
 $r|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $GatewayResultPath -Encoding UTF8
