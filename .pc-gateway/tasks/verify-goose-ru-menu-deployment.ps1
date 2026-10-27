@@ -31,7 +31,7 @@ console.log(JSON.stringify({status:ok?'success':'failed',patched_main:main.inclu
  if(-not $proc.WaitForExit(10000)){try{$proc.Kill()}catch{};throw 'Verification timed out'}
  $data=Get-Content $out -Raw|ConvertFrom-Json
  $r.node_verify=$data.status
- if(-not $r.original_unchanged -or -not $r.launcher_correct -or $data.status -ne 'success'){throw 'One or more localization acceptance checks failed'}
+ if(-not $r.original_unchanged -or -not $r.launcher_correct -or $data.status -ne 'success'){throw ('Localization check failed: original='+$r.original_unchanged+' launcher='+$r.launcher_correct+' archive='+$r.node_verify+' stdout='+(Get-Content $out -Raw))}
  $r.status='success'
  $r.error='Original archive hash matches backup; Russian menu and tooltip code verified; launcher opens Russian copy in D workspace.'
 }catch{$r.error=[string]$_.Exception.Message}
