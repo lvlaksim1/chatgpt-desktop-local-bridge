@@ -48,7 +48,10 @@ try {
 
     Set-State "configuring" "Creating isolated local MCP profile."
     New-Item -ItemType Directory -Force -Path $profiles | Out-Null
-    $launchCommand = 'dotnet "' + $dll + '"'
+    # tunnel-client parses backslash as a quoting escape (including on Windows).
+    # Use Windows-compatible forward slashes so Go's argv parser keeps the DLL path intact.
+    $mcpDllArgument = $dll.Replace([char]92, [char]47)
+    $launchCommand = 'dotnet "' + $mcpDllArgument + '"'
     & $exe init --sample sample_mcp_stdio_local --profile $profileName --profile-dir $profiles --tunnel-id $TunnelId --mcp-command $launchCommand --health-listen-addr "127.0.0.1:0" --force
     if ($LASTEXITCODE -ne 0) { throw "tunnel-client init failed (exit $LASTEXITCODE)." }
 
