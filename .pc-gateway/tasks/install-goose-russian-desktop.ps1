@@ -77,6 +77,7 @@ try {
   'set "OLLAMA_HOST=http://127.0.0.1:11434"',
   'set "OLLAMA_NO_CLOUD=1"',
   'set "GOOSE_INPUT_LIMIT=8192"',
+  'set "GOOSE_MAX_TOKENS=8192"',
   'set "OLLAMA_STREAM_USAGE=false"',
   'cd /d "D:\LocalAI\Goose\workspace"',
   'start "" "'+$actualExe+'"'
