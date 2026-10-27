@@ -21,7 +21,7 @@ try {
 const asar=require('D:/LocalAI/Goose/patch-tools/node_modules/@electron/asar');
 const crypto=require('node:crypto');
 const p='D:/LocalAI/Goose/desktop-ru/v1.56.0/resources/app.asar';
-if(!asar.extractFile(p,'.vite/build/main.js').toString('utf8').includes('GOOSE_RU_NATIVE_MENU_PATCH_V1'))throw Error('Russian patch missing');
+if(!asar.extractFile(p,require('node:path').join('.vite','build','main.js')).toString('utf8').includes('GOOSE_RU_NATIVE_MENU_PATCH_V1'))throw Error('Russian patch missing');
 console.log(crypto.createHash('sha256').update(asar.getRawHeader(p).headerString).digest('hex'));
 '@
  $jsPath=Join-Path $root 'patch-tools\goose-ru-header-hash.cjs'
