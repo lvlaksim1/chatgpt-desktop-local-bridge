@@ -14,6 +14,9 @@ $statePath = Join-Path $logDirectory "tunnel-state.json"
 $doctorLog = Join-Path $logDirectory "doctor.log"
 $runtimeLog = Join-Path $logDirectory "runtime.log"
 $plainKey = $null
+$encryptedKeyFile = Join-Path $logDirectory "runtime-key.dpapi"
+$keyWasEntered = $false
+$encryptedKeyToSave = $null
 
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 function Set-State([string] $stage, [string] $detail) {
@@ -35,12 +38,26 @@ try {
     $TunnelId = $TunnelId.Trim()
     if ($TunnelId -notmatch '^tunnel_[A-Za-z0-9_.:-]+$') { throw "Invalid tunnel ID." }
 
-    $secureKey = Read-Host "Enter your tunnel runtime API key (input hidden)" -AsSecureString
+    # Windows DPAPI protects the cached key for the current Windows account.
+    # The file stores only encrypted material, not the plaintext API key.
+    if (Test-Path -LiteralPath $encryptedKeyFile -PathType Leaf) {
+        try {
+            $ciphertext = (Get-Content -LiteralPath $encryptedKeyFile -Raw -ErrorAction Stop).Trim()
+            $secureKey = ConvertTo-SecureString -String $ciphertext -ErrorAction Stop
+            Write-Output "Using saved Windows-protected runtime key."
+        } catch {
+            throw "Saved runtime key cannot be decrypted. Delete runtime-key.dpapi and restart."
+        }
+    } else {
+        $secureKey = Read-Host "Enter your tunnel runtime API key (input hidden)" -AsSecureString
+        $keyWasEntered = $true
+    }
     if ($secureKey.Length -eq 0) { throw "An API key is required." }
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
     try {
         $plainKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
         $env:CONTROL_PLANE_API_KEY = $plainKey
+        if ($keyWasEntered) { $encryptedKeyToSave = ConvertFrom-SecureString -SecureString $secureKey }
     } finally {
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
         $secureKey.Dispose()
@@ -64,6 +81,15 @@ try {
     [IO.File]::WriteAllText($doctorLog, $safeOutput, [Text.Encoding]::UTF8)
     Write-Output $safeOutput
     if ($doctorCode -ne 0) { throw "Tunnel doctor failed (exit $doctorCode); see $doctorLog" }
+
+    # Unlike doctor, this confirms the runtime key can access the actual tunnel.
+    Set-State "validating_access" "Checking access to the configured tunnel."
+    & $exe admin tunnels get $TunnelId | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Unable to fetch tunnel metadata with the runtime key. No key was saved." }
+    if ($keyWasEntered) {
+        [IO.File]::WriteAllText($encryptedKeyFile, $encryptedKeyToSave, [Text.Encoding]::UTF8)
+        Write-Output "Runtime key stored in Windows DPAPI-protected form for next launches."
+    }
 
     if (Test-Path $healthUrlFile) { Remove-Item -LiteralPath $healthUrlFile -Force }
     Set-State "connecting" "Tunnel daemon starting; check health URL and runtime log."
