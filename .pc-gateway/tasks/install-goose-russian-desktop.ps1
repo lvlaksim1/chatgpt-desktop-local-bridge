@@ -38,12 +38,12 @@ try {
  if($report.sha256 -ne $expected){throw 'Release archive hash mismatch'}
  $report.download_verified=$true
  $report.stage='extract'
- $appExe=@(Get-ChildItem -LiteralPath $releaseDir -Recurse -File -Filter 'Goose.exe' -ErrorAction SilentlyContinue|Select-Object -First 2)
+ $appExe=@(Get-ChildItem -LiteralPath $releaseDir -File -Filter 'Goose.exe' -ErrorAction SilentlyContinue)
  if($appExe.Count -ne 1){
   $staging=Join-Path $base 'desktop\.stage-v1.56.0'
   if(Test-Path -LiteralPath $staging){Remove-Item -LiteralPath $staging -Recurse -Force}
   Expand-Archive -LiteralPath $download -DestinationPath $staging -Force
-  $sourceExe=@(Get-ChildItem -LiteralPath $staging -Recurse -File -Filter 'Goose.exe')
+  $sourceExe=@(Get-ChildItem -LiteralPath $staging -Recurse -File -Filter 'Goose.exe' | Where-Object { Test-Path -LiteralPath (Join-Path (Split-Path -Parent $_.FullName) 'resources') -PathType Container })
   if($sourceExe.Count -ne 1){throw ('Expected exactly one desktop Goose.exe, found '+$sourceExe.Count)}
   $sourceDir=Split-Path -Parent $sourceExe[0].FullName
   Copy-Item -Path (Join-Path $sourceDir '*') -Destination $releaseDir -Recurse -Force
