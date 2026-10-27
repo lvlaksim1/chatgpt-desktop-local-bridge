@@ -1,5 +1,5 @@
 # Local-only launcher for the isolated read-only MCP probe.
-# The runtime key is entered privately and never saved to disk.
+# Runtime key is entered privately; only its user-scoped DPAPI ciphertext is cached on disk.
 param([string] $TunnelId = "")
 
 $ErrorActionPreference = "Stop"
