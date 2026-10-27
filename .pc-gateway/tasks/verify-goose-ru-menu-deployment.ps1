@@ -20,8 +20,8 @@ const a='D:/LocalAI/Goose/desktop-ru/v1.56.0/resources/app.asar';
 const main=asar.extractFile(a,'.vite'+path.sep+'build'+path.sep+'main.js').toString('utf8');
 const file=asar.listPackage(a).find(x=>x.includes('App-Cz6iiNAZ.js'));
 const renderer=asar.extractFile(a,file.replace(/^[\\/]+/,'')).toString('utf8');
-const ok=main.includes('GOOSE_RU_NATIVE_MENU_PATCH_V1')&&main.includes('Файл')&&renderer.includes('Прикрепить файл');
-console.log(JSON.stringify({status:ok?'success':'failed',patched_main:main.includes('GOOSE_RU_NATIVE_MENU_PATCH_V1'),translated_menu:main.includes('Файл'),translated_attachment:renderer.includes('Прикрепить файл')}));
+const ok=main.includes('GOOSE_RU_NATIVE_MENU_PATCH_V1')&&main.includes('\u0424\u0430\u0439\u043b')&&renderer.includes('\u041f\u0440\u0438\u043a\u0440\u0435\u043f\u0438\u0442\u044c\u0020\u0444\u0430\u0439\u043b');
+console.log(JSON.stringify({status:ok?'success':'failed',patched_main:main.includes('GOOSE_RU_NATIVE_MENU_PATCH_V1'),translated_menu:main.includes('\u0424\u0430\u0439\u043b'),translated_attachment:renderer.includes('\u041f\u0440\u0438\u043a\u0440\u0435\u043f\u0438\u0442\u044c\u0020\u0444\u0430\u0439\u043b')}));
 '@
  $p=Join-Path $root 'patch-tools\verify-goose-ru.cjs'
  [IO.File]::WriteAllText($p,$js,(New-Object Text.UTF8Encoding($false)))
