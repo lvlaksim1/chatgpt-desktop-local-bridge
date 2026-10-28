@@ -141,6 +141,8 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Product `main` remains unchanged at `6e2a0b54b727c5474bad40ac038f727a39cceb8d`; no private/Scheduled Tasks/Library transport experiment has been promoted to production.
 - Operational coupled state was reconciled to manager generation 20 on 2026-10-05.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Private transport v4 Promise-await correction admitted 2026-10-05
 
 - Owner live v3 Private Read Proof returned identical default values for all four reads: `Status=0`, `ElapsedMs=0`, empty response and `Error=null`.
@@ -152,6 +154,8 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Exact updater from installed v3: `ChatGptDesktopLocalBridge-Update-from-private-transport-v3-70d3b29.exe`, 2,324,866 bytes, SHA-256 `1ed641e70317729d11fbc60dae939638e0cc49e84ca550f4b42eb010271b14f9`.
 - Next live gate is to install v4 and rerun only Private Read Proof. Do not infer backend availability or auth requirements until the corrected probe returns real HTTP results.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Scheduled+Library autonomous campaign reconciliation 2026-10-05
 
 - Runner-driven live testing became the default mode for this project.
@@ -162,6 +166,8 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - The temporary E2E probe worker stays disabled until its pre-test configuration is safely recovered or the probe task is retired.
 - Next design: split E2E into short transactional phases with durable recovery metadata before mutation, independent observation sessions, and explicit cleanup/reconciliation.
 
+- source: legacy-v2-state
+- authority: legacy-unverified
 ## Autonomous private transport campaign milestone 2026-10-05
 
 - Runner research line: draft PR #30 / `exp/runner-private-transport-control-plane` / head `198b3ba8f553db78888115ec1d18061fe89a1305`.
@@ -174,3 +180,5 @@ Provenance: OpenAI Sign in with ChatGPT documentation reviewed 2026-10-04; Owner
 - Next design is a crash-safe multi-phase E2E with durable recovery snapshot before mutation and fresh short-lived sessions for arm, observe and cleanup.
 - Manager coupled state persisted as generation 28.
 
+- source: legacy-v2-state
+- authority: legacy-unverified

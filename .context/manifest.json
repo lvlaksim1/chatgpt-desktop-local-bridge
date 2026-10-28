@@ -52,7 +52,8 @@
     ".context/decisions/DEC-0005-incremental-update-channel.md",
     ".context/decisions/DEC-0006-single-exe-updates.md",
     ".context/decisions/DEC-0007-windows-powershell-and-delta-safe-uninstall.md",
-    ".context/decisions/DEC-0008-ui-shell-rollback-and-validation.md"
+    ".context/decisions/DEC-0008-ui-shell-rollback-and-validation.md",
+    ".context/decisions/visible-bridge-protocol.md"
   ],
   "dialogues": [],
   "history": [],
@@ -102,12 +103,12 @@
     "terminal_execution_cleanup_required": true,
     "external_gate_reconciliation_required": true
   },
-  "updated_at": "2026-10-04",
-  "context_version": "2.0.0-dev",
+  "updated_at": "2026-10-28",
+  "context_version": "2.1.0",
   "authority": {
     "manager_state_branch": "manager-state",
     "product_branch": "main"
   },
   "context_capsule_version": "1.3.1",
-  "project_manager_version": "2.0.0-dev"
+  "project_manager_version": "2.1.0"
 }
