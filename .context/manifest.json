@@ -42,7 +42,8 @@
   },
   "current_state": ".context/current/state.md",
   "rules": [
-    ".context/rules/project-rules.md"
+    ".context/rules/project-rules.md",
+    ".context/rules/batch-development-standard.md"
   ],
   "decisions": [
     ".context/decisions/DEC-0001-persistent-project-manager.md",
@@ -53,7 +54,8 @@
     ".context/decisions/DEC-0006-single-exe-updates.md",
     ".context/decisions/DEC-0007-windows-powershell-and-delta-safe-uninstall.md",
     ".context/decisions/DEC-0008-ui-shell-rollback-and-validation.md",
-    ".context/decisions/visible-bridge-protocol.md"
+    ".context/decisions/visible-bridge-protocol.md",
+    ".context/decisions/owner-batched-development-2026-10-30.md"
   ],
   "dialogues": [],
   "history": [],
